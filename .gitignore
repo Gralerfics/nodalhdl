@@ -1,0 +1,5 @@
+.vscode/
+.Xil/
+vivado*.jou
+vivado*.log
+**/__pycache__/
