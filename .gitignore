@@ -5,4 +5,3 @@ vivado*.log
 **/__pycache__/
 
 tmp/
-Notes.txt
