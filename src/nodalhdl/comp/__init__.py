@@ -5,7 +5,3 @@ from ..core.operator import *
 class Node:
     pass
 
-
-class Module:
-    pass
-

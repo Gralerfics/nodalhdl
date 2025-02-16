@@ -21,9 +21,12 @@
         print(Float.__name__)               # FloatingPoint_8_23
         print(UInt.__name__)                # UInt
         print(SInt[8].__name__)             # SInt_8
+        
+        print(isinstance(UInt, SignalType))                 # True (*)
+        print(isinstance(UInt[8], SignalType))              # True
 
         print(type(Signal))                                 # <class '__main__.SignalType'>
-        print(type(UInt[8]))                                # <class '__main__.BitsType'>
+        print(type(UInt[8]))                                # <class '__main__.UIntType'>
         print(issubclass(UInt[8], UInt))                    # True
         print(issubclass(UInt[8], BitsType))                # False
         print(issubclass(type(UInt[8]), BitsType))          # True
@@ -34,14 +37,15 @@
         print(UInt[8].equals(UInt[8]))                      # True
         print(UInt[8].equals(UInt[7]))                      # False
 
-        print(UInt._instantiated)                           # False
-        print(UInt[8]._instantiated)                        # True
+        print(UInt.instantiated)                            # False
+        print(UInt[8].instantiated)                         # True
 +--------------------------------------------------------------------+
     Comments:
         1.  `Type` 为创建类型的类型，区分以表示不同类的创建格式，
             例如 BitsType 用于创建具有单个 width 属性的类型，
             而 FixedPointType 用于创建具有 width, integer_width, fraction_width 属性的类型。
             `SignalType` 是信号类型的类型，是所有 `Type` 类型的基类，继承自 `type`。
+            具体，本来类 (class) 的类型是 type，现在更具体一点变成 SignalType 等继承自 type 的新 type。
         2.  类型本身之间的从属关系由多继承实现，和 `Type` 无关，
             但如果希望某类型继承某类型，则其 `Type` 也应该继承对应的 `Type`，
             至于创建方式，可以被覆写；
@@ -69,7 +73,7 @@ class SignalType(type):
         new_cls = cls.type_pool.get(new_type_name)
         for key, value in properties.items():
             setattr(new_cls, key, value)
-        setattr(new_cls, "_instantiated", True)
+        setattr(new_cls, "instantiated", True)
         return new_cls
 
 class BitsType(SignalType):
@@ -83,11 +87,11 @@ class BitsType(SignalType):
                 }
             )
         else:
-            raise SignalTypeException(f"Invalid parameter \'{item}\' for type {cls.__name__}[<width (int)>]")
+            raise SignalTypeException(f"Invalid parameter(s) \'{item}\' for type {cls.__name__}[<width (int)>]")
 
-class NumberType(BitsType): pass
+class NumberType(BitsType): pass # 这些空类目前应该都没有单独设类的意义, 主要是预备以后可能需要添加一些特有的参数 ...
 
-class UIntType(NumberType): pass
+class UIntType(NumberType): pass # ... 例如去掉这个 UIntType, 后面的 UInt 直接继承 Number 而不指定 metaclass，没有影响，除了例如 type(UInt[8]) 会从 UIntType 变回 NumberType.
 
 class SIntType(NumberType): pass
 
@@ -104,7 +108,7 @@ class FixedPointType(NumberType):
                 }
             )
         else:
-            raise SignalTypeException(f"Invalid parameter \'{item}\' for type {cls.__name__}[<integer_width (int)>, <fraction_width (int)>]")
+            raise SignalTypeException(f"Invalid parameter(s) \'{item}\' for type {cls.__name__}[<integer_width (int)>, <fraction_width (int)>]")
 
 class FloatingPointType(NumberType):
     def __getitem__(cls, item):
@@ -119,12 +123,12 @@ class FloatingPointType(NumberType):
                 }
             )
         else:
-            raise SignalTypeException(f"Invalid parameter \'{item}\' for type {cls.__name__}[<exponent_width (int)>, <fraction_width (int)>]")
+            raise SignalTypeException(f"Invalid parameter(s) \'{item}\' for type {cls.__name__}[<exponent_width (int)>, <fraction_width (int)>]")
 
 
 """ Types """
 class Signal(metaclass = SignalType):
-    _instantiated = False
+    instantiated = False
     
     @classmethod
     def equals(cls, other: SignalType):
