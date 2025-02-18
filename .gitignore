@@ -5,3 +5,4 @@ vivado*.log
 **/__pycache__/
 
 tmp/
+doc/notes/Diagram.pdf

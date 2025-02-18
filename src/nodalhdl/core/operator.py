@@ -20,6 +20,7 @@
             TODO 需要一种方法快速确认一个组合逻辑转为 LUT 的组合后需要多少层（串联），以估测时延，
                  有这样的方法后可以依据这一点来切分流水线。
                  或可给组合逻辑计算一个复杂度因子，将其与预计层数相关联？
+        TODO ！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！考虑将 operator 并入 diagram
 +--------------------------------------------------------------------+
 """
 
@@ -42,12 +43,11 @@ class OperatorType(type):
         new_cls = cls.type_pool.get(new_type_name)
         for key, value in properties.items():
             setattr(new_cls, key, value)
-        setattr(new_cls, "instantiated", True)
         return new_cls
 
 class UnaryOperatorType(OperatorType):
     def __getitem__(cls, item):
-        if isinstance(item, SignalType) and item.instantiated: # Currently we only allow operator types with width-determined operands
+        if isinstance(item, SignalType) and item.width_determined: # Currently we only allow operator types with width-determined operands
             op_type = item
             return cls.instantiate_type(
                 f"{cls.__name__}_{op_type.__name__}",
@@ -56,11 +56,11 @@ class UnaryOperatorType(OperatorType):
                 }
             )
         else:
-            raise SignalTypeException(f"Invalid parameter(s) \'{item}\' for type {cls.__name__}[<op_type (SignalType, instantiated)>]")
+            raise SignalTypeException(f"Invalid parameter(s) \'{item}\' for type {cls.__name__}[<op_type (SignalType, width_determined)>]")
 
 class BinaryOperatorType(OperatorType):
     def __getitem__(cls, item):
-        if isinstance(item, tuple) and len(item) == 2 and isinstance(item[0], SignalType) and isinstance(item[1], SignalType) and item[0].instantiated and item[1].instantiated:
+        if isinstance(item, tuple) and len(item) == 2 and isinstance(item[0], SignalType) and isinstance(item[1], SignalType) and item[0].width_determined and item[1].width_determined:
             op1_type, op2_type = item
             return cls.instantiate_type(
                 f"{cls.__name__}_{op1_type.__name__}_{op2_type.__name__}",
@@ -70,18 +70,7 @@ class BinaryOperatorType(OperatorType):
                 }
             )
         else:
-            raise SignalTypeException(f"Invalid parameter(s) \'{item}\' for type {cls.__name__}[<op1_type (SignalType, instantiated)>, <op2_type (SignalType, instantiated)>]")
-
-# class NaryOperatorType(OperatorType):
-#     def __getitem__(cls, item):
-#         def __is_all_signal_type(item: tuple): # True if all parameters are of SignalType
-#             for x in item:
-#                 if not isinstance(x, SignalType):
-#                     return False
-#             return True
-        
-#         if isinstance(item, tuple) and __is_all_signal_type(item):
-#             pass # TODO 考虑多信号类型异同问题, 结构暂时保留
+            raise SignalTypeException(f"Invalid parameter(s) \'{item}\' for type {cls.__name__}[<op1_type (SignalType, width_determined)>, <op2_type (SignalType, width_determined)>]")
 
 class SlicingOperatorType(OperatorType):
     def __getitem__(cls, item):
@@ -105,8 +94,6 @@ class SlicingOperatorType(OperatorType):
 
 """ Types """
 class Operator(metaclass = OperatorType):
-    instantiated = False
-    
     @classmethod
     def equals(cls, other: OperatorType):
         return cls == other
