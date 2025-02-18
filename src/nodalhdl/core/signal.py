@@ -36,8 +36,8 @@
         print(UInt[8].equals(UInt[8]))                      # True
         print(UInt[8].equals(UInt[7]))                      # False
 
-        print(UInt.width_determined)                        # False
-        print(UInt[8].width_determined)                     # True
+        print(UInt.determined)                              # False
+        print(UInt[8].determined)                           # True
 +--------------------------------------------------------------------+
     Comments:
         1.  `Type` 为创建类型的类型，区分以表示不同类的创建格式，
@@ -65,8 +65,8 @@ class SignalTypeException(Exception): pass
 """ Metatypes """
 class SignalType(type):
     def __call__(self, *args, **kwds): # TODO
-        if not self.width_determined:
-            raise TypeError("Width-undetermined types cannot be instantiated.")
+        if not self.determined:
+            raise TypeError("Undetermined types cannot be instantiated.")
         else:
             return super().__call__(*args, **kwds)
     
@@ -75,7 +75,7 @@ class SignalType(type):
     def instantiate_type(cls, new_type_name, properties = {}): # `cls` here is the generated class, type(cls) is SignalType or its subclasses
         if not new_type_name in cls.type_pool.keys():
             cls.type_pool[new_type_name] = type(f"{new_type_name}", (cls, ), {
-                "width_determined": True, # all generated types has the attribute `width_determined`
+                "determined": True, # all generated types has the attribute `determined`
                 **properties
             })
         return cls.type_pool.get(new_type_name)
@@ -126,7 +126,7 @@ class FloatingPointType(BitsType):
 
 """ Types """
 class Signal(metaclass = SignalType):
-    width_determined = False
+    determined = False # i.e. width-determined w.r.t. signals
     
     @classmethod
     def equals(cls, other: SignalType):
