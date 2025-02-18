@@ -2,10 +2,9 @@
 +--------------------------------------------------------------------+
     Signal Types:
         Signal;
-        Bits[<width>], Bit;
-        Number[<width>];
-        UInt[<width>];
-        SInt[<width>];
+        Bits[<width>], Bit, Byte;
+        UInt[<width>], UInt8, UInt16, UInt32, UInt64;
+        SInt[<width>], SInt8, SInt16, SInt32, SInt64;
         FixedPoint[<integer_width>, <fraction_width>];
         FloatingPoint[<exponent_width>, <fraction_width>], Float, Double.
     Examples:
@@ -26,19 +25,19 @@
         print(isinstance(UInt[8], SignalType))              # True
 
         print(type(Signal))                                 # <class '__main__.SignalType'>
-        print(type(UInt[8]))                                # <class '__main__.UIntType'>
+        print(type(UInt[8]))                                # <class '__main__.BitsType'>
         print(issubclass(UInt[8], UInt))                    # True
         print(issubclass(UInt[8], BitsType))                # False
         print(issubclass(type(UInt[8]), BitsType))          # True
         print(issubclass(type(UInt[8]), SignalType))        # True
 
-        print(UInt[8].belongs(Number))                      # True
-        print(UInt[8].belongs(Number[8]))                   # False (*)
+        print(UInt[8].belongs(Bits))                        # True
+        print(UInt[8].belongs(Bits[8]))                     # False (*)
         print(UInt[8].equals(UInt[8]))                      # True
         print(UInt[8].equals(UInt[7]))                      # False
 
-        print(UInt.instantiated)                            # False
-        print(UInt[8].instantiated)                         # True
+        print(UInt.width_determined)                        # False
+        print(UInt[8].width_determined)                     # True
 +--------------------------------------------------------------------+
     Comments:
         1.  `Type` 为创建类型的类型，区分以表示不同类的创建格式，
@@ -65,16 +64,21 @@ class SignalTypeException(Exception): pass
 
 """ Metatypes """
 class SignalType(type):
-    type_pool = {} # ensuring singularity. type_pool for SignalType and its subclasses are all the same one
+    def __call__(self, *args, **kwds): # TODO
+        if not self.width_determined:
+            raise TypeError("Width-undetermined types cannot be instantiated.")
+        else:
+            return super().__call__(*args, **kwds)
+    
+    type_pool = {} # ensuring singularity, `type_pool`` for SignalType and its subclasses are all the same one
 
-    def instantiate_type(cls, new_type_name, properties = {}): # type(cls) is SignalType or its subclasses
+    def instantiate_type(cls, new_type_name, properties = {}): # `cls` here is the generated class, type(cls) is SignalType or its subclasses
         if not new_type_name in cls.type_pool.keys():
-            cls.type_pool[new_type_name] = type(f"{new_type_name}", (cls, ), {})
-        new_cls = cls.type_pool.get(new_type_name)
-        for key, value in properties.items():
-            setattr(new_cls, key, value)
-        setattr(new_cls, "instantiated", True)
-        return new_cls
+            cls.type_pool[new_type_name] = type(f"{new_type_name}", (cls, ), {
+                "width_determined": True, # all generated types has the attribute `width_determined`
+                **properties
+            })
+        return cls.type_pool.get(new_type_name)
 
 class BitsType(SignalType):
     def __getitem__(cls, item):
@@ -89,13 +93,7 @@ class BitsType(SignalType):
         else:
             raise SignalTypeException(f"Invalid parameter(s) \'{item}\' for type {cls.__name__}[<width (int)>]")
 
-class NumberType(BitsType): pass # 这些空类目前应该都没有单独设类的意义, 主要是预备以后可能需要添加一些特有的参数 ...
-
-class UIntType(NumberType): pass # ... 例如去掉这个 UIntType, 后面的 UInt 直接继承 Number 而不指定 metaclass，没有影响，除了例如 type(UInt[8]) 会从 UIntType 变回 NumberType.
-
-class SIntType(NumberType): pass
-
-class FixedPointType(NumberType):
+class FixedPointType(BitsType):
     def __getitem__(cls, item):
         if isinstance(item, tuple) and len(item) == 2 and isinstance(item[0], int) and isinstance(item[1], int):
             integer_width, fraction_width = item
@@ -110,7 +108,7 @@ class FixedPointType(NumberType):
         else:
             raise SignalTypeException(f"Invalid parameter(s) \'{item}\' for type {cls.__name__}[<integer_width (int)>, <fraction_width (int)>]")
 
-class FloatingPointType(NumberType):
+class FloatingPointType(BitsType):
     def __getitem__(cls, item):
         if isinstance(item, tuple) and len(item) == 2 and isinstance(item[0], int) and isinstance(item[1], int):
             exponent_width, fraction_width = item
@@ -128,7 +126,7 @@ class FloatingPointType(NumberType):
 
 """ Types """
 class Signal(metaclass = SignalType):
-    instantiated = False
+    width_determined = False
     
     @classmethod
     def equals(cls, other: SignalType):
@@ -142,23 +140,21 @@ class Bits(Signal, metaclass = BitsType): pass
 Bit = Bits[1]
 Byte = Bits[8]
 
-class Number(Bits, metaclass = NumberType): pass
-
-class UInt(Number, metaclass = UIntType): pass
+class UInt(Bits): pass
 UInt8 = UInt[8]
 UInt16 = UInt[16]
 UInt32 = UInt[32]
 UInt64 = UInt[64]
 
-class SInt(Number, metaclass = SIntType): pass
+class SInt(Bits): pass
 Int8 = SInt[8]
 Int16 = SInt[16]
 Int32 = SInt[32]
 Int64 = SInt[64]
 
-class FixedPoint(Number, metaclass = FixedPointType): pass
+class FixedPoint(Bits, metaclass = FixedPointType): pass
 
-class FloatingPoint(Number, metaclass = FloatingPointType): pass
+class FloatingPoint(Bits, metaclass = FloatingPointType): pass
 Float = FloatingPoint[8, 23]
 Double = FloatingPoint[11, 52]
 
