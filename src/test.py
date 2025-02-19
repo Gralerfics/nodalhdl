@@ -1,17 +1,16 @@
 from nodalhdl.core.signal import *
-# from nodalhdl.core.operator import *
 from nodalhdl.core.diagram import *
 
-# A = Slice[7, 0]
-# print(A.__name__)
-# print(A.indices)
 
-# B = And[UInt[8], UInt[4]]
-# print(B.__name__)
-# print(B.T_op1)
-# print(B.T_op2)
-# print(B.a)
+class TestNode(Diagram): # 无参 Diagram 示例
+    @staticmethod
+    def setup(args) -> DiagramStructure:
+        pass # TODO
+        return DiagramStructure()
 
-print('=============================')
-C = FloatingPoint[11, 22]()
-print(C.W_frac)
+
+print('=======================================================')
+U1 = Addition[UInt[4], UInt[6]]
+# u1 = U1()
+
+# u2 = TestNode()

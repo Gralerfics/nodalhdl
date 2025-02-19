@@ -1,4 +1,4 @@
-# from .signal import *
+from .signal import *
 # from .operator import *
 
 import hashlib
@@ -10,29 +10,33 @@ class DiagramInstantiationException(Exception): pass
 
 
 """ Utils """
-class DiagramStructure:
-    pass
+class DiagramStructure: # TODO 算子或也应该在这里定义
+    def __init__(self):
+        pass # TODO
+        # 外 port
+        # 内部
 
 
 """ Metatypes """
 class DiagramType(type):
-    DERIVATIVE_FLAG_ATTRNAME = "derivative_flag"
+    PARAMETER_INSTANTIATED_ATTRNAME = "parameter_instantiated"
     STRUCTURE_ATTRNAME = "structure"
     DETERMINED_ATTRNAME = "determined"
     
+    type_pool = {} # 模块查重 (TODO: 哈希重复是否要再检查一下参数是否相同)
+    
     def __new__(cls, name, bases, attr): # `cls` here is the metaclass itself (DiagramType)
-        # print('> DiagramType.__new__', cls, name, bases, attr)
         """
             一般会在两种情况下被调用:
                 (1.) 使用 class 定义 Diagram 等类时, 行为上即无参构建结构模板.
                 (2.) 使用 Diagram[...] 等在 __getitem__ 中带参创建新类时, 行为上需要注意, 这种情况的调用是多余的:
-                    __getitem__ 将在 attr 中传入 `DERIVATIVE_FLAG_ATTRNAME: True` 属性,
+                    __getitem__ 将在 attr 中传入 `<PARAMETER_INSTANTIATED_ATTRNAME>: True` 属性,
                     若该属性为 False 或不存在则为情况 (1.), 正常处理;
                     否则为情况 (2.), 需跳过已经在 __getitem__ 中完成且结果已经传入 attr 中的构建过程.
         """
         new_cls = super().__new__(cls, name, bases, attr) # 先创建类, 因为 setup() 可能未在 attr 中显式重写
         
-        if not attr.get(DiagramType.DERIVATIVE_FLAG_ATTRNAME, False): # 非带参派生模板, 按 (1.) 行为处理
+        if not attr.get(DiagramType.PARAMETER_INSTANTIATED_ATTRNAME, False): # 非带参派生模板, 按 (1.) 行为处理
             new_structure, new_determined = None, False
             try:
                 new_structure = new_cls.setup() # 无参生成结构
@@ -45,17 +49,16 @@ class DiagramType(type):
         return new_cls
     
     def __getitem__(cls: 'Diagram', args: tuple): # `cls` here is the generated class
-        # print('> DiagramType.__getitem__', cls, args)
         """
-            在已有 Diagram 类基础上通过中括号传入参数以构建新的类并返回.
-            行为上即带参构建结构模板.
+            在已有 Diagram 类基础上通过中括号传入参数以构建新的类并返回, 行为上即带参构建结构模板.
+                    ... 使用 DiagramType 构建新类时会再调用 __new__, 在 __new__ 中会依据是否有 `<PARAMETER_INSTANTIATED_ATTRNAME>: True` 判断是否已经带参创建.
         """
         new_name = f"{cls.__name__}_TODO" # 类名与参数构建新名 TODO
         new_cls = DiagramType(
             new_name,
             (cls, ), # 继承无参模板的属性和方法, 主要是 setup 以及祖传的 deduction 和 __init__
             {
-                DiagramType.DERIVATIVE_FLAG_ATTRNAME: True,
+                DiagramType.PARAMETER_INSTANTIATED_ATTRNAME: True,
                 DiagramType.STRUCTURE_ATTRNAME: cls.setup(args),
                 DiagramType.DETERMINED_ATTRNAME: True # TODO 类型推导后确认是否 determined, 暂时给 True TODO
             } # 这里如果出问题, 例如参数错误, 直接抛出异常不再捕获
@@ -65,13 +68,16 @@ class DiagramType(type):
 
 """ Types """
 class Diagram(metaclass = DiagramType):
-    derivative_flag = False # 见 DiagramType.__new__ 的注释
+    is_operator = False # 是否是基本算子 (即无内部结构)
+    parameter_instantiated = False # 见 DiagramType.__new__ 的注释
+    
     structure = None
     determined = False # 是否定型 (即是否可例化), 理论上可以通过类型推导得出, 此处特殊空结构, 为 False
     
-    @staticmethod
-    def setup(args: tuple = ()) -> DiagramStructure: # 模板结构生成, 可能含参, 此处为空结构无参, 继承者须覆写
-        return DiagramStructure()
+    def __init__(self):
+        if not self.determined:
+            raise DiagramInstantiationException(f"Undetermined diagram \'{type(self).__name__}\' cannot be instantiated.") # TODO type(self)?
+        pass # TODO 统一例化过程, 模板到实例, 继承者不可更改
     
     @classmethod
     def deduction(cls): # TODO 类型推导
@@ -79,30 +85,19 @@ class Diagram(metaclass = DiagramType):
         pass
         # return TODO
     
-    def __init__(self):
-        if not self.determined:
-            raise DiagramInstantiationException(f"Undetermined diagram {type(self)} cannot be instantiated.") # TODO type(self)?
-        pass # TODO 统一例化过程, 模板到实例, 继承者不可更改
-
-
-""" Test """
-class UserNodeWithParam(Diagram): # 带参 Diagram 示例
     @staticmethod
-    def setup(args: tuple = ()) -> DiagramStructure:
-        print(args) # TODO
+    def setup(args: tuple = ()) -> DiagramStructure: # 模板结构生成, 可能含参, 此处为空结构无参, 继承者须覆写
         return DiagramStructure()
 
 
-class UserNodeNoParam(Diagram): # 无参 Diagram 示例
-    pass
-
-
-print('=======================================================')
-T = UserNodeWithParam[1, 2, 3]
-# t = T()
-
-# U = UserNodeNoParam
-# u = U()
+""" Derivatives """
+class Addition(Diagram): # 带参 Diagram 示例, 整数加法
+    @staticmethod
+    def setup(args) -> DiagramStructure:
+        # 类型检查
+        
+        
+        return DiagramStructure()
 
 
 """
