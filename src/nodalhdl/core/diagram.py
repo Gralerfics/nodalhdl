@@ -19,49 +19,51 @@ class DiagramStructure: # TODO 算子或也应该在这里定义
 
 """ Metatypes """
 class DiagramType(type):
-    PARAMETER_INSTANTIATED_ATTRNAME = "parameter_instantiated"
+    INSTANTIATION_ARGUMENTS_ATTRNAME = "instantiation_arguments"
     STRUCTURE_ATTRNAME = "structure"
     DETERMINED_ATTRNAME = "determined"
     
     type_pool = {} # 模块查重 (TODO: 哈希重复是否要再检查一下参数是否相同)
     
-    def __new__(cls, name, bases, attr): # `cls` here is the metaclass itself (DiagramType)
+    def __new__(cls, name: str, bases: tuple, attr: dict): # `cls` here is the metaclass itself (DiagramType)
         """
-            一般会在两种情况下被调用:
-                (1.) 使用 class 定义 Diagram 等类时, 行为上即无参构建结构模板.
-                (2.) 使用 Diagram[...] 等在 __getitem__ 中带参创建新类时, 行为上需要注意, 这种情况的调用是多余的:
-                    __getitem__ 将在 attr 中传入 `<PARAMETER_INSTANTIATED_ATTRNAME>: True` 属性,
-                    若该属性为 False 或不存在则为情况 (1.), 正常处理;
-                    否则为情况 (2.), 需跳过已经在 __getitem__ 中完成且结果已经传入 attr 中的构建过程.
+            创建新 Diagram 类型, 可能情况:
+                (1.) 使用 class 继承 Diagram 创建子类.
+                (2.) 使用中括号传递参数创建 Diagram 或其子类的衍生类.
+            最终都进入 __new__, 情况 (2.) 会在 attr 中带有参数 <INSTANTIATION_ARGUMENTS_ATTRNAME>.
+            创建类型主要需要:
+                (1.) 通过 setup(args) 构建模板结构.
+                (2.) 通过 deduction() 类型推导判断结构是否可例化 (例如类型宽度都已确定). TODO
         """
-        new_cls = super().__new__(cls, name, bases, attr) # 先创建类, 因为 setup() 可能未在 attr 中显式重写
+        inst_args = attr.get(DiagramType.INSTANTIATION_ARGUMENTS_ATTRNAME, ()) # 获取可能从 __getitem__ 传来的参数, 无则默认为空
         
-        if not attr.get(DiagramType.PARAMETER_INSTANTIATED_ATTRNAME, False): # 非带参派生模板, 按 (1.) 行为处理
-            new_structure, new_determined = None, False
-            try:
-                new_structure = new_cls.setup() # 无参生成结构
-                new_determined = True # TODO 类型推导后确认是否 determined, 并给 new_cls.determined 赋值, 暂时给 True TODO
-            except Exception as e:
-                pass # 默认值如前, 若 setup() 缺省参数会抛出异常或类型推导出错, 则结构留空, determined 直接置 False, 等待后续带参构建
-            setattr(new_cls, DiagramType.STRUCTURE_ATTRNAME, new_structure)
-            setattr(new_cls, DiagramType.DETERMINED_ATTRNAME, new_determined)
+        new_cls: Diagram = super().__new__(cls, name, bases, attr) # 先创建类, deduction() 和 setup() 可能未在子类中显式重写 (即未在 attr 中)
+        deduction_func = new_cls.deduction
+        setup_func = new_cls.setup
+        
+        new_structure, new_determined = None, False
+        try:
+            new_structure = setup_func(inst_args) # 生成结构
+            new_determined = True # TODO 类型推导后确认是否 determined, 并给 new_cls.determined 赋值, 暂时给 True
+        except DiagramTypeException as e:
+            print(e)
+            pass # 默认值如前, 可能是 setup() 未实现空参行为或类型推导出错, 结构留空并置 determined 为 False, 待后续带参构建
+        
+        setattr(new_cls, DiagramType.STRUCTURE_ATTRNAME, new_structure)
+        setattr(new_cls, DiagramType.DETERMINED_ATTRNAME, new_determined)
 
         return new_cls
     
     def __getitem__(cls: 'Diagram', args: tuple): # `cls` here is the generated class
         """
-            在已有 Diagram 类基础上通过中括号传入参数以构建新的类并返回, 行为上即带参构建结构模板.
-                    ... 使用 DiagramType 构建新类时会再调用 __new__, 在 __new__ 中会依据是否有 `<PARAMETER_INSTANTIATED_ATTRNAME>: True` 判断是否已经带参创建.
+            在已有 Diagram 类基础上通过中括号传入参数以构建新的类并返回.
+            行为上是将 args 通过 attr 传入 __new__, 在其中统一处理.
         """
         new_name = f"{cls.__name__}_TODO" # 类名与参数构建新名 TODO
         new_cls = DiagramType(
             new_name,
-            (cls, ), # 继承无参模板的属性和方法, 主要是 setup 以及祖传的 deduction 和 __init__
-            {
-                DiagramType.PARAMETER_INSTANTIATED_ATTRNAME: True,
-                DiagramType.STRUCTURE_ATTRNAME: cls.setup(args),
-                DiagramType.DETERMINED_ATTRNAME: True # TODO 类型推导后确认是否 determined, 暂时给 True TODO
-            } # 这里如果出问题, 例如参数错误, 直接抛出异常不再捕获
+            (cls, ), # 继承无参模板的属性和方法, 主要是 setup 和 deduction 等
+            {DiagramType.INSTANTIATION_ARGUMENTS_ATTRNAME: args} # 传递参数交给 __new__ 创建
         )
         return new_cls
 
@@ -69,7 +71,6 @@ class DiagramType(type):
 """ Types """
 class Diagram(metaclass = DiagramType):
     is_operator = False # 是否是基本算子 (即无内部结构)
-    parameter_instantiated = False # 见 DiagramType.__new__ 的注释
     
     structure = None
     determined = False # 是否定型 (即是否可例化), 理论上可以通过类型推导得出, 此处特殊空结构, 为 False

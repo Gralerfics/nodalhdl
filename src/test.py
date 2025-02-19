@@ -11,6 +11,6 @@ class TestNode(Diagram): # 无参 Diagram 示例
 
 print('=======================================================')
 U1 = Addition[UInt[4], UInt[6]]
-# u1 = U1()
+u1 = U1()
 
 # u2 = TestNode()
