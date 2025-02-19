@@ -1,0 +1,90 @@
+总结到: https://zhuanlan.zhihu.com/p/24549919571
+
+关于元类的一系列试验:
+
+(1.) 使用 class 带 metaclass 参数创建类
+    创建类时带上 metaclass = DiagramType 则会调用 __new__ (__new__ 是 type 的方法, DiagramType 继承了 type).
+            ... TODO 也就是说不加 metaclass, 默认的就是 metaclass = type ?
+        cls 为 __new__ 所在的元类本身;
+        name 为正在创建的类的名称;
+        bases 为正在创建的类的父类 (tuple 表示);
+        attr 为正在创建的类具有的属性.
+    例如:
+        class DiagramType(type):
+            def __new__(cls, name, bases, attr):
+                print('DiagramType.__new__', cls, name, bases, attr)
+                return super().__new__(cls, name, bases, attr)
+        
+        class Diagram(metaclass = DiagramType):
+            a = 1
+            def f(x):
+                return x
+    该 Diagram 类的创建会调用 DiagramType 的 __new__ 方法, 传入的四个参数分别为:
+        <class '__main__.DiagramType'>
+        'Diagram'
+        tuple()
+        {'__module__': '__main__', '__qualname__': 'Diagram', 'a': 1, 'f': <function Diagram.f at 0x000001F1005C59E0>}
+
+(2.) 使用 class 带继承属性创建 (1.) 中所建类的子类
+    元类如同被继承一般, 使得所建子类也会调用其 __new__ 方法.
+        创建的子类由继承关系, 会得到父类的属性;
+        但调用 __new__ 时传入的 attr 参数不会包含继承属性.
+    例如:
+        class TestClass(Diagram):
+            a = 2
+    调用 __new__ 时传入的四个参数为:
+        <class '__main__.DiagramType'>
+        'TestClass'
+        (<class '__main__.Diagram'>, )
+        {'__module__': '__main__', '__qualname__': 'TestClass', 'a': 2}
+
+(3.) 使用 type 创建 (1.) 中所建类的子类
+    例如:
+        TestClass = type('TestClass', (Diagram, ), {'a': 2})
+    该 TestClass 类创建时调用 __new__ 方法传入的四个参数为:
+        <class '__main__.DiagramType'>
+        'TestClass'
+        (<class '__main__.Diagram'>, )
+        {'a': 2}
+    由于继承 Diagram, T.a 和 T.f(x) 都还在, 而 T.a 的值被 attr 覆盖为 2, 可见此处 attr 代表的是子类新添加的属性, 不包括父类的属性.
+            ... 父类的情况已包含在 bases 中, 再包含在 attr 中显得冗余.
+    同时, 与 (2.) 比对可以发现 attr 中缺失了 '__module__': '__main__', '__qualname__': 'TestClass' 两个属性, 但创建所得 TestClass 还是具有这两个属性的.
+            ... TODO 或为类的必要属性, 会自动加上? 例如 __module__ 概与文件、运行入口有关?
+    * 注意, 如果使用 type 创建, 不传入父类 (即 bases 为空) 则不会调用到 DiagramType 的 __new__. (该结论后续见 (4.))
+
+(4.) 使用 DiagramType 创建 (1.) 中所建类的子类
+    正常情况下创建类即使用 type 进行创建, 本质上调用的就是 type.__new__, 所以我们可以直接使用我们的元类 (例如前述 DiagramType) 来创建新类.
+    例如:
+        TestClass = DiagramType('TestClass', (Diagram, ), {'a': 3})
+    传入的四个参数为:
+        <class '__main__.DiagramType'>
+        'TestClass'
+        (<class '__main__.Diagram'>, )
+        {'a': 3}
+    可见和 (3.) 的情况基本是一致的, 区别在于 (3.) 如果不继承 Diagram 这样带又重写过 __new__ 方法的元类, 则进入的还是 type.__new__ 而非 DiagramType.__new__,
+    而这里的情况则是不管继承不继承, 都会进入 DiagramType.__new__.
+    * 注意, 这里既直接调用 DiagramType, 又注明了父类为 Diagram, 但总体只会调用一次 __new__.
+    接下来在 (5.) 中尝试使用 DiagramType 创建并继承另一个声明非 DiagramType 元类的类。
+
+(5.) 使用 DiagramType 创建另一个使用不同元类的类的子类
+    例如, 新定义:
+        class OtherType(type):
+            def __new__(cls, name, bases, attr):
+                print('OtherType.__new__', name, bases, attr)
+                return super().__new__(cls, name, bases, attr)
+
+        class Other(metaclass = OtherType):
+            b = 5
+            def g(x):
+                return 2 * x
+    再使用 DiagramType 创建继承自 Other 的类:
+        TestClass = DiagramType('TestClass', (Other, ), {'a': 4})
+    就可以看到:
+        TypeError: metaclass conflict: the metaclass of a derived class must be a (non-strict) subclass of the metaclasses of all its bases
+    非常舒服地报错了, 子类的元类必须和其所有父类的元类都相同或为其子类, 不存在歧义的问题.
+
+(6.) 在元类中定义属性
+    TODO
+
+(7.) 关于 __new__
+    TODO
