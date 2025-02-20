@@ -21,7 +21,7 @@
         print(Float.__name__)               # FloatingPoint_8_23
         print(UInt.__name__)                # UInt
         print(SInt[8].__name__)             # SInt_8
-        
+
         print(isinstance(UInt, SignalType))                 # True (*)
         print(isinstance(UInt[8], SignalType))              # True
 
@@ -39,7 +39,7 @@
 
         print(UInt.determined)                              # False
         print(UInt[8].determined)                           # True
-        
+
         S = Bundle[{
             "a": UInt[8],
             "b": Bit,
@@ -143,13 +143,7 @@ class IOWrapperType(SignalType):
 
 class BundleType(SignalType):
     def __getitem__(cls, item):
-        def __is_all_signal_type(item: dict):
-            for x in item.values():
-                if not isinstance(x, SignalType):
-                    return False
-            return True
-        
-        if isinstance(item, dict) and __is_all_signal_type(item):
+        if isinstance(item, dict) and all([isinstance(x, SignalType) for x in item.values()]):
             return cls.instantiate_type(
                 f"{cls.__name__}_{hashlib.md5(str(item).encode('utf-8')).hexdigest()}",
                 {
@@ -158,7 +152,7 @@ class BundleType(SignalType):
                 }
             )
         else:
-            raise SignalTypeException(f"Invalid parameter(s) \'{item}\' for type {cls.__name__}[<members (dict)>]")
+            raise SignalTypeException(f"Invalid parameter(s) \'{item}\' for type {cls.__name__}[<members (dict[str, SignalType])>]")
 
 
 """ Types """
@@ -172,6 +166,8 @@ class Signal(metaclass = SignalType):
     @classmethod
     def belongs(cls, other: SignalType):
         return issubclass(cls, other)
+
+class Auto(Signal): pass # undetermined
 
 class Bits(Signal, metaclass = BitsType): pass
 Bit = Bits[1]
