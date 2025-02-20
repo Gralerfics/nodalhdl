@@ -18,3 +18,52 @@ def class_attribute_isolator(attrs: list[str]):
     
     return decorator
 
+
+def use_dict_object(cls):
+    """
+        类装饰器 use_dict_object, 置于类前将为其添加 __apply_dict(self, d: dict) 方法.
+        使用该方法可将字典 d 的结构 (用方括号引用) 转为对象结构 (用点号引用) 置于实例中.
+        示例:
+            @use_dict_object
+            class Test:
+                def __init__(self):
+                    self.test = 1
+            
+            d = {
+                "a": 1,
+                "b": 2,
+                "c": {
+                    "d": "x",
+                    "e": [5, 6],
+                    "f": {
+                        "g": 1.2,
+                        "h": None
+                    }
+                }
+            }
+            
+            o = Test()
+            o.__apply_dict(d)
+            
+            print(o.__dict__)                       # {'test': 1, 'a': 1, 'b': 2, 'c': <...DictObject object at ...>}
+            print(o.a)                              # 1
+            print(o.c.d)                            # x
+            o.a = 3
+            print(o.a)                              # 3
+    """
+    
+    class DictObject:
+        def __init__(self, d: dict):
+            for key, value in d.items():
+                if isinstance(value, dict):
+                    setattr(self, key, DictObject(value))
+                else:
+                    setattr(self, key, value)
+    
+    def __apply_dict(self, d: dict):
+        self.__dict__.update(DictObject(d).__dict__)
+    
+    cls.__apply_dict = __apply_dict
+    
+    return cls
+
