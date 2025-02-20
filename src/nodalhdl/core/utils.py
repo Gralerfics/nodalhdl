@@ -51,7 +51,6 @@ def use_dict_object(cls):
             o.a = 3
             print(o.a)                              # 3
     """
-    
     class DictObject:
         def __init__(self, d: dict):
             for key, value in d.items():
@@ -66,4 +65,80 @@ def use_dict_object(cls):
     cls.__apply_dict = __apply_dict
     
     return cls
+
+
+def use_dsu_node(uid: str):
+    def decorator(cls):
+        """
+            类装饰器 use_dsu_node, 置于类前将其实例作为并查集维护的节点.
+            为节点实例添加 __dsu_father, __dsu_rank, __dsu_uid 属性以及 find(), join(other) 方法, 加入并查集维护.
+            示例:
+                @use_dsu_node("A")
+                class NodeA:
+                    def __init__(self, name):
+                        self.name = name
+
+                @use_dsu_node("B")
+                class NodeB:
+                    def __init__(self, name):
+                        self.name = name
+
+                n1, n2, n3, n4, n5 = NodeA("A"), NodeA("B"), NodeA("C"), NodeA("D"), NodeA("E")
+                m1, m2 = NodeB("X"), NodeB("Y")
+
+                print(n1.find().name)               # A
+                n1.join(n2)
+                print(n1.find().name)               # A
+                n3.join(n4)
+                n4.join(n5)
+                print(n5.find().name)               # C
+                n2.join(n4)
+                print(n3.find().name)               # A
+                m1.join(m2)
+                print(m2.find().name)               # X
+                m1.join(n1)                         # DSUException: Nodes with different uids should not be merged
+        """
+        class DSUException(Exception): pass
+        
+        def __init__(self, *args, **kwargs):
+            self.__dsu_father = self # 父节点初始化为自己
+            self.__dsu_rank = 0  # 初始化秩为 0
+            self.__dsu_uid = uid  # uid 不同的节点属不同空间, 不应被合并
+
+            if hasattr(cls, '__original_init__'): # 如有则调用原有 __init__
+                cls.__original_init__(self, *args, **kwargs)
+
+        def find(self):
+            if self.__dsu_father != self: # 路径压缩
+                self.__dsu_father = self.__dsu_father.find()
+            return self.__dsu_father
+
+        def join(self, other):
+            if not hasattr(other, "__dsu_uid"):
+                raise DSUException(f"Target node is not a DSU node")
+            if self.__dsu_uid != other.__dsu_uid:
+                raise DSUException(f"Nodes with different uids should not be merged")
+            
+            root_self = self.find()
+            root_other = other.find()
+
+            if root_self != root_other: # 不在同一个集合, 按秩合并
+                if root_self.__dsu_rank > root_other.__dsu_rank:
+                    root_other.__dsu_father = root_self
+                elif root_self.__dsu_rank < root_other.__dsu_rank:
+                    root_self.__dsu_father = root_other
+                else:
+                    root_other.__dsu_father = root_self
+                    root_self.__dsu_rank += 1
+
+        if hasattr(cls, '__init__'): # 若原本定义了 __init__ 则保存起来
+            cls.__original_init__ = cls.__init__
+        
+        cls.__init__ = __init__
+        cls.find = find
+        cls.join = join
+        
+        return cls
+    
+    return decorator
 
