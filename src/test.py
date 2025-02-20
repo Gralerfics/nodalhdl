@@ -16,17 +16,15 @@ S = Bundle[{
     "c": Bundle[{
         "x": SInt[3],
         "y": SInt[5]
-    }],
-    "T": Float
+    }]
 }]
 s = S()
+print(S.a)
 print(s.a)
-print(s.c)
+print(S.c.x)
 print(s.c.x)
-print(s.T)
-print(S.T)
-print(S.T["c"].T)
-# print(s.c.T)
+print(S.__bundle_types)
+print(S.c.__bundle_types)
 
 # I = Input[UInt16]
 # print(I.__name__)

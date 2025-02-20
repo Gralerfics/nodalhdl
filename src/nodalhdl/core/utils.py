@@ -1,7 +1,7 @@
 def class_attribute_isolator(attrs: list[str]):
     def decorator(cls):
         """
-            类装饰器 attribute_isolator, 置于类前表明该类的部分类属性需要隔离 (由隔离列表 attrs 规定), 即:
+            类装饰器 class_attribute_isolator, 置于类前表明该类的部分类属性需要隔离 (由隔离列表 attrs 规定), 即:
                 (1.) 若对象 obj 自己不包含名为 <x> 的属性, 而用户希望访问类属性 <x>, 则建议其使用 `type(obj).<x>` 或 `obj.__class__.<x>`.
                 (2.) 若对象 obj 恰好拥有名为 <x> 的属性, 则 obj.<x> 访问的就是 obj 对象自身的 <x> 属性, 覆盖对类属性 <x> 的访问.
             其实现为覆写 __getattribute__ 方法, 访问时检查 name 是否在 attrs 中;

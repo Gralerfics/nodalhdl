@@ -46,17 +46,15 @@
             "c": Bundle[{
                 "x": SInt[3],
                 "y": SInt[5]
-            }],
-            "T": Float
+            }]
         }]
         s = S()
+        print(S.a)                                          # <class '...UInt_8'>
         print(s.a)                                          # <...UInt_8 object at ...>
-        print(s.c)                                          # <...Bundle_0cbbdef73dff1f7318ab831e99b5216d object at ...>
+        print(S.c.x)                                        # <class '...SInt_3'>
         print(s.c.x)                                        # <...SInt_3 object at ...>
-        print(s.T)                                          # <...FloatingPoint_8_23 object at ...>
-        print(S.T)                                          # {'a': <class '...UInt_8'>, 'b': <class '...Bits_1'>, 'c': <class '...Bundle_0cbbdef73dff1f7318ab831e99b5216d'>, 'T': <class '...FloatingPoint_8_23'>}
-        print(S.T["c"].T)                                   # {'x': <class '...SInt_3'>, 'y': <class '...SInt_5'>}
-        print(s.c.T)                                        # AttributeError: 'type(object).T' or 'object.__class__.T' is recommended if you want to access the class attribute 'T'
+        print(S.__bundle_types)                             # {'a': <class '...UInt_8'>, 'b': <class '...Bits_1'>, 'c': <class '...Bundle_0cbbdef73dff1f7318ab831e99b5216d'>}
+        print(S.c.__bundle_types)                           # {'x': <class '...SInt_3'>, 'y': <class '...SInt_5'>}
 +--------------------------------------------------------------------+
     Comments:
         1.  `Type` 为创建类型的类型，区分以表示不同类的创建格式，
@@ -171,7 +169,8 @@ class BundleType(SignalType):
             return cls.instantiate_type(
                 f"{cls.__name__}_{hashlib.md5(str(item).encode('utf-8')).hexdigest()}",
                 {
-                    "T": item
+                    "__bundle_types": item, # 信号名到类型的映射, 维护子信号的名称信息, **item 展开后会和一些内建方法混在一起
+                    **item # 方便直接按索引引用信号类型
                 }
             )
         else:
@@ -215,11 +214,10 @@ Double = FloatingPoint[11, 52]
 class Input(Signal, metaclass = IOWrapperType): pass
 class Output(Signal, metaclass = IOWrapperType): pass
 
-@class_attribute_isolator(["T"])
 class Bundle(Signal, metaclass = BundleType):
     def __init__(self): # 递归式地实例化内部信号
         super().__init__()
-        bundle_types = type(self).T
+        bundle_types = getattr(type(self), "__bundle_types")
         for key, T in bundle_types.items():
             setattr(self, key, T())
 
