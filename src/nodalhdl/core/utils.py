@@ -67,11 +67,11 @@ def use_dict_object(cls):
     return cls
 
 
-def use_dsu_node(uid: str):
+def use_dsu_node(uid: str = ""):
     def decorator(cls):
         """
             类装饰器 use_dsu_node, 置于类前将其实例作为并查集维护的节点.
-            为节点实例添加 __dsu_father, __dsu_rank, __dsu_uid 属性以及 find(), join(other) 方法, 加入并查集维护.
+            为节点实例添加 __dsu_father, __dsu_rank, __dsu_uid 属性以及 root(), merge(other) 方法, 加入并查集维护.
             示例:
                 @use_dsu_node("A")
                 class NodeA:
@@ -86,17 +86,17 @@ def use_dsu_node(uid: str):
                 n1, n2, n3, n4, n5 = NodeA("A"), NodeA("B"), NodeA("C"), NodeA("D"), NodeA("E")
                 m1, m2 = NodeB("X"), NodeB("Y")
 
-                print(n1.find().name)               # A
-                n1.join(n2)
-                print(n1.find().name)               # A
-                n3.join(n4)
-                n4.join(n5)
-                print(n5.find().name)               # C
-                n2.join(n4)
-                print(n3.find().name)               # A
-                m1.join(m2)
-                print(m2.find().name)               # X
-                m1.join(n1)                         # DSUException: Nodes with different uids should not be merged
+                print(n1.root().name)               # A
+                n1.merge(n2)
+                print(n1.root().name)               # A
+                n3.merge(n4)
+                n4.merge(n5)
+                print(n5.root().name)               # C
+                n2.merge(n4)
+                print(n3.root().name)               # A
+                m1.merge(m2)
+                print(m2.root().name)               # X
+                m1.merge(n1)                        # DSUException: Nodes with different uids should not be merged
         """
         class DSUException(Exception): pass
         
@@ -108,19 +108,19 @@ def use_dsu_node(uid: str):
             if hasattr(cls, '__original_init__'): # 如有则调用原有 __init__
                 cls.__original_init__(self, *args, **kwargs)
 
-        def find(self):
+        def root(self):
             if self.__dsu_father != self: # 路径压缩
-                self.__dsu_father = self.__dsu_father.find()
+                self.__dsu_father = self.__dsu_father.root()
             return self.__dsu_father
 
-        def join(self, other):
+        def merge(self, other):
             if not hasattr(other, "__dsu_uid"):
                 raise DSUException(f"Target node is not a DSU node")
             if self.__dsu_uid != other.__dsu_uid:
                 raise DSUException(f"Nodes with different uids should not be merged")
             
-            root_self = self.find()
-            root_other = other.find()
+            root_self = self.root()
+            root_other = other.root()
 
             if root_self != root_other: # 不在同一个集合, 按秩合并
                 if root_self.__dsu_rank > root_other.__dsu_rank:
@@ -135,10 +135,35 @@ def use_dsu_node(uid: str):
             cls.__original_init__ = cls.__init__
         
         cls.__init__ = __init__
-        cls.find = find
-        cls.join = join
+        cls.root = root
+        cls.merge = merge
         
         return cls
     
     return decorator
+
+
+@use_dsu_node("A")
+class NodeA:
+    def __init__(self, name):
+        self.name = name
+
+@use_dsu_node("B")
+class NodeB:
+    def __init__(self, name):
+        self.name = name
+
+n1, n2, n3, n4, n5 = NodeA("A"), NodeA("B"), NodeA("C"), NodeA("D"), NodeA("E")
+m1, m2 = NodeB("X"), NodeB("Y")
+
+# print(n1.root().name)               # A
+# n1.merge(n2)
+# print(n1.root().name)               # A
+# n3.merge(n4)
+# n4.merge(n5)
+# print(n5.root().name)               # C
+# n2.merge(n4)
+# print(n3.root().name)               # A
+# m1.merge(m2)
+# print(m2.root().name)               # X
 
