@@ -67,7 +67,7 @@ class DiagramType(type):
 """ Structure """
 class Structure:
     """
-
+        TODO
     """
     determined = False
     
@@ -85,7 +85,8 @@ class Structure:
                          外 port 和内 port 需要消除 IOWrapper 后合并集合, 或最好能合并后直接删掉.
                     (3.) 自动寄存器插入: 每个 net 连接一个 fan_out (驱动源) 和多个 fan_in (被驱动端), 寄存器实际上就是插在 fan_out 路线上,
                          注意! 为了插入寄存器需要将 port 从 net 中分离! 需要删除操作. 或需放弃并查集 (虚点法太脏了);
-                         寄存器插入还要考虑同步的问题, 需要从输入端一级一级赋予秩, 迭代可能有点慢.
+                         寄存器插入还要考虑同步的问题, 需要从输入端一级一级赋予秩, 迭代可能有点慢;
+                         选取插入位置还需要进行时序分析, 估计中间模块的延迟.
         """
         # def __init__(self):
         #     self.__dsu_uid = "TODO" # TODO 每个 Structure 对象都应该隔离开, 所以按内存地址哈希隔开. (所以例化的话应该重建结构而不止分 inst_name?)
@@ -114,10 +115,8 @@ class Structure:
         """
             TODO 可分结构的自动推导, 通过在集合结构上的迭代完成.
             注:
-                (1.) 统一过程, 除了基本算子中须用户覆写.
-                (2.) 类型推导仅在框图类型创建时, setup 之后, 执行一次.
-                (3.) 传入一个 Structure, 结果 (修改) 直接存入其中 (带副作用的过程), 返回一个 bool 代表是否固化成功 (即 determined).
-                (4.) TODO 如果迭代结束还存在 undetermined 类型的信号, 则说明该结构 undetermined, 不可被例化 (这里是否给了 A[x][y][z] 这样的结构一些存在的可能性? 分步固化?)
+                (1.) TODO
+                (?.) TODO 如果迭代结束还存在 undetermined 类型的信号, 则说明该结构 undetermined, 不可被例化 (这里是否给了 A[x][y][z] 这样的结构一些存在的可能性? 分步固化?)
         """
         
         pass # TODO
@@ -161,41 +160,24 @@ class Diagram(metaclass = DiagramType):
         """
         return None
 
-# def operator(cls):
-#     """
-#         类装饰器 operator, 置于 Diagram 的子类前表明该类为基本算子 (即不可再分, 直接对应 VHDL).
-#         其实现:
-#             (1.) 增加或修改类属性 is_operator 为 True, 作为标记.
-#             (2.) 要求必须覆写 deduction() 类型推导方法.
-#                     ... TODO 有没有可能这个 deduction() 继承自其他基本算子, 不需要主动实现了?
-#                     ... TODO 后或可从 VHDL 或结构的定义中提取出来.
-#                 (2.1) 若用户实现了 deduction() 但忘记加 @staticmethod, 帮其加上, 不过这样是在破坏严谨性.
-#                         ... TODO 在严格模式下不允许.
-#             (3.) TODO 要求必须在结构中声明到 VHDL 的映射过程.
-#     """
-#     setattr(cls, "is_operator", True) # (1.)
+def operator(cls):
+    """
+        类装饰器 operator, 置于 Diagram 的子类前表明该类为基本算子 (即不可再分, 直接对应 VHDL).
+        其实现:
+            (1.) 增加或修改类属性 is_operator 为 True, 作为标记.
+            (2.) TODO
+    """
+    setattr(cls, "is_operator", True) # (1.)
     
-#     if not any(isinstance(method, staticmethod) and method.__name__ == 'deduction' for method in cls.__dict__.values()): # (2.)
-#         raise DiagramTypeException(f"Diagram type \'{cls.__name__}\' must implement staticmethod method \'deduction\'.")
+    # TODO
     
-#     # if __USE_STRICT_MODE:
-#     #     if not any(isinstance(method, staticmethod) and method.__name__ == 'deduction' for method in cls.__dict__.values()): # (2.)
-#     #         raise DiagramTypeException(f"Diagram type \'{cls.__name__}\' must implement staticmethod \'deduction\'.")
-#     # else:
-#     #     deduction_method = cls.__dict__.get('deduction', None) # (2.)
-#     #     if not deduction_method:
-#     #         raise DiagramTypeException(f"Diagram type \'{cls.__name__}\' must implement staticmethod \'deduction\'.")
-        
-#     #     if not isinstance(deduction_method, staticmethod): # (2.1)
-#     #         cls.deduction = staticmethod(deduction_method)
-    
-#     return cls
+    return cls
 
 
 """ Derivatives """ # TODO: 之后或许应该将此搬移到别处
 from .signal import SignalType, UInt, SInt, Input, Output, Auto
 
-# @operator
+@operator
 class Addition(Diagram): # 带参基本算子示例, 整数加法
     @staticmethod
     def setup(args):
