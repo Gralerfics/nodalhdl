@@ -11,11 +11,6 @@ class DiagramInstantiationException(Exception): pass
 
 """ Diagram Type """
 class DiagramType(type):
-    OPERATOR_FLAG_ATTRNAME = "is_operator"
-    INSTANTIATION_ARGUMENTS_ATTRNAME = "instantiation_arguments"
-    STRUCTURE_ATTRNAME = "structure"
-    DETERMINED_ATTRNAME = "determined"
-    
     diagram_type_pool = {} # 框图类型池, 去重
     
     def __new__(mcs, name: str, bases: tuple, attr: dict): # `mcs` here is the metaclass itself
@@ -24,21 +19,21 @@ class DiagramType(type):
                 (1.) 使用 class 继承 Diagram 创建子类.
                 (2.) 使用中括号传递参数创建 Diagram 或其子类的衍生类.
                 (3.) TODO 在衍生类基础上再加中括号传递参数.
-                        ... 需要考虑该行为的物理意义, 无意义则应抛出异常, 可以在 __getitem__ 中判断是否已有参数 <INSTANTIATION_ARGUMENTS_ATTRNAME>.
-            最终都进入 __new__, 情况 (2.) 会在 attr 中带有参数 <INSTANTIATION_ARGUMENTS_ATTRNAME>.
+                        ... 需要考虑该行为的物理意义, 无意义则应抛出异常, 可以在 __getitem__ 中判断是否已有参数 instantiation_arguments.
+            最终都进入 __new__, 情况 (2.) 会在 attr 中带有参数 instantiation_arguments.
             创建类型:
                 (1.) 构建新类名, 查重, 并创建新类. (注意 hash() 是不稳定的, 与运行时环境有关, 建议使用稳定的映射)
                         ... TODO 构建方案需改进, 目前直接使用 str(inst_args), 与子结构的 str 结果高度相关, 可能限制参数传递的多样性 (内部结构未体现在 str 结果中) 以及破坏哈希的全局稳定性 (str 中出现内存地址).
                         ... TODO 哈希重复是否要再检查一下参数是否严格相同, 以防止小概率的哈希冲突?
-                (2.) 通过 setup 构建框图结构, 更新类属性 structure.
+                (2.) 通过 setup 构建框图结构, 更新类属性 structure_template.
                 (3.) 通过 deduction 类型推导判断结构是否可例化 (例如类型宽度都已确定), 更新类属性 determined.
                 (4.) 返回新类型.
             注:
                 (1.) 创建类型的过程命名为 `固化`, 与 determined 属性相关, 固化后的框图类型方能例化.
                 (2.) 框图类型具有唯一性, 在 diagram_type_pool 中进行去重.
-                (3.) 框图类型一旦创建, 会且仅会在创建中执行一次 setup 和 deduction, structure 由此固定, 是否 determined 也由此固定.
+                (3.) 框图类型一旦创建, 会且仅会在创建中执行一次 setup 和 deduction, structure_template 由此固定, 是否 determined 也由此固定.
         """
-        inst_args = attr.get(DiagramType.INSTANTIATION_ARGUMENTS_ATTRNAME, ()) # 获取可能从 __getitem__ 传来的参数, 无则默认为空
+        inst_args = attr.get("instantiation_arguments", ()) # 获取可能从 __getitem__ 传来的参数, 无则默认为空
 
         new_name = name
         if inst_args: # 若参数不为空则依据参数构建新名
@@ -58,8 +53,8 @@ class DiagramType(type):
                     raise
                 # 否则可能是 class 创建时空参构建导致的未定义行为, 结构留空并置 determined 为 False, 待后续带参构建
             
-            setattr(new_cls, DiagramType.STRUCTURE_ATTRNAME, new_structure)
-            setattr(new_cls, DiagramType.DETERMINED_ATTRNAME, new_determined)
+            setattr(new_cls, "structure_template", new_structure)
+            setattr(new_cls, "determined", new_determined)
             
             mcs.diagram_type_pool[new_name] = new_cls # 加入框图类型池
 
@@ -73,7 +68,7 @@ class DiagramType(type):
         return DiagramType(
             cls.__name__, # 传入无参框图名, 在 __new__ 中构建新名
             (cls, ), # 继承无参框图的属性和方法, 主要是 setup 和 deduction 等
-            {DiagramType.INSTANTIATION_ARGUMENTS_ATTRNAME: args} # 传递参数交给 __new__ 创建
+            {"instantiation_arguments": args} # 传递参数交给 __new__ 创建
         )
 
 
@@ -124,7 +119,7 @@ class Structure:
 """ Diagram Base """
 class Diagram(metaclass = DiagramType):
     is_operator = False # 是否是基本算子 (即无内部结构)
-    structure = None # 框图类型内部结构, 要求只许由 setup 和 deduction 修改
+    structure_template = None # 框图类型内部结构, 要求只许由 setup 和 deduction 修改
     determined = False # 是否定型 (即是否可例化), 理论上可以通过类型推导得出, 此处特殊空结构, 为 False
     # TODO: 是否要将上述属性的创建放到 __new__ 中去? 可以统一使用 <..._ATTRNAME>.
     
@@ -172,7 +167,7 @@ def operator(cls):
     """
         类装饰器 operator, 置于 Diagram 的子类前表明该类为基本算子 (即不可再分, 直接对应 VHDL).
         其实现:
-            (1.) 增加或修改类属性 <DiagramType.OPERATOR_FLAG_ATTRNAME> 为 True, 作为标记.
+            (1.) 增加或修改类属性 is_operator 为 True, 作为标记.
             (2.) 要求必须覆写 deduction() 类型推导方法.
                     ... TODO 有没有可能这个 deduction() 继承自其他基本算子, 不需要主动实现了?
                     ... TODO 后或可从 VHDL 或结构的定义中提取出来.
@@ -180,7 +175,7 @@ def operator(cls):
                         ... TODO 在严格模式下不允许.
             (3.) TODO 要求必须在结构中声明到 VHDL 的映射过程.
     """
-    setattr(cls, DiagramType.OPERATOR_FLAG_ATTRNAME, True) # (1.)
+    setattr(cls, "is_operator", True) # (1.)
     
     if not any(isinstance(method, staticmethod) and method.__name__ == 'deduction' for method in cls.__dict__.values()): # (2.)
         raise DiagramTypeException(f"Diagram type \'{cls.__name__}\' must implement staticmethod method \'deduction\'.")
