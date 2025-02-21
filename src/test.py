@@ -1,6 +1,5 @@
 from nodalhdl.core.signal import UInt, SInt, Bits, Bit, Bundle
-from nodalhdl.core.diagram import Diagram, Addition
-from nodalhdl.core.structure import Structure
+from nodalhdl.core.diagram import Diagram, Structure, Addition
 
 
 class TestNode(Diagram): # 无参 Diagram 示例

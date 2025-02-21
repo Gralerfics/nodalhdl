@@ -1,4 +1,5 @@
-from .structure import Structure
+from .signal import SignalType
+from .utils import use_dict_object, use_dsu_node
 
 import hashlib
 
@@ -76,6 +77,50 @@ class DiagramType(type):
         )
 
 
+""" Structure """
+class Structure:
+    @use_dsu_node("structure_ports")
+    class Port: # 并查集的元素单位, 并存有 (如果有的话) 所属 box
+        """
+            TODO 是否需要修改并查集的结构, 使其可以做到快速地获取某 uid 的并查集下所有的集合和集合下的元素索引列表
+                分析需求:
+                    (1.) 类型推导: 可以通过遍历每个 port (需要存储推导范围内所有 port), 分别 find,
+                         准备好多个类别 (Net) 各自对应一类的 root, find 到哪个就在哪个 Net 记录 fan_in, fan_out 和类型情况,
+                         每次迭代需要更新各 net 的驱动情况, 并反映到每个相关的 port (net 中也要记录相连的 port, 以及合法情况下 fan_out 只应有一个, 可专门存),
+                         如果 box 未 determined, 则还需要更新 box 的情况 (如果已经 determined 则其 in 和 out 都已经确定);
+                                ... 
+        """
+        def __init__(self):
+            self.__dsu_uid = "TODO" # TODO 每个 Structure 对象都应该隔离开, 所以按内存地址哈希隔开. (所以例化的话应该重建结构而不止分 inst_name?)
+        pass # TODO
+    
+    @use_dict_object # 将 port 作为对象属性添加进去, 方便引用
+    class Box:
+        def __init__(self):
+            self.diagram_type = None
+    
+    def __init__(self):
+        self.inst_name = None # 例化后才分配
+        
+        pass # TODO
+        
+    def add_port(self, signal_type: SignalType):
+        pass # TODO
+    
+    def add_box(self, diagram_type: DiagramType):
+        pass # TODO
+    
+    def connect(self, port_1: Port, port_2: Port):
+        port_1.merge(port_2)
+    
+    def connects(self, ports: list[Port]):
+        if len(ports) <= 1:
+            return
+        for idx, port in enumerate(ports):
+            if idx != 0:
+                ports[0].merge(port)
+
+
 """ Diagram Base """
 class Diagram(metaclass = DiagramType):
     is_operator = False # 是否是基本算子 (即无内部结构)
@@ -93,6 +138,9 @@ class Diagram(metaclass = DiagramType):
                 (2.) 这个过程命名为 `例化`, 固化失败 (即 determined = False) 的框图类型不可例化.
                 (3.) TODO 是否要限制未固化类型加入高层 structure? 因为一旦其未固化, 以后都不会再固化, 也将导致上级类型可能无法固化.
                         ... 为什么是可能, 因为可能内部未固化的类型输出没有被使用, 也就是成为了冗余的结构. 我认为应该阻止这种情况的出现.
+                        ... [!] 按理说可以加入未固化的, 通过推导得出输入后, 再得到输出.
+                                ... 这样的话, 如何更新是个问题, 因为参数规则由用户决定, 且不一定和 port 类型有关.
+                                ... [!!!!!] deduction 在派生和原类中是同一个继承的, 且传入的是 structure, 如果不更改框图类型却改 structure, 就和固化概念冲突了.
         """
         if not self.determined: # 未固化不可例化
             raise DiagramInstantiationException(f"Undetermined diagram type \'{type(self).__name__}\' cannot be instantiated.")
@@ -155,7 +203,7 @@ def operator(cls):
 from .signal import SignalType, UInt, SInt, Input, Output, Auto
 
 @operator
-class Addition(Diagram): # 带参 Diagram 示例, 整数加法
+class Addition(Diagram): # 带参基本算子示例, 整数加法
     @staticmethod
     def setup(args):
         # 参数合法性检查
@@ -171,12 +219,6 @@ class Addition(Diagram): # 带参 Diagram 示例, 整数加法
         # 声明 Ports, Input 和 Output, [] 内不确定可以写 Auto 或其他 Undetermined 类型, 供推导.
         #       ... 推导可能是通过内部输出导出 Output 的类型, 也可能是通过内部连接的模块得到 Input 的类型, 或其他, 不要局限.
         
-        # 加入 Box.
-        #       ... 其内有 inner 属性, 存储 DiagramType (根据其 ports 得到外 Ports) 或 ExternalWorld (根据前面声明的 Ports 得到外 Ports).
-        #       ... 外 Ports 类型最外层应为 IOWrapper, 例如如果是 Bundle, 应递归寻找到 IOWrapper 为止, 可能得到多个 Ports.
-        
-        # 加入 Ports (无 IOWrapper) / 连接关系 (自动维护并查集).
-        
         return res
     
     @staticmethod
@@ -184,4 +226,23 @@ class Addition(Diagram): # 带参 Diagram 示例, 整数加法
         # 参数合法性检查在 setup 中进行
         # TODO
         return True
+
+class TestDiagram(Diagram): # 带参 Diagram 示例
+    @staticmethod
+    def setup(args):
+        # TODO 参数合法性检查
+        
+        # 创建结构
+        res = Structure()
+        
+        # TODO 声明 Ports, Input 和 Output, [] 内不确定可以写 Auto 或其他 Undetermined 类型, 供推导.
+        #       ... 推导可能是通过内部输出导出 Output 的类型, 也可能是通过内部连接的模块得到 Input 的类型, 或其他, 不要局限.
+        
+        # TODO 加入 Box.
+        #       ... 其内有 inner 属性, 存储 DiagramType (根据其 ports 得到外 Ports) 或 ExternalWorld (根据前面声明的 Ports 得到外 Ports).
+        #       ... 外 Ports 类型最外层应为 IOWrapper, 例如如果是 Bundle, 应递归寻找到 IOWrapper 为止, 可能得到多个 Ports.
+        
+        # TODO 加入 Ports (无 IOWrapper) / 连接关系 (自动维护并查集).
+        
+        return res
 
