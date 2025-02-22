@@ -67,7 +67,7 @@ def use_dict_object(cls):
     return cls
 
 
-def use_dsu_node(uid: str = ""):
+def use_dsu_node(uid: str):
     """
         类装饰器 use_dsu_node, 置于类前将其实例作为并查集维护的节点.
         为节点实例添加 _dsu_father, _dsu_rank, _dsu_uid 属性以及 root(), merge(other) 方法, 加入并查集维护.
@@ -143,16 +143,49 @@ def use_dsu_node(uid: str = ""):
     return decorator
 
 
-def use_setmgr_node(uid: str = ""):
+def use_setmgr_node(cls):
     """
         类装饰器 use_setmgr_node, 置于类前将其实例作为集合管理器维护的节点.
-        TODO
+        支持集合合并, 单点分离, 集合内容查询等.
+        示例:
+            @use_setmgr_node
+            class NodeA:
+                def __init__(self, name): self.name = name
+                def __repr__(self): return f"Node({self.name})"
+
+            @use_setmgr_node
+            class NodeB:
+                def __init__(self, name): self.name = name
+                def __repr__(self): return f"Node({self.name})"
+
+            n1, n2, n3, n4, n5 = NodeA("A"), NodeA("B"), NodeA("C"), NodeA("D"), NodeA("E")
+            m1, m2 = NodeB("X"), NodeB("Y")
+
+            mgr1 = n1._setmgr_mgr
+            print(mgr1.sets)                    # {0: {Node(A)}, 1: {Node(B)}, 2: {Node(C)}, 3: {Node(D)}, 4: {Node(E)}}
+            n1.merge(n2)
+            print(mgr1.sets)                    # {1: {Node(A), Node(B)}, 2: {Node(C)}, 3: {Node(D)}, 4: {Node(E)}}
+            n3.merge(n4)
+            n4.merge(n5)
+            print(mgr1.sets)                    # {1: {Node(A), Node(B)}, 4: {Node(C), Node(D), Node(E)}}
+            n4.merge(n2)
+            print(mgr1.sets)                    # {1: {Node(B), Node(C), Node(A), Node(D), Node(E)}}
+            n3.separate()
+            n1.separate()
+            print(mgr1.sets)                    # {1: {Node(B), Node(D), Node(E)}, 5: {Node(C)}, 6: {Node(A)}}
+            n1.merge(n3)
+            print(mgr1.sets)                    # {1: {Node(B), Node(D), Node(E)}, 5: {Node(C), Node(A)}}
+
+            mgr2 = m1._setmgr_mgr
+            m1.merge(m2)
+            print(mgr2.sets)                    # {1: {Node(X), Node(Y)}}
+            
+            m1.merge(n3)                        # SetManagerException: Nodes out of current space should not be merged
     """
     class SetManagerException(Exception): pass
     
     class SetManager:
-        def __init__(self, uid):
-            self.uid = uid
+        def __init__(self):
             self.set_id_cnt = 0
             self.sets = {}
         
@@ -174,14 +207,14 @@ def use_setmgr_node(uid: str = ""):
             pass
         
         def add_node_into(self, node, set_id): # 将节点加入指定集合
-            if node._setmgr_mgr.uid != self.uid:
+            if node._setmgr_mgr != self:
                 raise SetManagerException(f"Nodes in different spaces should not be added")
             
             self.get_set_by_id(set_id).add(node)
             node._setmgr_set_id = set_id
         
         def separate_node(self, node): # 单点分离成集
-            if node._setmgr_mgr.uid != self.uid:
+            if node._setmgr_mgr != self:
                 raise SetManagerException(f"Node is not in current space")
             
             if len(node.belongs()) <= 1: # 本就单独成集
@@ -203,50 +236,47 @@ def use_setmgr_node(uid: str = ""):
             del self.sets[set_id_2] # 该集合中为节点的引用, 删除集合保证节点不事二主, 不影响已经转移的节点
         
         def merge_set_by_nodes(self, node_1, node_2):
-            if node_1._setmgr_mgr.uid != self.uid or node_2._setmgr_mgr.uid != self.uid:
+            if node_1._setmgr_mgr != self or node_2._setmgr_mgr != self:
                 raise SetManagerException(f"Nodes out of current space should not be merged")
 
             self.merge_set(node_1._setmgr_set_id, node_2._setmgr_set_id)
     
-    mgr = SetManager(uid)
+    mgr = SetManager()
     
-    def decorator(cls):
-        def __init__(self, *args, **kwargs):
-            self._setmgr_mgr.add_node_into(self, self._setmgr_mgr.create_set()) # 创建新集合并加入 (其中更新了 _setmgr_set_id)
+    def __init__(self, *args, **kwargs):
+        self._setmgr_mgr.add_node_into(self, self._setmgr_mgr.create_set()) # 创建新集合并加入 (其中更新了 _setmgr_set_id)
 
-            if hasattr(cls, '__original_init__'): # 如有则调用原有 __init__
-                cls.__original_init__(self, *args, **kwargs)
-        
-        def belongs(self) -> set:
-            return self._setmgr_mgr.get_set_by_id(self._setmgr_set_id)
-        
-        def merge(self, other_node):
-            self._setmgr_mgr.merge_set_by_nodes(other_node, self)
-        
-        def separate(self):
-            self._setmgr_mgr.separate_node(self)
-
-        if hasattr(cls, '__init__'): # 若原本定义了 __init__ 则保存起来
-            cls.__original_init__ = cls.__init__
-        
-        cls.__init__ = __init__
-        cls.belongs = belongs
-        cls.merge = merge
-        cls.separate = separate
-        
-        cls._setmgr_mgr = mgr # 所属空间的集合管理器索引, 存为类属性, 对象也可访问 TODO
-        
-        return cls
+        if hasattr(cls, '__original_init__'): # 如有则调用原有 __init__
+            cls.__original_init__(self, *args, **kwargs)
     
-    return decorator
+    def belongs(self) -> set:
+        return self._setmgr_mgr.get_set_by_id(self._setmgr_set_id)
+    
+    def merge(self, other_node):
+        self._setmgr_mgr.merge_set_by_nodes(other_node, self)
+    
+    def separate(self):
+        self._setmgr_mgr.separate_node(self)
+
+    if hasattr(cls, '__init__'): # 若原本定义了 __init__ 则保存起来
+        cls.__original_init__ = cls.__init__
+    
+    cls.__init__ = __init__
+    cls.belongs = belongs
+    cls.merge = merge
+    cls.separate = separate
+    
+    cls._setmgr_mgr = mgr # 所属空间的集合管理器索引, 存为类属性, 对象也可访问 TODO
+    
+    return cls
 
 
-@use_setmgr_node("A")
+@use_setmgr_node
 class NodeA:
     def __init__(self, name): self.name = name
     def __repr__(self): return f"Node({self.name})"
 
-@use_setmgr_node("B")
+@use_setmgr_node
 class NodeB:
     def __init__(self, name): self.name = name
     def __repr__(self): return f"Node({self.name})"
@@ -272,5 +302,6 @@ print(mgr1.sets)
 mgr2 = m1._setmgr_mgr
 m1.merge(m2)
 print(mgr2.sets)
+
 # m1.merge(n3)
 
