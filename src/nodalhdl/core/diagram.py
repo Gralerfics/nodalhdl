@@ -88,8 +88,6 @@ class Structure:
                          寄存器插入还要考虑同步的问题, 需要从输入端一级一级赋予秩, 迭代可能有点慢;
                          选取插入位置还需要进行时序分析, 估计中间模块的延迟.
         """
-        # def __init__(self):
-        #     self.__dsu_uid = "TODO" # TODO 每个 Structure 对象都应该隔离开, 所以按内存地址哈希隔开. (所以例化的话应该重建结构而不止分 inst_name?)
         
         pass # TODO
     

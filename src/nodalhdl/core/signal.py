@@ -53,8 +53,8 @@
         print(s.a)                                          # <...UInt_8 object at ...>
         print(S.c.x)                                        # <class '...SInt_3'>
         print(s.c.x)                                        # <...SInt_3 object at ...>
-        print(S.__bundle_types)                             # {'a': <class '...UInt_8'>, 'b': <class '...Bits_1'>, 'c': <class '...Bundle_0cbbdef73dff1f7318ab831e99b5216d'>}
-        print(S.c.__bundle_types)                           # {'x': <class '...SInt_3'>, 'y': <class '...SInt_5'>}
+        print(S._bundle_types)                              # {'a': <class '...UInt_8'>, 'b': <class '...Bits_1'>, 'c': <class '...Bundle_0cbbdef73dff1f7318ab831e99b5216d'>}
+        print(S.c._bundle_types)                            # {'x': <class '...SInt_3'>, 'y': <class '...SInt_5'>}
 +--------------------------------------------------------------------+
 """
 
@@ -147,7 +147,7 @@ class BundleType(SignalType):
             return cls.instantiate_type(
                 f"{cls.__name__}_{hashlib.md5(str(item).encode('utf-8')).hexdigest()}",
                 {
-                    "__bundle_types": item, # 信号名到类型的映射, 维护子信号的名称信息, **item 展开后会和一些内建方法混在一起
+                    "_bundle_types": item, # 信号名到类型的映射, 维护子信号的名称信息, **item 展开后会和一些内建方法混在一起
                     **item # 方便直接按索引引用信号类型
                 }
             )
@@ -197,7 +197,7 @@ class Output(Signal, metaclass = IOWrapperType): pass
 class Bundle(Signal, metaclass = BundleType):
     def __init__(self): # 递归式地实例化内部信号
         super().__init__()
-        bundle_types = getattr(type(self), "__bundle_types")
+        bundle_types = getattr(type(self), "_bundle_types")
         for key, T in bundle_types.items():
             setattr(self, key, T())
 
