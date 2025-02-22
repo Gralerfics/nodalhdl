@@ -227,10 +227,10 @@ def use_setmgr_node(cls):
             if set_id_1 == set_id_2:
                 return
             
-            if self.get_set_by_id(set_id_1) < self.get_set_by_id(set_id_2): # 小的并入大的
+            if len(self.get_set_by_id(set_id_1)) < len(self.get_set_by_id(set_id_2)): # 小的并入大的
                 set_id_1, set_id_2 = set_id_2, set_id_1
             
-            for node in self.sets[set_id_2]:
+            for node in self.sets[set_id_2]: # TODO 集合大时效率很低, 但又要保证每个节点的 _setmgr_set_id 被修改. 除非查询所属集合专门再用并查集实现?
                 self.add_node_into(node, set_id_1)
             
             del self.sets[set_id_2] # 该集合中为节点的引用, 删除集合保证节点不事二主, 不影响已经转移的节点
@@ -272,36 +272,22 @@ def use_setmgr_node(cls):
 
 
 @use_setmgr_node
-class NodeA:
+class Node:
     def __init__(self, name): self.name = name
     def __repr__(self): return f"Node({self.name})"
 
-@use_setmgr_node
-class NodeB:
-    def __init__(self, name): self.name = name
-    def __repr__(self): return f"Node({self.name})"
+import time
+N = 10000
+mgr = Node._setmgr_mgr
 
-n1, n2, n3, n4, n5 = NodeA("A"), NodeA("B"), NodeA("C"), NodeA("D"), NodeA("E")
-m1, m2 = NodeB("X"), NodeB("Y")
+nodes = [Node(str(i)) for i in range(N)]
 
-mgr1 = n1._setmgr_mgr
-print(mgr1.sets)
-n1.merge(n2)
-print(mgr1.sets)
-n3.merge(n4)
-n4.merge(n5)
-print(mgr1.sets)
-n4.merge(n2)
-print(mgr1.sets)
-n3.separate()
-n1.separate()
-print(mgr1.sets)
-n1.merge(n3)
-print(mgr1.sets)
+t = time.time()
 
-mgr2 = m1._setmgr_mgr
-m1.merge(m2)
-print(mgr2.sets)
+for i in range(N - 1):
+    if i % 50 == 0:
+        print(i)
+    nodes[i].merge(nodes[i + 1])
 
-# m1.merge(n3)
+print(time.time() - t)
 
