@@ -71,7 +71,7 @@ class StructureNetManager:
     def __init__(self):
         self.nets = set()
     
-    def import_mgr(self, other_mgr): # 导入其他 manager 的内容 (内部展开操作需要) TODO ?
+    def import_mgr(self, other_mgr): # 导入其他 manager 的内容 (内部展开操作需要)
         # for net in other_mgr.nets:
         #     self.nets.add(net)
         raw_nets = self.nets
@@ -83,32 +83,25 @@ class StructureNetManager:
         self.nets.add(new_net)
         return new_net
     
-    def remove_net(self, net: 'StructureNet'): # 删除 net TODO ?
+    def remove_net(self, net: 'StructureNet'): # 删除 net
         self.nets.remove(net)
         del net
     
-    def create_node(self, *args, **kwds):
+    def create_node(self, *args, **kwds): # 创建新节点, 涉及 net manager 是因为创建新 net 需要决定所属
         new_node = StructureNode(*args, **kwds)
         new_node.netmgr = self # 引用所属的 net manager
-        self.add_node_into_net(new_node, self.create_net()) # 创建新 net 并加入 (其中也更新了节点的 located_net)
+        self.create_net().add_node(new_node) # 创建新 net 并加入
         return new_node
     
-    def add_node_into_net(self, node: 'StructureNode', net: 'StructureNet'): # 将节点加入指定集合
-        if node.netmgr != self:
-            raise StructureNetManagerException(f"Nodes that are not managed by this manager should not be operated")
-        
-        net.add(node)
-        node.located_net = net
-    
-    def separate_node(self, node: 'StructureNode'): # 单点分离成集
-        if node.netmgr != self:
-            raise StructureNetManagerException(f"Nodes that are not managed by this manager should not be operated")
+    def separate_node(self, node: 'StructureNode'): # 单点分离成集, 涉及 net manager 是因为创建新 net 需要决定所属
+        # if node.netmgr != self:
+        #     raise StructureNetManagerException(f"Nodes that are not managed by this manager should not be operated")
         
         if len(node.locates()) <= 1: # 本就单独成集
             return
         
-        node.locates().remove(node) # 从所属集中删除该节点
-        self.add_node_into_net(node, self.create_net()) # 创建新集合并加入
+        node.locates().remove_node(node) # 从所属集中删除该节点
+        self.create_net().add_node(node) # 创建新集合并加入
     
     def merge_net(self, net_1: 'StructureNet', net_2: 'StructureNet'): # 合并两个 net
         if net_1 == net_2:
@@ -118,25 +111,19 @@ class StructureNetManager:
         if len(net_h) < len(net_l): # 确保是小的并入大的
             net_h, net_l = net_l, net_h
         
-        for node in net_l.nodes:
-            # TODO 集合大时效率低, 但又要保证每个节点的 located_net 被修改. 除非查询所属集合专门再用并查集实现? 成本可能更高.
-            #       ... 正常来说电路网表中直接相连的节点数应该不会太庞大, 甚至可以说较少, 或许暂时可以不管.
-            # TODO 如果 net 还存了别的信息这里也要注意处理.
-            self.add_node_into_net(node, net_h)
-        
-        self.remove_net(net_l) # 该集合中为节点的引用, 删除集合保证节点不事二主, 不影响已经转移的节点
+        net_h.import_net(net_l) # 将 net_l 信息导入 net_h
+        self.remove_net(net_l) # 再删去 net_l (该集合中为节点的引用, 不影响已经转移的节点)
     
     def merge_net_by_nodes(self, node_1: 'StructureNode', node_2: 'StructureNode'):
-        if node_1.netmgr != self or node_2.netmgr != self:
-            raise StructureNetManagerException(f"Nodes that are not managed by this manager should not be operated")
+        # if node_1.netmgr != self or node_2.netmgr != self:
+        #     raise StructureNetManagerException(f"Nodes that are not managed by this manager should not be operated")
 
         self.merge_net(node_1.locates(), node_2.locates())
 
 class StructureNet:
     """
         管理一组直接连接的 Nodes (Ports) 的集合称 Net.
-        TODO 不直接使用 set 的原因是可能可以直接存储例如驱动信号等信息, 方便查询.
-                ... 注意这种情况 merge_net 方法也要修改 TODO merge 的实现放到 net 这里来 TODO 这样也有问题, 为了方便合并 mgr, net 应独立于 mgr, 这样就难以合理调用 mgr.
+        TODO 不直接使用 set 的原因是: 可能可以直接存储例如驱动信号等信息, 方便查询, 注意这种情况需要修改 import_net.
     """
     def __init__(self):
         self.nodes = set()
@@ -147,10 +134,18 @@ class StructureNet:
     def __repr__(self):
         return f"{self.nodes}"
     
-    def add(self, node):
-        self.nodes.add(node)
+    def import_net(self, other_net):
+        # TODO 若 net 存有其他信息, 可能需要添加其他操作.
+        for node in other_net.nodes:
+            # TODO 集合大时效率低, 但又要保证每个节点的 located_net 被修改. 除非查询所属集合专门再用并查集实现? 成本可能更高.
+            #       ... 正常来说电路网表中直接相连的节点数应该不会太庞大, 甚至可以说较少, 或许暂时可以不管.
+            self.add_node(node)
     
-    def remove(self, node):
+    def add_node(self, node): # 添加节点, 双向绑定
+        self.nodes.add(node)
+        node.located_net = self
+    
+    def remove_node(self, node):
         self.nodes.remove(node)
 
 class StructureNode:
@@ -178,7 +173,7 @@ class StructureNode:
     def __repr__(self):
         return f"{self.name}"
     
-    def locates(self):
+    def locates(self) -> StructureNet:
         return self.located_net
     
     def merge(self, other_node):
