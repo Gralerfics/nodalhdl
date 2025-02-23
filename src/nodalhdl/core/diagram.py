@@ -64,65 +64,10 @@ class DiagramType(type):
 """ Structure """
 class StructureNetManagerException(Exception): pass
 
-class StructureNetManager:
-    """
-        管理 Net 的集合.
-        TODO 注意 mgr 的隔离存在设计问题:
-            考虑不同 mgr 可能需要合并 (例如例化后展开内部模块), 此时需要将两个 nets 合并,
-            这要求其内的 net 乃至 node 不可有引用指向原 mgr, 否则需要逐个修改, 导致效率问题.
-            故现在不对跨 mgr 的 net 合并等非法操作抛出异常 (难以判断),
-            node 的 merge 和 separate 操作也需要传入所在 mgr 或目标 mgr,
-            使用时需要严格注意.
-    """
-    def __init__(self):
-        self.nets = set()
-    
-    def import_mgr(self, other_mgr): # 导入其他 manager 的内容 (内部展开操作需要)
-        # for net in other_mgr.nets:
-        #     self.nets.add(net)
-        raw_nets = self.nets
-        self.nets = set.union(raw_nets, other_mgr.nets)
-        del raw_nets
-    
-    def create_net(self, *args, **kwds): # 创建新 net 并返回引用
-        new_net = StructureNet(*args, **kwds)
-        self.nets.add(new_net)
-        return new_net
-    
-    def remove_net(self, net: 'StructureNet'): # 删除 net
-        self.nets.remove(net)
-        del net
-    
-    def create_node(self, *args, **kwds): # 创建新节点, 涉及 net manager 是因为创建新 net 需要决定所属
-        new_node = StructureNode(*args, **kwds)
-        self.create_net().add_node(new_node) # 创建新 net 并加入
-        return new_node
-    
-    def separate_node(self, node: 'StructureNode'): # 单点分离成集, 涉及 net manager 是因为创建新 net 需要决定所属
-        if len(node.locates()) <= 1: # 本就单独成集
-            return
-        
-        node.locates().remove_node(node) # 从所属集中删除该节点
-        self.create_net().add_node(node) # 创建新集合并加入
-    
-    def merge_net(self, net_1: 'StructureNet', net_2: 'StructureNet'): # 合并两个 net
-        if net_1 == net_2:
-            return
-        
-        net_h, net_l = net_1, net_2
-        if len(net_h) < len(net_l): # 确保是小的并入大的
-            net_h, net_l = net_l, net_h
-        
-        net_h.import_net(net_l) # 将 net_l 信息导入 net_h
-        self.remove_net(net_l) # 再删去 net_l (该集合中为节点的引用, 不影响已经转移的节点)
-    
-    def merge_net_by_nodes(self, node_1: 'StructureNode', node_2: 'StructureNode'):
-        self.merge_net(node_1.locates(), node_2.locates())
-
 class StructureNet:
     """
         管理一组直接连接的 Nodes (Ports) 的集合称 Net.
-        TODO 不直接使用 set 的原因是: 可能可以直接存储例如驱动信号等信息, 方便查询, 注意这种情况需要修改 import_net.
+                TODO 可能可以直接存储例如驱动信号等信息, 方便查询, 注意这种情况需要修改 import_net.
     """
     def __init__(self):
         self.nodes = set()
@@ -133,12 +78,19 @@ class StructureNet:
     def __repr__(self):
         return f"{self.nodes}"
     
-    def import_net(self, other_net):
-        # TODO 若 net 存有其他信息, 可能需要添加其他操作.
-        for node in other_net.nodes:
-            # TODO 集合大时效率低, 但又要保证每个节点的 located_net 被修改. 除非查询所属集合专门再用并查集实现? 成本可能更高.
-            #       ... 正常来说电路网表中直接相连的节点数应该不会太庞大, 甚至可以说较少, 或许暂时可以不管.
-            self.add_node(node)
+    def merge_net(self, other_net):
+        if self == other_net:
+            return
+        
+        net_h, net_l = self, other_net
+        if len(net_h) < len(net_l):
+            net_h, net_l = net_l, net_h
+        
+        # TODO 若 net 存有其他信息, 可能需要添加其他操作
+        for node in net_l.nodes: # TODO 效率问题
+            net_h.add_node(node)
+        
+        del net_l
     
     def add_node(self, node): # 添加节点, 双向绑定
         self.nodes.add(node)
@@ -150,7 +102,10 @@ class StructureNet:
 class StructureNode:
     """
         线路结点, 存有 (如果有的话) 所属 box (有的话应该是 IO Wrapped 的, IO 的 Nodes 又称 Ports).
-        继承 SetManagerNodeBase, 被指定集合管理器管理.
+        
+        node 指向唯一的 net, net 存有所包含 node 的集合.
+        node 指向唯一的 box (如有), box 也存有所有的相关 node (port).
+        
         分析需求:
             (1.) 类型推导: 可以通过遍历每个 port (需要存储推导范围内所有 port), 分别 find,
                     准备好多个类别 (Net) 各自对应一类的 root, find 到哪个就在哪个 Net 记录 fan_in, fan_out 和类型情况,
@@ -163,7 +118,13 @@ class StructureNode:
                     寄存器插入还要考虑同步的问题, 需要从输入端一级一级赋予秩, 迭代可能有点慢;
                     选取插入位置还需要进行时序分析, 估计中间模块的延迟.
     """
-    def __init__(self, name: str, signal_type: SignalType):
+    def __init__(self, name: str, signal_type: SignalType, located_net: StructureNet = None):
+        self.located_net: StructureNet = located_net
+        if self.located_net is None:
+            StructureNet().add_node(self) # 双向绑定
+        
+        self.located_box: StructureBox = None
+        
         self.inst_name = None
         
         self.name = name
@@ -172,14 +133,15 @@ class StructureNode:
     def __repr__(self):
         return f"{self.name}"
     
-    def locates(self) -> StructureNet:
-        return self.located_net
+    def merge(self, other_node: 'StructureNode'):
+        self.located_net.merge_net(other_node.located_net)
     
-    def merge(self, other_node: 'StructureNode', located_mgr: StructureNetManager): # 两个 node 都应在 located_mgr 下, 影响到较小的 net 的删除
-        located_mgr.merge_net_by_nodes(other_node, self)
-    
-    def separate(self, target_mgr: StructureNetManager): # 分离的单节点 net 将在 target_mgr 下
-        target_mgr.separate_node(self)
+    def separate(self):
+        if len(self.located_net) <= 1: # 本就单独成集
+            return
+        
+        self.located_net.remove_node(self)
+        StructureNet().add_node(self)
 
 class StructureBox:
     """
@@ -213,13 +175,10 @@ class Structure:
         TODO
         structure 不设 name, 有 name 的当是其下的 box, node/port 等.
                 ... 此 name 不是 inst_name, 但 inst_name 参考该 name 而来.
-        每个 structure 内建一个 netmgr 管理网表结构, net 游离态, 不依赖 netmgr, 故可以简单地合并多个 netmgr.
     """
     def __init__(self):
         self.inst_name = None # 例化后才分配
         self.determined = False # 推导后确定值
-        
-        self.netmgr = StructureNetManager()
         
         self.boxes = []
         # self.io_ports = {}
