@@ -5,80 +5,79 @@
     先用 set 操作实现, 后续可以考虑杂糅到一起.
 """
 
-import time
+# import time
 
-N = 500000
+# N = 500000
 
-
-class SetManager:
-    def __init__(self):
-        self.sets = {}
-        self.set_id_counter = 0
+# class SetManager:
+#     def __init__(self):
+#         self.sets = {}
+#         self.set_id_counter = 0
     
-    def create_set(self):
-        set_id = self.set_id_counter
-        self.sets[set_id] = set()
-        self.set_id_counter += 1
-        return set_id
+#     def create_set(self):
+#         set_id = self.set_id_counter
+#         self.sets[set_id] = set()
+#         self.set_id_counter += 1
+#         return set_id
     
-    def add_node(self, node, set_id):
-        self.sets[set_id].add(node)
-        node.set_id = set_id
+#     def add_node(self, node, set_id):
+#         self.sets[set_id].add(node)
+#         node.set_id = set_id
     
-    def remove_node(self, node):
-        set_id = node.set_id
-        self.sets[set_id].remove(node)
+#     def remove_node(self, node):
+#         set_id = node.set_id
+#         self.sets[set_id].remove(node)
         
-        if not self.sets[set_id]:
-            del self.sets[set_id]
+#         if not self.sets[set_id]:
+#             del self.sets[set_id]
         
-        new_set_id = self.create_set()
-        self.add_node(node, new_set_id)
+#         new_set_id = self.create_set()
+#         self.add_node(node, new_set_id)
     
-    def merge_sets(self, set_id1, set_id2):
-        if set_id1 == set_id2:
-            return
+#     def merge_sets(self, set_id1, set_id2):
+#         if set_id1 == set_id2:
+#             return
         
-        for node in self.sets[set_id2]:
-            self.add_node(node, set_id1)
+#         for node in self.sets[set_id2]:
+#             self.add_node(node, set_id1)
         
-        del self.sets[set_id2]
+#         del self.sets[set_id2]
     
-    def are_in_same_set(self, node1, node2):
-        return node1.set_id == node2.set_id
+#     def are_in_same_set(self, node1, node2):
+#         return node1.set_id == node2.set_id
     
-    def get_all_sets(self):
-        return {set_id: list(nodes) for set_id, nodes in self.sets.items()}
+#     def get_all_sets(self):
+#         return {set_id: list(nodes) for set_id, nodes in self.sets.items()}
 
 
-class Node:
-    def __init__(self, name):
-        self.name = name
-        self.set_id = None
+# class Node:
+#     def __init__(self, name):
+#         self.name = name
+#         self.set_id = None
     
-    def __repr__(self):
-        return f"Node({self.name})"
+#     def __repr__(self):
+#         return f"Node({self.name})"
 
 
-manager = SetManager()
+# manager = SetManager()
 
-t = time.time()
+# t = time.time()
 
-sets = [manager.create_set() for i in range(N)]
+# sets = [manager.create_set() for i in range(N)]
 
-nodes = [Node(str(i)) for i in range(N)]
+# nodes = [Node(str(i)) for i in range(N)]
 
-[manager.add_node(nodes[i], sets[i]) for i in range(N)]
+# [manager.add_node(nodes[i], sets[i]) for i in range(N)]
 
-for i in range(N - 1):
-    manager.merge_sets(sets[0], sets[i + 1])
+# for i in range(N - 1):
+#     manager.merge_sets(sets[0], sets[i + 1])
 
-for i in range(N - 1):
-    manager.remove_node(nodes[i + 1])
+# for i in range(N - 1):
+#     manager.remove_node(nodes[i + 1])
     
-# print(manager.get_all_sets())
+# # print(manager.get_all_sets())
 
-print("SetManager: ", time.time() - t)
+# print("SetManager: ", time.time() - t)
 
 
 """ ==================================================================================================== """
@@ -138,25 +137,25 @@ print("SetManager: ", time.time() - t)
 #         return {root: nodes for root, nodes in self.node_sets.items()}
 
 
-uf = UnionFind()
+# uf = UnionFind()
 
-t = time.time()
+# t = time.time()
 
-# 创建集合 (无需)
+# # 创建集合 (无需)
 
-[uf.add_node(str(i)) for i in range(N)]
+# [uf.add_node(str(i)) for i in range(N)]
 
-# 加入集合 (无需)
+# # 加入集合 (无需)
 
-for i in range(N - 1):
-    uf.union("0", str(i + 1))
+# for i in range(N - 1):
+#     uf.union("0", str(i + 1))
 
-for i in range(N - 1):
-    uf.remove_node(str(i + 1))
+# for i in range(N - 1):
+#     uf.remove_node(str(i + 1))
     
-# print(uf.get_all_sets())
+# # print(uf.get_all_sets())
 
-print("UnionFind: ", time.time() - t)
+# print("UnionFind: ", time.time() - t)
 
 
 """ ==================================================================================================== """
@@ -283,4 +282,120 @@ print("UnionFind: ", time.time() - t)
 #         return cls
     
 #     return decorator
+
+
+""" ==================================================================================================== """
+
+
+def use_setmgr_node(cls):
+    class SetManagerException(Exception): pass
+    
+    class SetManager:
+        def __init__(self):
+            self.set_id_cnt = 0
+            self.sets = {}
+        
+        def create_set(self) -> int: # 创建新集合
+            new_id = self.set_id_cnt
+            self.sets[new_id] = set()
+            self.set_id_cnt += 1
+            return new_id
+        
+        def get_set_by_id(self, set_id) -> set: # 按 id 获取集合引用
+            res = self.sets.get(set_id, None)
+            if res is None:
+                raise SetManagerException(f"Set with ID {set_id} does not exist")
+            return res
+        
+        def remove_set(self, set_id): # 删除集合
+            # TODO 如何处理其内的节点, 例如 structure 中如果也存了 ports, 直接 del 会在那里残留引用
+            #       ... 不过引用计数为零的话应该会自动释放吧
+            pass
+        
+        def add_node_into(self, node, set_id): # 将节点加入指定集合
+            if node._setmgr_mgr != self:
+                raise SetManagerException(f"Nodes in different spaces should not be added")
+            
+            self.get_set_by_id(set_id).add(node)
+            node._setmgr_set_id = set_id
+        
+        def separate_node(self, node): # 单点分离成集
+            if node._setmgr_mgr != self:
+                raise SetManagerException(f"Node is not in current space")
+            
+            if len(node.belongs()) <= 1: # 本就单独成集
+                return
+            
+            node.belongs().remove(node) # 从所属集中删除该节点
+            self.add_node_into(node, self.create_set()) # 创建新集合并加入
+        
+        def merge_set(self, set_id_1, set_id_2):
+            if set_id_1 == set_id_2:
+                return
+            
+            if len(self.get_set_by_id(set_id_1)) < len(self.get_set_by_id(set_id_2)): # 小的并入大的
+                set_id_1, set_id_2 = set_id_2, set_id_1
+            
+            for node in self.sets[set_id_2]:
+                # TODO 集合大时效率很低, 但又要保证每个节点的 _setmgr_set_id 被修改. 除非查询所属集合专门再用并查集实现?
+                #       ... 正常来说电路网表中直接相连的节点数应该不会太庞大, 甚至可以说较少, 或许暂时可以不管.
+                self.add_node_into(node, set_id_1)
+            
+            del self.sets[set_id_2] # 该集合中为节点的引用, 删除集合保证节点不事二主, 不影响已经转移的节点
+        
+        def merge_set_by_nodes(self, node_1, node_2):
+            if node_1._setmgr_mgr != self or node_2._setmgr_mgr != self:
+                raise SetManagerException(f"Nodes out of current space should not be merged")
+
+            self.merge_set(node_1._setmgr_set_id, node_2._setmgr_set_id)
+    
+    mgr = SetManager()
+    
+    def __init__(self, *args, **kwargs):
+        self._setmgr_mgr.add_node_into(self, self._setmgr_mgr.create_set()) # 创建新集合并加入 (其中更新了 _setmgr_set_id)
+
+        if hasattr(cls, '__original_init__'): # 如有则调用原有 __init__
+            cls.__original_init__(self, *args, **kwargs)
+    
+    def belongs(self) -> set:
+        return self._setmgr_mgr.get_set_by_id(self._setmgr_set_id)
+    
+    def merge(self, other_node):
+        self._setmgr_mgr.merge_set_by_nodes(other_node, self)
+    
+    def separate(self):
+        self._setmgr_mgr.separate_node(self)
+
+    if hasattr(cls, '__init__'): # 若原本定义了 __init__ 则保存起来
+        cls.__original_init__ = cls.__init__
+    
+    cls.__init__ = __init__
+    cls.belongs = belongs
+    cls.merge = merge
+    cls.separate = separate
+    
+    cls._setmgr_mgr = mgr # 所属空间的集合管理器索引, 存为类属性, 对象也可访问 TODO
+    
+    return cls
+
+
+@use_setmgr_node
+class Node:
+    def __init__(self, name): self.name = name
+    def __repr__(self): return f"Node({self.name})"
+
+import time
+N = 100000
+mgr = Node._setmgr_mgr
+
+nodes = [Node(str(i)) for i in range(N)]
+
+t = time.time()
+
+for i in range(N - 1):
+    # if i % 50 == 0:
+    #     print(i)
+    nodes[i].merge(nodes[i + 1])
+
+print(time.time() - t)
 

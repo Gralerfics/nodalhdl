@@ -1,15 +1,12 @@
 from .signal import SignalType
-from .utils import use_dict_object, use_dsu_node
+from .utils import DictObject
 
 import hashlib
 
 
-""" Exceptions """
-class DiagramTypeException(Exception): pass
-class DiagramInstantiationException(Exception): pass
-
-
 """ Diagram Type """
+class DiagramTypeException(Exception): pass
+
 class DiagramType(type):
     diagram_type_pool = {} # 框图类型池, 去重
     
@@ -65,70 +62,176 @@ class DiagramType(type):
 
 
 """ Structure """
+class SetManagerException(Exception): pass
+
+class SetManager:
+    def __init__(self):
+        self.set_id_cnt = 0
+        self.sets = {}
+        
+    # TODO: 将其他 mgr 内容导入该 mgr 的方法 (内部展开操作需要该功能)
+    
+    def create_set(self) -> int: # 创建新集合
+        new_id = self.set_id_cnt
+        self.sets[new_id] = set()
+        self.set_id_cnt += 1
+        return new_id
+    
+    def get_set_by_id(self, set_id) -> set: # 按 id 获取集合引用
+        res = self.sets.get(set_id, None)
+        if res is None:
+            raise SetManagerException(f"Set with ID {set_id} does not exist")
+        return res
+    
+    # def remove_set(self, set_id): # 删除集合
+    #     # TODO 如何处理其内的节点, 例如 structure 中如果也存了 ports, 直接 del 会在那里残留引用
+    #     #       ... 不过引用计数为零的话应该会自动释放吧
+    #     pass
+    
+    def add_node_into(self, node, set_id): # 将节点加入指定集合
+        if node._mgr != self:
+            raise SetManagerException(f"Nodes that are not managed by this manager should not be operated")
+        
+        self.get_set_by_id(set_id).add(node)
+        node._set_id = set_id
+    
+    def separate_node(self, node): # 单点分离成集
+        if node._mgr != self:
+            raise SetManagerException(f"Nodes that are not managed by this manager should not be operated")
+        
+        if len(node.belongs()) <= 1: # 本就单独成集
+            return
+        
+        node.belongs().remove(node) # 从所属集中删除该节点
+        self.add_node_into(node, self.create_set()) # 创建新集合并加入
+    
+    def merge_set(self, set_id_1, set_id_2):
+        if set_id_1 == set_id_2:
+            return
+        
+        if len(self.get_set_by_id(set_id_1)) < len(self.get_set_by_id(set_id_2)): # 小的并入大的
+            set_id_1, set_id_2 = set_id_2, set_id_1
+        
+        for node in self.sets[set_id_2]:
+            # TODO 集合大时效率很低, 但又要保证每个节点的 _set_id 被修改. 除非查询所属集合专门再用并查集实现?
+            #       ... 正常来说电路网表中直接相连的节点数应该不会太庞大, 甚至可以说较少, 或许暂时可以不管.
+            self.add_node_into(node, set_id_1)
+        
+        del self.sets[set_id_2] # 该集合中为节点的引用, 删除集合保证节点不事二主, 不影响已经转移的节点
+    
+    def merge_set_by_nodes(self, node_1, node_2):
+        if node_1._mgr != self or node_2._mgr != self:
+            raise SetManagerException(f"Nodes that are not managed by this manager should not be operated")
+
+        self.merge_set(node_1._set_id, node_2._set_id)
+
+class SetManagerNodeBase:
+    def __init__(self, mgr: SetManager = None):
+        self._mgr: SetManager = mgr # 引用所属的集合管理器
+        self._mgr.add_node_into(self, self._mgr.create_set()) # 创建新集合并加入 (其中更新了 _set_id)
+    
+    def belongs(self) -> set:
+        return self._mgr.get_set_by_id(self._set_id)
+    
+    def merge(self, other_node):
+        self._mgr.merge_set_by_nodes(other_node, self)
+    
+    def separate(self):
+        self._mgr.separate_node(self)
+
+class StructurePort(SetManagerNodeBase):
+    """
+        线路结点, 存有 (如果有的话) 所属 box (有的话应该是 IO Wrapped 的).
+        继承 SetManagerNodeBase, 被指定集合管理器管理.
+        分析需求:
+            (1.) 类型推导: 可以通过遍历每个 port (需要存储推导范围内所有 port), 分别 find,
+                    准备好多个类别 (Net) 各自对应一类的 root, find 到哪个就在哪个 Net 记录 fan_in, fan_out 和类型情况,
+                    每次迭代需要更新各 net 的驱动情况, 并反映到每个相关的 port (net 中也要记录相连的 port, 以及合法情况下 fan_out 只应有一个, 可专门存),
+                    如果 box 未 determined, 则还需要更新 box 的情况 (如果已经 determined 则其 in 和 out 都已经确定) ...
+            (2.) 内部展开: 主要是端口连接以及结构的问题, port 和 box 等列表需要添加被展开的结构的列表,
+                    外 port 和内 port 需要消除 IOWrapper 后合并集合, 或最好能合并后直接删掉.
+            (3.) 自动寄存器插入: 每个 net 连接一个 fan_out (驱动源) 和多个 fan_in (被驱动端), 寄存器实际上就是插在 fan_out 路线上,
+                    注意! 为了插入寄存器需要将 port 从 net 中分离! 需要删除操作. 或需放弃并查集 (虚点法太脏了);
+                    寄存器插入还要考虑同步的问题, 需要从输入端一级一级赋予秩, 迭代可能有点慢;
+                    选取插入位置还需要进行时序分析, 估计中间模块的延迟.
+    """
+    def __init__(self, mgr: SetManager, name: str, signal_type: SignalType):
+        super().__init__(mgr)
+        
+        self.inst_name = None
+        
+        self.name = name
+        self.signal_type = signal_type
+    
+    pass # TODO
+
+class StructureBox:
+    """
+        TODO
+        Box 是否考虑可加两种东西: 框图类型 (含 structure_template) 或直接加 Structure? 还是始终后者? 重点在于框图类型有没有存储的必要. 感觉还是要的.
+                ... 要不直接装 structure, 有需求的话放一个框图类型?
+        将 port 作为对象属性添加进去, 方便引用
+        
+        Box 存在两种场景中:
+            (1.) 作为框图类型下 structure_template (Structure) 中的 box, 存有 diagram_type.
+            (2.) 作为框图类型例化后所得 structure 中的 box, 存有 structure.
+        判断标准在于传入的 diagram_type 是否为 None, 为 None 则为场景 (2.).
+        
+        TODO 关于 ports
+    """
+    def __init__(self, name: str, diagram_type: DiagramType = None):
+        self.inst_name = None
+        
+        self.name = name
+        
+        self.diagram_type = diagram_type
+        self.structure = None
+        if diagram_type is None: # (2.)
+            self.structure = Structure()
+    
+    # def register_port(self, port: StructurePort):
+    #     pass # TODO
+
 class Structure:
     """
         TODO
     """
-    determined = False
-    
-    @use_dsu_node("structure_ports")
-    class Port:
-        """
-            并查集的元素单位, 并存有 (如果有的话) 所属 box
-            TODO 是否需要修改并查集的结构, 使其可以做到快速地获取某 uid 的并查集下所有的集合和集合下的元素索引列表
-                分析需求:
-                    (1.) 类型推导: 可以通过遍历每个 port (需要存储推导范围内所有 port), 分别 find,
-                         准备好多个类别 (Net) 各自对应一类的 root, find 到哪个就在哪个 Net 记录 fan_in, fan_out 和类型情况,
-                         每次迭代需要更新各 net 的驱动情况, 并反映到每个相关的 port (net 中也要记录相连的 port, 以及合法情况下 fan_out 只应有一个, 可专门存),
-                         如果 box 未 determined, 则还需要更新 box 的情况 (如果已经 determined 则其 in 和 out 都已经确定) ...
-                    (2.) 内部展开: 主要是端口连接以及结构的问题, port 和 box 等列表需要添加被展开的结构的列表,
-                         外 port 和内 port 需要消除 IOWrapper 后合并集合, 或最好能合并后直接删掉.
-                    (3.) 自动寄存器插入: 每个 net 连接一个 fan_out (驱动源) 和多个 fan_in (被驱动端), 寄存器实际上就是插在 fan_out 路线上,
-                         注意! 为了插入寄存器需要将 port 从 net 中分离! 需要删除操作. 或需放弃并查集 (虚点法太脏了);
-                         寄存器插入还要考虑同步的问题, 需要从输入端一级一级赋予秩, 迭代可能有点慢;
-                         选取插入位置还需要进行时序分析, 估计中间模块的延迟.
-        """
-        
-        pass # TODO
-    
-    @use_dict_object
-    class Box:
-        """
-            TODO
-            Box 是否考虑可加两种东西: 框图类型 (含 structure_template) 或直接加 Structure? 还是始终后者? 重点在于框图类型有没有存储的必要. 感觉还是要的.
-                    ... 要不直接装 structure, 有需求的话放一个框图类型?
-            将 port 作为对象属性添加进去, 方便引用
-        """
-        def __init__(self):
-            self.diagram_type = None
-        
-        pass # TODO
-    
     def __init__(self):
         self.inst_name = None # 例化后才分配
+        self.determined = False # 推导后确定值
         
-        pass # TODO
+        self.setmgr = SetManager()
+        self.boxes = []
+        # self.io_ports = {}
     
     def deduction(self):
         """
             TODO 可分结构的自动推导, 通过在集合结构上的迭代完成.
             注:
                 (1.) TODO
-                (?.) TODO 如果迭代结束还存在 undetermined 类型的信号, 则说明该结构 undetermined, 不可被例化 (这里是否给了 A[x][y][z] 这样的结构一些存在的可能性? 分步固化?)
+                (?.) TODO 如果迭代结束还存在 undetermined 类型的信号, 则说明该结构 undetermined (这里是否给了 A[x][y][z] 这样的结构一些存在的可能性? 分步固化?)
         """
         
         pass # TODO
+    
+    def add_port(self, name: str, signal_type: SignalType):
+        # 对 signal_type 递归寻找 IOWrapper, 以此为单位构建 ports; 以及不允许无 IOWrapper 的信号类型
         
-    def add_port(self, signal_type: SignalType):
         pass # TODO
+        
+        return # TODO 返回 Port 对象或一个 DictObject (?)
     
-    def add_box(self, diagram_type: DiagramType):
-        pass # TODO
+    def add_box(self, name: str, diagram_type: DiagramType):
+        box = StructureBox(name, diagram_type)
+        
+        pass # TODO 关于 ports 和 box.xxx 的处理
+        
+        return box
     
-    def connect(self, port_1: Port, port_2: Port):
+    def connect(self, port_1: StructurePort, port_2: StructurePort):
         port_1.merge(port_2)
     
-    def connects(self, ports: list[Port]):
+    def connects(self, ports: list[StructurePort]):
         if len(ports) <= 1:
             return
         for idx, port in enumerate(ports):
@@ -137,14 +240,21 @@ class Structure:
 
 
 """ Diagram Base """
+class DiagramInstantiationException(Exception): pass
+
 class Diagram(metaclass = DiagramType):
     is_operator = False # 是否是基本算子 (即无内部结构)
     structure_template = None # 结构模板
     
-    def __init__(self):
+    def __init__(self): # TODO 要不要覆写 __call__ 让类实例化行为变成调用 instantiate?
+        raise DiagramTypeException(f"Use `.instantiate()` instead if you want to instantiate a Diagram")
+    
+    @classmethod
+    def instantiate(cls) -> Structure:
         """
-            TODO 例化, 与框图类型切割, 返回一个仅表示结构的 Structure 对象 (内部也这样递归下来, 框图类型中或许要有地方标注一下类型, 这里就全去掉).
-                    ... 为 Structure 分配 inst_name.
+            TODO 例化, 与框图类型切割, 把 structure_template 深拷贝出来, 返回一个仅表示结构的 Structure 对象
+                    ... 内部也这样递归下来, 框图类型中或许要有地方标注一下类型, 这里就全去掉.
+                    ... 分配 inst_name.
             注:
                 (1.) 统一过程, 继承者不可覆写.
         """
@@ -158,24 +268,24 @@ class Diagram(metaclass = DiagramType):
         """
         return None
 
-def operator(cls):
-    """
-        类装饰器 operator, 置于 Diagram 的子类前表明该类为基本算子 (即不可再分, 直接对应 VHDL).
-        其实现:
-            (1.) 增加或修改类属性 is_operator 为 True, 作为标记.
-            (2.) TODO
-    """
-    setattr(cls, "is_operator", True) # (1.)
+# def operator(cls):
+#     """
+#         类装饰器 operator, 置于 Diagram 的子类前表明该类为基本算子 (即不可再分, 直接对应 VHDL).
+#         其实现:
+#             (1.) 增加或修改类属性 is_operator 为 True, 作为标记.
+#             (2.) TODO
+#     """
+#     setattr(cls, "is_operator", True) # (1.)
     
-    # TODO
+#     # TODO
     
-    return cls
+#     return cls
 
 
 """ Derivatives """ # TODO: 之后或许应该将此搬移到别处
-from .signal import SignalType, UInt, SInt, Input, Output, Auto
+from .signal import SignalType, UInt, SInt, Input, Output, Auto, Bundle
 
-@operator
+# @operator
 class Addition(Diagram): # 带参基本算子示例, 整数加法
     @staticmethod
     def setup(args):
@@ -189,8 +299,10 @@ class Addition(Diagram): # 带参基本算子示例, 整数加法
         # 创建结构
         res = Structure()
         
-        # 声明 Ports, Input 和 Output, [] 内不确定可以写 Auto 或其他 Undetermined 类型, 供推导.
-        #       ... 推导可能是通过内部输出导出 Output 的类型, 也可能是通过内部连接的模块得到 Input 的类型, 或其他, 不要局限.
+        # 声明 IO Ports
+        res.add_port("op1", Input[op1_type])
+        res.add_port("op2", Input[op2_type])
+        res.add_port("res", Output[Auto]) # Output[UInt[max(op1_type.W, op2_type.W) + 1]])
         
         # TODO deduction 如何给出? 现在它在 structure 里了, 应该给个函数接口什么的吧.
         
@@ -204,14 +316,24 @@ class TestDiagram(Diagram): # 带参 Diagram 示例
         # 创建结构
         res = Structure()
         
-        # TODO 声明 Ports, Input 和 Output, [] 内不确定可以写 Auto 或其他 Undetermined 类型, 供推导.
+        # TODO 声明 IO Ports, [] 内不确定可以写 Auto 或其他 Undetermined 类型, 供推导.
         #       ... 推导可能是通过内部输出导出 Output 的类型, 也可能是通过内部连接的模块得到 Input 的类型, 或其他, 不要局限.
+        ab = res.add_port("ab", Bundle[{"a": Input[UInt[8]], "b": Input[UInt[8]]}])
+        c = res.add_port("c", Input[UInt[4]])
+        z = res.add_port("z", Output[Auto])
         
         # TODO 加入 Box.
-        #       ... 其内有 inner 属性, 存储 DiagramType (根据其 ports 得到外 Ports) 或 ExternalWorld (根据前面声明的 Ports 得到外 Ports).
+        #       ... 其内存储 DiagramType (根据其 ports 得到外 Ports) 或 ExternalWorld (根据前面声明的 Ports 得到外 Ports).
         #       ... 外 Ports 类型最外层应为 IOWrapper, 例如如果是 Bundle, 应递归寻找到 IOWrapper 为止, 可能得到多个 Ports.
+        add_ab = res.add_box("add_ab", Addition[UInt[8], Auto])
+        add_abc = res.add_box("add_abc", Addition[Auto, Auto])
         
-        # TODO 加入 Ports (无 IOWrapper) / 连接关系 (自动维护并查集).
+        # TODO 加入连接关系 / Ports (非 IO), 自动维护集合.
+        res.connect(ab.a, add_ab.IO.op1)
+        res.connect(ab.b, add_ab.IO.op2)
+        res.connect(add_ab.IO.res, add_abc.IO.op1)
+        res.connect(c, add_abc.IO.op2)
+        res.connect(add_abc.IO.res, z)
         
         return res
 

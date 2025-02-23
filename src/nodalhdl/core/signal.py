@@ -58,7 +58,7 @@
 +--------------------------------------------------------------------+
 """
 
-from .utils import class_attribute_isolator
+# from .utils import class_attribute_isolator
 
 import hashlib
 
@@ -84,6 +84,9 @@ class SignalType(type):
                 **properties
             })
         return cls.type_pool.get(new_type_name)
+    
+    def flip(cls):
+        pass # TODO 返回递归翻转 IOWrapper 后的类型
 
 class BitsType(SignalType):
     def __getitem__(cls, item):
