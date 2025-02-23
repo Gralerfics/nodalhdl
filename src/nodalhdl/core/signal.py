@@ -85,7 +85,22 @@ class SignalType(type):
             })
         return cls.type_pool.get(new_type_name)
     
-    def flip(cls):
+    def is_io_wrapped(cls): # 判断是否所有信号上溯有且仅有一个 IO Wrapper (Port)
+        """
+            Signal type 根据是否有 IO Wrapper 分类:
+                (1.) 完全无 IO Wrapper, 为 node.
+                (2.) 所有信号上溯皆有且仅有一个 IO Wrapper, 为 port.
+                (3.) 不完整包裹的, 以及 IO Wrapper 存在嵌套的, 皆为非法.
+            判断方法分别为该方法 is_io_wrapped, 以及后面的 is_non_io_wrapped.
+        """
+        pass # TODO
+    
+    def is_non_io_wrapped(cls): # 判断是否完全没有 IO Wrapper (Node)
+        pass # TODO
+    
+    def flip(cls): # 翻转 IO Wrapper
+        if not cls.is_io_wrapped():
+            raise SignalTypeException(f"Imperfect IO-wrapped signal type cannot be flipped")
         pass # TODO 返回递归翻转 IOWrapper 后的类型
 
 class BitsType(SignalType):
