@@ -71,8 +71,12 @@ class StructureNetManager:
     def __init__(self):
         self.nets = set()
     
-    # TODO: 将其他 mgr 内容导入该 mgr 的方法 (内部展开操作需要该功能)
-    # def
+    def import_mgr(self, other_mgr): # 导入其他 manager 的内容 (内部展开操作需要) TODO ?
+        # for net in other_mgr.nets:
+        #     self.nets.add(net)
+        raw_nets = self.nets
+        self.nets = set.union(raw_nets, other_mgr.nets)
+        del raw_nets
     
     def create_net(self, *args, **kwds): # 创建新 net 并返回引用
         new_net = StructureNet(*args, **kwds)
@@ -100,10 +104,10 @@ class StructureNetManager:
         if node.netmgr != self:
             raise StructureNetManagerException(f"Nodes that are not managed by this manager should not be operated")
         
-        if len(node.located_net) <= 1: # 本就单独成集
+        if len(node.locates()) <= 1: # 本就单独成集
             return
         
-        node.located_net.remove(node) # 从所属集中删除该节点
+        node.locates().remove(node) # 从所属集中删除该节点
         self.add_node_into_net(node, self.create_net()) # 创建新集合并加入
     
     def merge_net(self, net_1: 'StructureNet', net_2: 'StructureNet'): # 合并两个 net
@@ -126,7 +130,7 @@ class StructureNetManager:
         if node_1.netmgr != self or node_2.netmgr != self:
             raise StructureNetManagerException(f"Nodes that are not managed by this manager should not be operated")
 
-        self.merge_net(node_1.located_net, node_2.located_net)
+        self.merge_net(node_1.locates(), node_2.locates())
 
 class StructureNet:
     """
@@ -141,7 +145,7 @@ class StructureNet:
         return len(self.nodes)
     
     def __repr__(self):
-        return f"Net({self.nodes})"
+        return f"{self.nodes}"
     
     def add(self, node):
         self.nodes.add(node)
@@ -172,7 +176,10 @@ class StructureNode:
         self.signal_type = signal_type
     
     def __repr__(self):
-        return f"Node({self.name})"
+        return f"{self.name}"
+    
+    def locates(self):
+        return self.located_net
     
     def merge(self, other_node):
         self.netmgr.merge_net_by_nodes(other_node, self)
