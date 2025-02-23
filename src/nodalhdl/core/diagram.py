@@ -62,86 +62,96 @@ class DiagramType(type):
 
 
 """ Structure """
-class SetManagerException(Exception): pass
+class StructureNetManagerException(Exception): pass
 
-class SetManager:
-    def __init__(self):
-        self.set_id_cnt = 0
-        self.sets = {}
-        
-    # TODO: 将其他 mgr 内容导入该 mgr 的方法 (内部展开操作需要该功能)
-    
-    def create_set(self) -> int: # 创建新集合
-        new_id = self.set_id_cnt
-        self.sets[new_id] = set()
-        self.set_id_cnt += 1
-        return new_id
-    
-    def get_set_by_id(self, set_id) -> set: # 按 id 获取集合引用
-        res = self.sets.get(set_id, None)
-        if res is None:
-            raise SetManagerException(f"Set with ID {set_id} does not exist")
-        return res
-    
-    # def remove_set(self, set_id): # 删除集合
-    #     # TODO 如何处理其内的节点, 例如 structure 中如果也存了 ports, 直接 del 会在那里残留引用
-    #     #       ... 不过引用计数为零的话应该会自动释放吧
-    #     pass
-    
-    def add_node_into(self, node, set_id): # 将节点加入指定集合
-        if node._mgr != self:
-            raise SetManagerException(f"Nodes that are not managed by this manager should not be operated")
-        
-        self.get_set_by_id(set_id).add(node)
-        node._set_id = set_id
-    
-    def separate_node(self, node): # 单点分离成集
-        if node._mgr != self:
-            raise SetManagerException(f"Nodes that are not managed by this manager should not be operated")
-        
-        if len(node.belongs()) <= 1: # 本就单独成集
-            return
-        
-        node.belongs().remove(node) # 从所属集中删除该节点
-        self.add_node_into(node, self.create_set()) # 创建新集合并加入
-    
-    def merge_set(self, set_id_1, set_id_2):
-        if set_id_1 == set_id_2:
-            return
-        
-        if len(self.get_set_by_id(set_id_1)) < len(self.get_set_by_id(set_id_2)): # 小的并入大的
-            set_id_1, set_id_2 = set_id_2, set_id_1
-        
-        for node in self.sets[set_id_2]:
-            # TODO 集合大时效率很低, 但又要保证每个节点的 _set_id 被修改. 除非查询所属集合专门再用并查集实现?
-            #       ... 正常来说电路网表中直接相连的节点数应该不会太庞大, 甚至可以说较少, 或许暂时可以不管.
-            self.add_node_into(node, set_id_1)
-        
-        del self.sets[set_id_2] # 该集合中为节点的引用, 删除集合保证节点不事二主, 不影响已经转移的节点
-    
-    def merge_set_by_nodes(self, node_1, node_2):
-        if node_1._mgr != self or node_2._mgr != self:
-            raise SetManagerException(f"Nodes that are not managed by this manager should not be operated")
-
-        self.merge_set(node_1._set_id, node_2._set_id)
-
-class SetManagerNodeBase:
-    def __init__(self, mgr: SetManager = None):
-        self._mgr: SetManager = mgr # 引用所属的集合管理器
-        self._mgr.add_node_into(self, self._mgr.create_set()) # 创建新集合并加入 (其中更新了 _set_id)
-    
-    def belongs(self) -> set:
-        return self._mgr.get_set_by_id(self._set_id)
-    
-    def merge(self, other_node):
-        self._mgr.merge_set_by_nodes(other_node, self)
-    
-    def separate(self):
-        self._mgr.separate_node(self)
-
-class StructurePort(SetManagerNodeBase):
+class StructureNetManager:
     """
-        线路结点, 存有 (如果有的话) 所属 box (有的话应该是 IO Wrapped 的).
+        管理 Net 的集合.
+    """
+    def __init__(self):
+        self.nets = set()
+    
+    # TODO: 将其他 mgr 内容导入该 mgr 的方法 (内部展开操作需要该功能)
+    # def
+    
+    def create_net(self, *args, **kwds): # 创建新 net 并返回引用
+        new_net = StructureNet(*args, **kwds)
+        self.nets.add(new_net)
+        return new_net
+    
+    def remove_net(self, net: 'StructureNet'): # 删除 net TODO ?
+        self.nets.remove(net)
+        del net
+    
+    def create_node(self, *args, **kwds):
+        new_node = StructureNode(*args, **kwds)
+        new_node.netmgr = self # 引用所属的 net manager
+        self.add_node_into_net(new_node, self.create_net()) # 创建新 net 并加入 (其中也更新了节点的 located_net)
+        return new_node
+    
+    def add_node_into_net(self, node: 'StructureNode', net: 'StructureNet'): # 将节点加入指定集合
+        if node.netmgr != self:
+            raise StructureNetManagerException(f"Nodes that are not managed by this manager should not be operated")
+        
+        net.add(node)
+        node.located_net = net
+    
+    def separate_node(self, node: 'StructureNode'): # 单点分离成集
+        if node.netmgr != self:
+            raise StructureNetManagerException(f"Nodes that are not managed by this manager should not be operated")
+        
+        if len(node.located_net) <= 1: # 本就单独成集
+            return
+        
+        node.located_net.remove(node) # 从所属集中删除该节点
+        self.add_node_into_net(node, self.create_net()) # 创建新集合并加入
+    
+    def merge_net(self, net_1: 'StructureNet', net_2: 'StructureNet'): # 合并两个 net
+        if net_1 == net_2:
+            return
+        
+        net_h, net_l = net_1, net_2
+        if len(net_h) < len(net_l): # 确保是小的并入大的
+            net_h, net_l = net_l, net_h
+        
+        for node in net_l.nodes:
+            # TODO 集合大时效率低, 但又要保证每个节点的 located_net 被修改. 除非查询所属集合专门再用并查集实现? 成本可能更高.
+            #       ... 正常来说电路网表中直接相连的节点数应该不会太庞大, 甚至可以说较少, 或许暂时可以不管.
+            # TODO 如果 net 还存了别的信息这里也要注意处理.
+            self.add_node_into_net(node, net_h)
+        
+        self.remove_net(net_l) # 该集合中为节点的引用, 删除集合保证节点不事二主, 不影响已经转移的节点
+    
+    def merge_net_by_nodes(self, node_1: 'StructureNode', node_2: 'StructureNode'):
+        if node_1.netmgr != self or node_2.netmgr != self:
+            raise StructureNetManagerException(f"Nodes that are not managed by this manager should not be operated")
+
+        self.merge_net(node_1.located_net, node_2.located_net)
+
+class StructureNet:
+    """
+        管理一组直接连接的 Nodes (Ports) 的集合称 Net.
+        TODO 不直接使用 set 的原因是可能可以直接存储例如驱动信号等信息, 方便查询.
+                ... 注意这种情况 merge_net 方法也要修改 TODO merge 的实现放到 net 这里来 TODO 这样也有问题, 为了方便合并 mgr, net 应独立于 mgr, 这样就难以合理调用 mgr.
+    """
+    def __init__(self):
+        self.nodes = set()
+    
+    def __len__(self):
+        return len(self.nodes)
+    
+    def __repr__(self):
+        return f"Net({self.nodes})"
+    
+    def add(self, node):
+        self.nodes.add(node)
+    
+    def remove(self, node):
+        self.nodes.remove(node)
+
+class StructureNode:
+    """
+        线路结点, 存有 (如果有的话) 所属 box (有的话应该是 IO Wrapped 的, IO 的 Nodes 又称 Ports).
         继承 SetManagerNodeBase, 被指定集合管理器管理.
         分析需求:
             (1.) 类型推导: 可以通过遍历每个 port (需要存储推导范围内所有 port), 分别 find,
@@ -155,15 +165,20 @@ class StructurePort(SetManagerNodeBase):
                     寄存器插入还要考虑同步的问题, 需要从输入端一级一级赋予秩, 迭代可能有点慢;
                     选取插入位置还需要进行时序分析, 估计中间模块的延迟.
     """
-    def __init__(self, mgr: SetManager, name: str, signal_type: SignalType):
-        super().__init__(mgr)
-        
+    def __init__(self, name: str, signal_type: SignalType):
         self.inst_name = None
         
         self.name = name
         self.signal_type = signal_type
     
-    pass # TODO
+    def __repr__(self):
+        return f"Node({self.name})"
+    
+    def merge(self, other_node):
+        self.netmgr.merge_net_by_nodes(other_node, self)
+    
+    def separate(self):
+        self.netmgr.separate_node(self)
 
 class StructureBox:
     """
@@ -195,12 +210,16 @@ class StructureBox:
 class Structure:
     """
         TODO
+        structure 不设 name, 有 name 的当是其下的 box, node/port 等.
+                ... 此 name 不是 inst_name, 但 inst_name 参考该 name 而来.
+        每个 structure 内建一个 netmgr 管理网表结构, net 游离态, 不依赖 netmgr, 故可以简单地合并多个 netmgr.
     """
     def __init__(self):
         self.inst_name = None # 例化后才分配
         self.determined = False # 推导后确定值
         
-        self.setmgr = SetManager()
+        self.netmgr = StructureNetManager()
+        
         self.boxes = []
         # self.io_ports = {}
     
@@ -214,8 +233,15 @@ class Structure:
         
         pass # TODO
     
-    def add_port(self, name: str, signal_type: SignalType):
-        # 对 signal_type 递归寻找 IOWrapper, 以此为单位构建 ports; 以及不允许无 IOWrapper 的信号类型
+    def add_node(self, name: str, signal_type: SignalType):
+        """
+            signal_type 根据是否有 IO Wrapper 分类:
+                (1.) 完全无 IO Wrapper, 为 node.
+                (2.) 所有信号上溯皆有且仅有一个 IO Wrapper, 为 port.
+                (3.) 不完整包裹的, 以及 IO Wrapper 存在嵌套的, 皆为非法.
+                TODO: 检查分类的方法实现到 signal 中如何?
+            对于 port, 递归寻找, 以 IO Wrapper 为最小单位构建需要添加的 ports.
+        """
         
         pass # TODO
         
@@ -228,10 +254,10 @@ class Structure:
         
         return box
     
-    def connect(self, port_1: StructurePort, port_2: StructurePort):
+    def connect(self, port_1: StructureNode, port_2: StructureNode):
         port_1.merge(port_2)
     
-    def connects(self, ports: list[StructurePort]):
+    def connects(self, ports: list[StructureNode]):
         if len(ports) <= 1:
             return
         for idx, port in enumerate(ports):
@@ -300,9 +326,9 @@ class Addition(Diagram): # 带参基本算子示例, 整数加法
         res = Structure()
         
         # 声明 IO Ports
-        res.add_port("op1", Input[op1_type])
-        res.add_port("op2", Input[op2_type])
-        res.add_port("res", Output[Auto]) # Output[UInt[max(op1_type.W, op2_type.W) + 1]])
+        res.add_node("op1", Input[op1_type])
+        res.add_node("op2", Input[op2_type])
+        res.add_node("res", Output[Auto]) # Output[UInt[max(op1_type.W, op2_type.W) + 1]])
         
         # TODO deduction 如何给出? 现在它在 structure 里了, 应该给个函数接口什么的吧.
         
@@ -318,9 +344,9 @@ class TestDiagram(Diagram): # 带参 Diagram 示例
         
         # TODO 声明 IO Ports, [] 内不确定可以写 Auto 或其他 Undetermined 类型, 供推导.
         #       ... 推导可能是通过内部输出导出 Output 的类型, 也可能是通过内部连接的模块得到 Input 的类型, 或其他, 不要局限.
-        ab = res.add_port("ab", Bundle[{"a": Input[UInt[8]], "b": Input[UInt[8]]}])
-        c = res.add_port("c", Input[UInt[4]])
-        z = res.add_port("z", Output[Auto])
+        ab = res.add_node("ab", Bundle[{"a": Input[UInt[8]], "b": Input[UInt[8]]}])
+        c = res.add_node("c", Input[UInt[4]])
+        z = res.add_node("z", Output[Auto])
         
         # TODO 加入 Box.
         #       ... 其内存储 DiagramType (根据其 ports 得到外 Ports) 或 ExternalWorld (根据前面声明的 Ports 得到外 Ports).

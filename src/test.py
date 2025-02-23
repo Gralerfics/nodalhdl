@@ -1,5 +1,5 @@
 from nodalhdl.core.signal import UInt, SInt, Bits, Bit, Bundle
-from nodalhdl.core.diagram import Diagram, Structure, Addition
+from nodalhdl.core.diagram import Diagram, Structure, Addition, StructureNode
 
 
 # class TestNode(Diagram): # 无参 Diagram 示例
@@ -11,7 +11,19 @@ from nodalhdl.core.diagram import Diagram, Structure, Addition
 
 print('=======================================================')
 
-pass
+s = Structure()
+n1, n2, n3, n4, n5 = [s.netmgr.create_node(name, None) for name in ['A', 'B', 'C', 'D', 'E']]
+
+print(s.netmgr.nets)
+n1.merge(n2)
+print(s.netmgr.nets)
+n3.merge(n4)
+n4.merge(n5)
+print(s.netmgr.nets)
+n2.merge(n4)
+print(s.netmgr.nets)
+n3.separate()
+print(s.netmgr.nets)
 
 
 
