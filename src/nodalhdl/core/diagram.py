@@ -67,6 +67,12 @@ class StructureNetManagerException(Exception): pass
 class StructureNetManager:
     """
         管理 Net 的集合.
+        TODO 注意 mgr 的隔离存在设计问题:
+            考虑不同 mgr 可能需要合并 (例如例化后展开内部模块), 此时需要将两个 nets 合并,
+            这要求其内的 net 乃至 node 不可有引用指向原 mgr, 否则需要逐个修改, 导致效率问题.
+            故现在不对跨 mgr 的 net 合并等非法操作抛出异常 (难以判断),
+            node 的 merge 和 separate 操作也需要传入所在 mgr 或目标 mgr,
+            使用时需要严格注意.
     """
     def __init__(self):
         self.nets = set()
@@ -89,14 +95,10 @@ class StructureNetManager:
     
     def create_node(self, *args, **kwds): # 创建新节点, 涉及 net manager 是因为创建新 net 需要决定所属
         new_node = StructureNode(*args, **kwds)
-        new_node.netmgr = self # 引用所属的 net manager
         self.create_net().add_node(new_node) # 创建新 net 并加入
         return new_node
     
     def separate_node(self, node: 'StructureNode'): # 单点分离成集, 涉及 net manager 是因为创建新 net 需要决定所属
-        # if node.netmgr != self:
-        #     raise StructureNetManagerException(f"Nodes that are not managed by this manager should not be operated")
-        
         if len(node.locates()) <= 1: # 本就单独成集
             return
         
@@ -115,9 +117,6 @@ class StructureNetManager:
         self.remove_net(net_l) # 再删去 net_l (该集合中为节点的引用, 不影响已经转移的节点)
     
     def merge_net_by_nodes(self, node_1: 'StructureNode', node_2: 'StructureNode'):
-        # if node_1.netmgr != self or node_2.netmgr != self:
-        #     raise StructureNetManagerException(f"Nodes that are not managed by this manager should not be operated")
-
         self.merge_net(node_1.locates(), node_2.locates())
 
 class StructureNet:
@@ -176,11 +175,11 @@ class StructureNode:
     def locates(self) -> StructureNet:
         return self.located_net
     
-    def merge(self, other_node):
-        self.netmgr.merge_net_by_nodes(other_node, self)
+    def merge(self, other_node: 'StructureNode', located_mgr: StructureNetManager): # 两个 node 都应在 located_mgr 下, 影响到较小的 net 的删除
+        located_mgr.merge_net_by_nodes(other_node, self)
     
-    def separate(self):
-        self.netmgr.separate_node(self)
+    def separate(self, target_mgr: StructureNetManager): # 分离的单节点 net 将在 target_mgr 下
+        target_mgr.separate_node(self)
 
 class StructureBox:
     """
