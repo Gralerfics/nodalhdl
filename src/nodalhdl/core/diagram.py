@@ -15,8 +15,7 @@ class DiagramType(type):
             创建新 Diagram 类型, 可能被调用的情况:
                 (1.) 使用 class 继承 Diagram 创建子类.
                 (2.) 使用中括号传递参数创建 Diagram 或其子类的衍生类.
-                (3.) TODO 在衍生类基础上再加中括号传递参数.
-                        ... 需要考虑该行为的物理意义, 无意义则应抛出异常, 可以在 __getitem__ 中判断是否已有参数 instantiation_arguments.
+                (3.) 在衍生类基础上再加中括号传递参数. 或需考虑该行为的物理意义, 若希望阻止可以在 __getitem__ 中判断是否已有参数 instantiation_arguments.
             最终都进入 __new__, 情况 (2.) 会在 attr 中带有参数 instantiation_arguments.
             创建类型:
                 (1.) 构建新类名, 查重, 并创建新类. (注意 hash() 是不稳定的, 与运行时环境有关, 建议使用稳定的映射)
@@ -26,7 +25,9 @@ class DiagramType(type):
             注:
                 (1.) 框图类型具有唯一性, 在 diagram_type_pool 中进行去重.
                 (2.) 框图类型一旦创建, 会且仅会在创建中执行一次 setup, structure_template 由此固定 (*).
-                        ... TODO determined 以及 deduction 的所属改到 Structure 下, 是否需要在类型创建时也跑一下 deduction 给出一个最初的 determined 判断?
+                (3.) 框图类型创建过程中, 结构固定前, 不应该运行 deduction, 因为:
+                        (a.) 此举会破坏类型名 (即基类名和参数) 和结构之间的直接对应关系 (由 setup 定义).
+                        (b.) deduction 目前规定为只可在例化后的 structure 上进行.
         """
         inst_args = attr.get("instantiation_arguments", ()) # 获取可能从 __getitem__ 传来的参数, 无则默认为空
         
@@ -68,8 +69,8 @@ class DiagramType(type):
 """ Structure """
 class StructureNet:
     """
-        管理一组直接连接的 Nodes (Ports) 的集合称 Net.
-                TODO 可能可以直接存储例如驱动信号等信息, 方便查询, 注意这种情况需要修改 merge_net.
+        管理一组直接连接的 Nodes (Ports) 的集合为 Net.
+        游离存储, 仅为下辖 node 所引用.
     """
     def __init__(self):
         self.nodes = set()
@@ -88,8 +89,8 @@ class StructureNet:
         if len(net_h) < len(net_l):
             net_h, net_l = net_l, net_h
         
-        # TODO 若 net 存有其他信息, 可能需要添加其他操作
-        for node in net_l.nodes: # TODO 效率问题
+        # 若 net 存有其他信息, 注意需要于此添加其他操作
+        for node in net_l.nodes: # [NOTICE] 效率问题
             net_h.add_node(node)
         
         del net_l
@@ -149,11 +150,7 @@ class StructureNode:
 
 class StructureBox:
     """
-        TODO
-        Box 是否考虑可加两种东西: 框图类型 (含 structure_template) 或直接加 Structure? 还是始终后者? 重点在于框图类型有没有存储的必要. 感觉还是要的.
-                ... 要不直接装 structure, 有需求的话放一个框图类型?
-        将 port 作为对象属性添加进去, 方便引用
-        
+        装有结构或框图类型的容易, 作为 structure 的子模块.
         Box 存在两种场景中:
             (1.) 作为框图类型下 structure_template (Structure) 中的 box, 存有 diagram_type.
                  此时为了让嵌套结构更加统一, box.structure 将引用 diagram_type.structure_template.
@@ -204,12 +201,14 @@ class StructureBox:
 
 class Structure:
     """
-        TODO
-        structure 不设 name, 有 name 的当是其下的 box, node/port 等.
-                ... 此 name 不是 inst_name, 但 inst_name 参考该 name 而来.
+        框图结构.
+        structure 下辖 boxes, 特殊的 EEB 存有端口节点 (ports) 的索引.
+        node 和 net 游离存储, 不直接在 structure 中引用, 遍历结构应从 ports 开始.
+        structure 不设 name 和 inst_name, 结构就只是结构信息, 装进 box 才是实体.
+        其下的 box, node 设 name 和 inst_name, inst_name 未例化时为 None, 例化后参考 name 和结构进行分配.
     """
     def __init__(self):
-        self.inst_name = None # 例化后才分配
+        self.instantiated = False # 是否为例化后的结构
         self.determined = False # 推导后确定值 TODO: 写成 @property 用所有 port 的 determined 计算?
         
         self.boxes = {} # 包含的 boxes
@@ -237,9 +236,12 @@ class Structure:
         """
             TODO 可分结构的自动推导, 通过从 structure 和 box 的 port 出发沿 net 的迭代完成.
             注:
-                (1.) TODO
-                (?.) TODO 如果迭代结束还存在 undetermined 类型的信号, 则说明该结构 undetermined (这里是否给了 A[x][y][z] 这样的结构一些存在的可能性? 分步固化?)
+                (1.) 
+            如果迭代结束还存在 undetermined 类型的信号, 则说明该结构 undetermined (这里是否给了 A[x][y][z] 这样的结构一些存在的可能性? 分步固化?)
         """
+        if not self.instantiated:
+            raise DiagramInstantiationException(f"Instantiation is needed before deduction")
+        
         pass # TODO
     
     def add_node(self, name: str, signal_type: SignalType):
@@ -302,19 +304,22 @@ class Diagram(metaclass = DiagramType):
     is_operator = False # 是否是基本算子 (即无内部结构)
     structure_template: Structure = None # 结构模板
     
-    def __init__(self): # TODO 要不要覆写 __call__ 让类实例化行为变成调用 instantiate?
+    def __init__(self):
         raise DiagramTypeException(f"Use `.instantiate()` instead if you want to instantiate a Diagram")
     
     @classmethod
     def instantiate(cls) -> Structure:
         """
             TODO 例化, 与框图类型切割, 把 structure_template 深拷贝出来, 返回一个仅表示结构的 Structure 对象
-                    ... 内部也这样递归下来, 框图类型中或许要有地方标注一下类型, 这里就全去掉.
-                    ... 分配 inst_name.
+                    ... 内部也这样递归下来, 框图类型中或许要有地方标注一下类型, 这里就全去掉
+                    ... 分配 inst_name
+                    ... 分布式地存储 net 和 node 导致此处复制的方法需要考虑, 可能也需要搜索
+                            ... 故不一定是完全的复制, 搜索应是从 ports 开始, 不与 ports 以某种方式相连的部分或可认为无意义
             注:
                 (1.) 统一过程, 继承者不可覆写.
-            TODO 分布式地存储 net 和 node 导致此处复制的方法需要考虑, 可能也需要在图上搜索.
         """
+        
+        
         pass # TODO
     
     @staticmethod
@@ -329,7 +334,6 @@ class Diagram(metaclass = DiagramType):
 #         类装饰器 operator, 置于 Diagram 的子类前表明该类为基本算子 (即不可再分, 直接对应 VHDL).
 #         其实现:
 #             (1.) 增加或修改类属性 is_operator 为 True, 作为标记.
-#             (2.) TODO
 #     """
 #     setattr(cls, "is_operator", True) # (1.)
     
