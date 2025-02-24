@@ -50,6 +50,15 @@ class DictObject:
                 setattr(self, key, DictObject(value))
             else:
                 setattr(self, key, value)
+    
+    def items(self):
+        return self.__dict__.items()
+
+    def keys(self):
+        return self.__dict__.keys()
+    
+    def values(self):
+        return self.__dict__.values()
 
     def to_dict(self):
         res = {}
