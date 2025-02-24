@@ -67,7 +67,7 @@
             "b": Bit
         }]
         print(S.perfectly_io_wrapped)                       # False
-        print(S.flip())                                     # SignalTypeException: Imperfect IO-wrapped signal type cannot be flipped
+        print(S.flip_io())                                  # SignalTypeException: Imperfect IO-wrapped signal type cannot be flipped
         
         S = Bundle[{
             "a": Input[UInt[8]],
@@ -81,9 +81,11 @@
             }]]
         }]
         print(S.perfectly_io_wrapped)                       # True
-        print(S.flip()._bundle_types)                       # {'a': <class '...Output_UInt_8'>, 'b': <class '...Input_Bits_1'>, 'c': <class '...Bundle_...'>, 'd': <class '...Output_Bundle_...'>}
-        print(S.flip().c._bundle_types)                     # {'x': <class '...Output_SInt_3'>, 'y': <class '...Input_SInt_5'>}
-        print(S.flip().flip() == S)                         # True
+        print(S.flip_io()._bundle_types)                    # {'a': <class '...Output_UInt_8'>, 'b': <class '...Input_Bits_1'>, 'c': <class '...Bundle_...'>, 'd': <class '...Output_Bundle_...'>}
+        print(S.flip_io().c._bundle_types)                  # {'x': <class '...Output_SInt_3'>, 'y': <class '...Input_SInt_5'>}
+        print(S.flip_io().flip_io() == S)                   # True
+        print(S.clear_io()._bundle_types)                   # {'a': <class '...UInt_8'>, 'b': <class '...Bits_1'>, 'c': <class '...Bundle_...'>, 'd': <class '...Bundle_...'>}
+        print(S.clear_io().c._bundle_types)                 # {'x': <class '...SInt_3'>, 'y': <class '...SInt_5'>}
     TODO:
         单元测试.
 +--------------------------------------------------------------------+
@@ -136,9 +138,9 @@ class SignalType(type):
             (3.) 不完整包裹的, 以及 IO Wrapper 存在嵌套的, 皆为非法.
         在构建 IOWrapper 和 Bundle 时会逐级检查, 并给 io_wrapper_included 和 perfectly_io_wrapped 属性赋值.
         
-        flip 方法用于翻转 IO Wrapper, 返回翻转后的类型, 并要求输入的信号类型 perfectly_io_wrapped = True.
+        flip_io 方法用于翻转 IO Wrapper, 返回翻转后的类型, 并要求输入的信号类型 perfectly_io_wrapped = True.
     """
-    def flip(signal_type): # 递归翻转 IO Wrapper
+    def flip_io(signal_type: 'SignalType'): # 递归翻转 IO Wrapper
         if not signal_type.perfectly_io_wrapped:
             raise SignalTypeException(f"Imperfect IO-wrapped signal type cannot be flipped")
         
@@ -147,10 +149,21 @@ class SignalType(type):
                 return Output[t.T]
             elif t.belongs(Output):
                 return Input[t.T]
-            else: # 一定是 Bundle, 如果是未被包裹的单信号, 必然通不过 perfectly_io_wrapped 检查
+            else: # 一定是 Bundle, 如果是未被包裹的普通信号, 必然通不过 perfectly_io_wrapped 检查
                 return Bundle[{key: _flip(T) for key, T in t._bundle_types.items()}]
         
         return _flip(signal_type)
+    
+    def clear_io(signal_type: 'SignalType'):
+        if not signal_type.io_wrapper_included:
+            return signal_type
+        
+        if signal_type.belongs(Input) or signal_type.belongs(Output):
+            return signal_type.T
+        elif signal_type.belongs(Bundle):
+            return Bundle[{key: T.clear_io() for key, T in signal_type._bundle_types.items()}]
+        else: # 普通信号
+            return signal_type
 
 class BitsType(SignalType):
     def __getitem__(cls, item):
