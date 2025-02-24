@@ -29,7 +29,7 @@ class DiagramType(type):
                         ... TODO determined 以及 deduction 的所属改到 Structure 下, 是否需要在类型创建时也跑一下 deduction 给出一个最初的 determined 判断?
         """
         inst_args = attr.get("instantiation_arguments", ()) # 获取可能从 __getitem__ 传来的参数, 无则默认为空
-
+        
         new_name = name
         if inst_args: # 若参数不为空则依据参数构建新名
             new_name = f"{name}_{hashlib.md5(str(inst_args).encode('utf-8')).hexdigest()}"
@@ -40,9 +40,13 @@ class DiagramType(type):
             
             try:
                 new_cls.structure_template = setup_func(inst_args) # 生成结构
-            except DiagramTypeException as e:
-                if inst_args: # 有参数还出错, 说明是结构确实有误, 抛出原异常
-                    raise
+            except DiagramTypeException as e: # TODO 异常处理
+                if e.args and len(e.args) >= 2 and e.args[1] == "force":
+                    raise # 内部抛出重要异常, 原样处理
+                
+                if inst_args: # 有参数还出错, 说明是结构确实有误, 抛出原异常信息, 附带 force
+                    raise DiagramTypeException(e.args[0], "force")
+                
                 new_cls.structure_template = None # 否则可能是 class 创建时空参构建导致的未定义行为, 结构留空, 待后续带参构建
             
             mcs.diagram_type_pool[new_name] = new_cls # 加入框图类型池
@@ -174,7 +178,7 @@ class StructureBox:
             
             def _build(d):
                 if isinstance(d, dict):
-                    return {sub_key: _build(sub_key, sub_val) for sub_key, sub_val in d.items()}
+                    return {sub_key: _build(sub_val) for sub_key, sub_val in d.items()}
                 else: # 若正常使用 register_port 这里一定是 StructureNode, 需要到这一级重新创建
                     return StructureNode(d.name, d.signal_type)
             
@@ -225,7 +229,9 @@ class Structure:
     
     @property
     def IO(self):
-        pass # 给外面看的? 似乎暂时可以补药. 写的话也应该不是 StructureNode, 而是作为信息展示
+        # 给外面看的? 似乎暂时可以补药. 写的话也应该不是 StructureNode, 而是作为信息展示
+        # TODO 还有与此相似的需求: 是否要允许以 structure.xxx.<name> 的形式 (即类似 box.IO 的对象结构) 引用 boxes 和 nodes/ports?
+        pass
     
     def deduction(self):
         """
@@ -309,7 +315,6 @@ class Diagram(metaclass = DiagramType):
                 (1.) 统一过程, 继承者不可覆写.
             TODO 分布式地存储 net 和 node 导致此处复制的方法需要考虑, 可能也需要在图上搜索.
         """
-        
         pass # TODO
     
     @staticmethod
@@ -331,55 +336,4 @@ class Diagram(metaclass = DiagramType):
 #     # TODO
     
 #     return cls
-
-
-""" Derivatives """ # TODO: 之后或许应该将此搬移到别处
-from .signal import SignalType, UInt, SInt, Input, Output, Auto, Bundle
-
-# @operator
-class Addition(Diagram): # 带参基本算子示例, 整数加法
-    @staticmethod
-    def setup(args):
-        # 参数合法性检查
-        if len(args) != 2 or not all([isinstance(arg, SignalType) and arg.determined for arg in args]):
-            raise DiagramTypeException(f"Invalid argument(s) \'{args}\' for diagram type Addition[<op1_type (SignalType, determined)>, <op2_type (SignalType, determined)>].")
-        op1_type, op2_type = args
-        if not (op1_type.belongs(UInt) and op2_type.belongs(UInt) or op1_type.belongs(SInt) and op2_type.belongs(SInt)):
-            raise DiagramTypeException(f"Only UInt + UInt or SInt + SInt is acceptable")
-        
-        # 创建结构
-        res = Structure()
-        
-        # 声明 IO Ports
-        res.add_port("op1", Input[op1_type])
-        res.add_port("op2", Input[op2_type])
-        res.add_port("res", Output[Auto]) # Output[UInt[max(op1_type.W, op2_type.W) + 1]])
-        
-        # TODO deduction 如何给出? 现在它在 structure 里了, 应该给个函数接口什么的吧.
-        
-        return res
-
-class TestDiagram(Diagram): # 带参 Diagram 示例
-    @staticmethod
-    def setup(args):
-        # 创建结构
-        res = Structure()
-        
-        # 声明 IO Ports, 必须 perfectly IO-wrapped, 类型不确定可使用 Auto 或其他 undetermined 类型待推导
-        ab = res.add_port("ab", Bundle[{"a": Input[UInt[8]], "b": Input[UInt[8]]}])
-        c = res.add_port("c", Input[UInt[4]])
-        z = res.add_port("z", Output[Auto])
-        
-        # 添加 Box
-        add_ab = res.add_box("add_ab", Addition[UInt[8], Auto])
-        add_abc = res.add_box("add_abc", Addition[Auto, Auto])
-        
-        # 添加连接关系 / 非 IO 节点
-        res.connect(ab.a, add_ab.IO.op1)
-        res.connect(ab.b, add_ab.IO.op2)
-        res.connect(add_ab.IO.res, add_abc.IO.op1)
-        res.connect(c, add_abc.IO.op2)
-        res.connect(add_abc.IO.res, z)
-        
-        return res
 
