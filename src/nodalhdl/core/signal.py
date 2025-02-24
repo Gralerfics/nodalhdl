@@ -128,6 +128,8 @@ class SignalType(type):
         return signal_type == other
     
     def belongs(signal_type, other):
+        if signal_type.belongs(Auto):
+            return True # TODO
         return issubclass(signal_type, other)
     
     """
