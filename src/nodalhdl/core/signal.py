@@ -7,7 +7,6 @@
         SInt[<width>], SInt8, SInt16, SInt32, SInt64;
         FixedPoint[<integer_width>, <fraction_width>];
         FloatingPoint[<exponent_width>, <fraction_width>], Float, Double;
-        IOWrapper[<signal_type>], Input[<signal_type>], Output[<signal_type>];
         Bundle[<members>].
     Examples:
         a = UInt[8]()
@@ -40,6 +39,7 @@
 
         print(UInt.determined)                              # False
         print(UInt[8].determined)                           # True
+        print(Bundle[{"a": Input[UInt]}].determined)        # False
 
         S = Bundle[{
             "a": UInt[8],
@@ -54,7 +54,7 @@
         print(s.a)                                          # <...UInt_8 object at ...>
         print(S.c.x)                                        # <class '...SInt_3'>
         print(s.c.x)                                        # <...SInt_3 object at ...>
-        print(S._bundle_types)                              # {'a': <class '...UInt_8'>, 'b': <class '...Bits_1'>, 'c': <class '...Bundle_0cbbdef73dff1f7318ab831e99b5216d'>}
+        print(S._bundle_types)                              # {'a': <class '...UInt_8'>, 'b': <class '...Bits_1'>, 'c': <class '...Bundle_...'>}
         print(S.c._bundle_types)                            # {'x': <class '...SInt_3'>, 'y': <class '...SInt_5'>}
         
         Input[Bundle[{
@@ -81,9 +81,11 @@
             }]]
         }]
         print(S.perfectly_io_wrapped)                       # True
-        print(S.flip()._bundle_types)                       # {'a': <class '...Output_UInt_8'>, 'b': <class '...Input_Bits_1'>, 'c': <class '...Bundle_656dcaadb62caf798e8cf0367e5b13da'>, 'd': <class '...Output_Bundle_4f8b56cfc110852a5da18d162d28a5f9'>}
+        print(S.flip()._bundle_types)                       # {'a': <class '...Output_UInt_8'>, 'b': <class '...Input_Bits_1'>, 'c': <class '...Bundle_...'>, 'd': <class '...Output_Bundle_...'>}
         print(S.flip().c._bundle_types)                     # {'x': <class '...Output_SInt_3'>, 'y': <class '...Input_SInt_5'>}
         print(S.flip().flip() == S)                         # True
+    TODO:
+        单元测试.
 +--------------------------------------------------------------------+
 """
 
@@ -113,8 +115,6 @@ class SignalType(type):
     def instantiate_type(cls, new_cls_name, properties = {}) -> 'SignalType': # `cls` here is the generated class, type(cls) is SignalType or its subclasses
         if not new_cls_name in cls.type_pool.keys():
             new_cls = SignalType(f"{new_cls_name}", (cls, ), properties)
-            new_cls.determined = True # guarantee that all types that are correctly generated have the attribute `determined: True`, the others will inherit the attribute `determined: False` from SignalType
-            
             cls.type_pool[new_cls_name] = new_cls
         
         return cls.type_pool.get(new_cls_name)
@@ -156,12 +156,16 @@ class BitsType(SignalType):
     def __getitem__(cls, item):
         if isinstance(item, int):
             width = item
-            return cls.instantiate_type(
+            
+            new_cls = cls.instantiate_type(
                 f"{cls.__name__}_{width}",
                 {
                     "W": width
                 }
             )
+            new_cls.determined = True
+            
+            return new_cls
         else:
             raise SignalTypeException(f"Invalid parameter(s) \'{item}\' for type {cls.__name__}[<width (int)>]")
 
@@ -169,7 +173,8 @@ class FixedPointType(BitsType):
     def __getitem__(cls, item):
         if isinstance(item, tuple) and len(item) == 2 and isinstance(item[0], int) and isinstance(item[1], int):
             integer_width, fraction_width = item
-            return cls.instantiate_type(
+            
+            new_cls = cls.instantiate_type(
                 f"{cls.__name__}_{integer_width}_{fraction_width}",
                 {
                     "W": integer_width + fraction_width,
@@ -177,6 +182,9 @@ class FixedPointType(BitsType):
                     "W_frac": fraction_width
                 }
             )
+            new_cls.determined = True
+            
+            return new_cls
         else:
             raise SignalTypeException(f"Invalid parameter(s) \'{item}\' for type {cls.__name__}[<integer_width (int)>, <fraction_width (int)>]")
 
@@ -184,7 +192,8 @@ class FloatingPointType(BitsType):
     def __getitem__(cls, item):
         if isinstance(item, tuple) and len(item) == 2 and isinstance(item[0], int) and isinstance(item[1], int):
             exponent_width, fraction_width = item
-            return cls.instantiate_type(
+            
+            new_cls = cls.instantiate_type(
                 f"{cls.__name__}_{exponent_width}_{fraction_width}",
                 {
                     "W": 1 + exponent_width + fraction_width,
@@ -192,6 +201,9 @@ class FloatingPointType(BitsType):
                     "W_frac": fraction_width
                 }
             )
+            new_cls.determined = True
+            
+            return new_cls
         else:
             raise SignalTypeException(f"Invalid parameter(s) \'{item}\' for type {cls.__name__}[<exponent_width (int)>, <fraction_width (int)>]")
 
@@ -207,6 +219,7 @@ class IOWrapperType(SignalType):
                     "T": item
                 }
             )
+            new_cls.determined = item.determined # IO Wrapping 后的确定性由内部信号决定
             new_cls.io_wrapper_included = True # 套上后即包含 IO Wrapper
             new_cls.perfectly_io_wrapped = True # 内部无 IO Wrapper 故套上后就是最小单位
             
@@ -224,6 +237,7 @@ class BundleType(SignalType):
                     **item # 方便直接按索引引用信号类型
                 }
             )
+            new_cls.determined = all([x.determined for x in item.values()]) # 子信号全部确定才确定
             new_cls.io_wrapper_included = any([x.io_wrapper_included for x in item.values()]) # 子信号中有一个包含 IO Wrapper 就包含
             new_cls.perfectly_io_wrapped = all([x.perfectly_io_wrapped for x in item.values()]) # 子信号全部完美包裹才完美包裹
             
