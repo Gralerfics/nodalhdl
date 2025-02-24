@@ -1,4 +1,4 @@
-from .signal import SignalType
+from .signal import SignalType, IOWrapper
 from .utils import DictObject
 
 import hashlib
@@ -116,12 +116,14 @@ class StructureNode:
                     寄存器插入还要考虑同步的问题, 需要从输入端一级一级赋予秩, 迭代可能有点慢;
                     选取插入位置还需要进行时序分析, 估计中间模块的延迟.
     """
-    def __init__(self, name: str, signal_type: SignalType, located_net: StructureNet = None):
+    def __init__(self, name: str, signal_type: SignalType, located_net: StructureNet = None, located_box: 'StructureBox' = None):
         self.located_net: StructureNet = located_net
         if self.located_net is None:
-            StructureNet().add_node(self) # 双向绑定
+            StructureNet().add_node(self)
+        else:
+            self.located_net.add_node(self)
         
-        self.located_box: StructureBox = None
+        self.located_box: StructureBox = located_box
         
         self.inst_name = None
         
@@ -129,7 +131,7 @@ class StructureNode:
         self.signal_type = signal_type
     
     def __repr__(self):
-        return f"{self.name}"
+        return f"<{self.name} ({self.signal_type.__name__})>"
     
     def merge(self, other_node: 'StructureNode'):
         self.located_net.merge_net(other_node.located_net)
@@ -152,26 +154,49 @@ class StructureBox:
             (1.) 作为框图类型下 structure_template (Structure) 中的 box, 存有 diagram_type.
                  此时为了让嵌套结构更加统一, box.structure 将引用 diagram_type.structure_template.
                  structure_template 在框图类型构建后应是只读的, 不会被修改, 适合被重复引用.
-            (2.) 作为框图类型例化后所得 structure 中的 box, 存有新的 structure.
+                 在这种情况下, box 创建时需要参考 structure_template 里的 EEB 注册 IO.
+            (2.) 作为 Extern Equivalent Box (EEB), 由调用者 structure 手动注册 IO.
+            (3.) 作为框图类型例化后所得 structure 中的 box, 存有新的 structure.
                  例化过程需要参考框图类型下 structure_template 的结构, 深拷贝 (需要特别实现) 出新的 structure.
         判断标准在于传入的 diagram_type 是否为 None, 为 None 则为场景 (2.).
-        
-        TODO 关于 ports
     """
     def __init__(self, name: str, diagram_type: DiagramType = None):
         self.inst_name = None
         
         self.name = name
-        
-        # 内部结构
         self.diagram_type = diagram_type
-        if diagram_type is None:
-            self.structure = Structure() # (2.) TODO 要 None 吗?
-        else:
-            self.structure = diagram_type.structure_template # (1.)
+        self.structure: Structure = None
         
-        # 外部引脚
-        self.IO: DictObject = None
+        self.IO_dict = {} # 值为 StructureNode 的引用. 不要直接修改, 除非修改同时置 IO_obj_up_to_date 为 False
+        
+        if diagram_type is not None:
+            self.structure = diagram_type.structure_template # (1.)
+            
+            def _build(d):
+                if isinstance(d, dict):
+                    return {sub_key: _build(sub_key, sub_val) for sub_key, sub_val in d.items()}
+                else: # 若正常使用 register_port 这里一定是 StructureNode, 需要到这一级重新创建
+                    return StructureNode(d.name, d.signal_type)
+            
+            self.IO_dict = _build(self.structure.EEB.IO_dict)
+        # else: # (2.) & (3.) TODO 不提供模板时, 例如例化时的处理, 是否还允许提供 structure 以自动提取 ports? 或是都要求手动 register_port?
+        
+        # IO 对象结构构造
+        self.IO_obj: DictObject = DictObject(self.IO_dict) # 不要直接调用, 会延迟更新
+        self.IO_obj_up_to_date = True
+    
+    @property
+    def IO(self): # 延迟更新, 调用时检查
+        if not self.IO_obj_up_to_date:
+            # del self.IO_obj
+            self.IO_obj = DictObject(self.IO_dict)
+            self.IO_obj_up_to_date = True
+        
+        return self.IO_obj
+    
+    def register_port(self, name: str, port_dict): # port 可能为 StructureNode 也可能是结构化存有 StructureNode 的 dict (内部都用 dict, DictObject 仅方便使用)
+        self.IO_dict[name] = port_dict
+        self.IO_obj_up_to_date = False
 
 class Structure:
     """
@@ -181,18 +206,26 @@ class Structure:
     """
     def __init__(self):
         self.inst_name = None # 例化后才分配
-        self.determined = False # 推导后确定值
+        self.determined = False # 推导后确定值 TODO: 写成 @property 用所有 port 的 determined 计算?
         
-        self.boxes = [] # 包含的 boxes, box.IO 内有其 IO 端口 (ports) TODO boxes[0] 定为 External World Box
-        # self.ports = {} # 该 structure 的 IO 端口 (ports) TODO 用 EWB 的话是否不需要了? 可以写一个方法从 boxes[0] 处理提取
+        self.boxes = {} # 包含的 boxes
         
         """
-            关于 External World Box (EWB), 即将 structure 以外视作一个内外翻转的大 box,
+            关于 External Equivalent Box (EEB), 即将 structure 以外视作一个内外翻转的大 box,
             其 ports 为 structure 的外部端口, 注意 Input 和 Output 反转 (解决外部 IO 相对内部方向相反的问题).
             这样的操作可解决 structure 的 IO 和内部 box 的 IO 类型不同, 影响统一处理的问题.
+            
+            在创建 structure 时, 需要创建一个 EEB, 并在后续的 add_port 调用中为其注册 IO.
         """
-        self.boxes.append(StructureBox("EWB", None))
-        # TODO
+        self.add_box("_extern_equivalent_box", None)
+    
+    @property
+    def EEB(self) -> StructureBox:
+        return self.boxes["_extern_equivalent_box"]
+    
+    @property
+    def IO(self):
+        pass # 给外面看的? 似乎暂时可以补药. 写的话也应该不是 StructureNode, 而是作为信息展示
     
     def deduction(self):
         """
@@ -201,41 +234,49 @@ class Structure:
                 (1.) TODO
                 (?.) TODO 如果迭代结束还存在 undetermined 类型的信号, 则说明该结构 undetermined (这里是否给了 A[x][y][z] 这样的结构一些存在的可能性? 分步固化?)
         """
-        
         pass # TODO
     
     def add_node(self, name: str, signal_type: SignalType):
         """
             添加节点, 主要用于辅助构建框图, 创建返回即可.
-            signal_type 应无 IO Wrapper.
+            signal_type 中的 IO Wrapper 将被忽略 (方便用户直接以 ports 的类型添加节点).
         """
-        if not signal_type.is_non_io_wrapped():
-            raise DiagramTypeException(f"IO-wrapped signal type cannot be attached to a node")
+        if not signal_type.io_wrapper_included:
+            signal_type = signal_type.clear_io() # 忽略 IO Wrapper
         
         return StructureNode(name, signal_type)
     
     def add_port(self, name: str, signal_type: SignalType):
         """
             添加端口, 这里仅指 structure 的外显端口.
-            独立于 node 进行处理是考虑 ports 需要翻转并附于 External World Box (EWB) 上 (见前注释).
-            signal_type 应为 perfectly IO-wrapped, 这里需要递归提取出以 IO Wrapper 为最小单位的信号, 并分别创建 Port (特殊的 Node).
+            独立于 node 进行处理是考虑 ports 需要翻转并附于 External Equivalent Box (EEB) 上 (见前注释, 需为 self.boxes["_extern_equivalent_box"] 注册 IO).
+            signal_type 应为 perfectly IO-wrapped, 这里需要递归提取出以 IO Wrapper 为最小单位的信号, 分别创建 StructureNode 后组成 DictObject 返回.
         """
-        if not signal_type.is_io_wrapped():
+        if not signal_type.perfectly_io_wrapped:
             raise DiagramTypeException(f"Imperfect IO-wrapped signal type cannot be attached to a port")
         
-        # TODO
+        def _build(key: str, t: SignalType):
+            if t.belongs(IOWrapper):
+                return StructureNode(key, t)
+            else: # 必然是 Bundle, 否则通不过 perfectly_io_wrapped
+                return {sub_key: _build(sub_key, sub_t) for sub_key, sub_t in t._bundle_types.items()}
         
-        # return # DictObject
+        new_port_dict = _build(name, signal_type) # 提取, 创建 Node, 合成 dict
+        
+        self.EEB.register_port(name, new_port_dict) # 注册为 EEB 端口
+        
+        return DictObject(new_port_dict) if isinstance(new_port_dict, dict) else new_port_dict # 返回便于使用的对象结构或 StructureNode 对象
     
-    def add_box(self, name: str, diagram_type: DiagramType):
+    def add_box(self, name: str, diagram_type: DiagramType = None):
         """
-            TODO
+            添加盒子, 创建后加入 boxes 并返回即可.
+            若传入了 diagram_type, 在 StructureBox 的构造方法中会自动注册 IO.
         """
-        box = StructureBox(name, diagram_type)
+        new_box = StructureBox(name, diagram_type)
         
-        # box.structure # TODO
+        self.boxes[name] = new_box
         
-        return box
+        return new_box
     
     def connect(self, port_1: StructureNode, port_2: StructureNode):
         port_1.merge(port_2)
@@ -253,7 +294,7 @@ class DiagramInstantiationException(Exception): pass
 
 class Diagram(metaclass = DiagramType):
     is_operator = False # 是否是基本算子 (即无内部结构)
-    structure_template = None # 结构模板
+    structure_template: Structure = None # 结构模板
     
     def __init__(self): # TODO 要不要覆写 __call__ 让类实例化行为变成调用 instantiate?
         raise DiagramTypeException(f"Use `.instantiate()` instead if you want to instantiate a Diagram")
@@ -321,24 +362,19 @@ class Addition(Diagram): # 带参基本算子示例, 整数加法
 class TestDiagram(Diagram): # 带参 Diagram 示例
     @staticmethod
     def setup(args):
-        # 参数合法性检查, 此例无参数
-        
         # 创建结构
         res = Structure()
         
-        # TODO 声明 IO Ports, [] 内不确定可以写 Auto 或其他 Undetermined 类型, 供推导.
-        #       ... 推导可能是通过内部输出导出 Output 的类型, 也可能是通过内部连接的模块得到 Input 的类型, 或其他, 不要局限.
+        # 声明 IO Ports, 必须 perfectly IO-wrapped, 类型不确定可使用 Auto 或其他 undetermined 类型待推导
         ab = res.add_port("ab", Bundle[{"a": Input[UInt[8]], "b": Input[UInt[8]]}])
         c = res.add_port("c", Input[UInt[4]])
         z = res.add_port("z", Output[Auto])
         
-        # TODO 加入 Box.
-        #       ... 其内存储 DiagramType (根据其 ports 得到外 Ports) 或 ExternalWorld (根据前面声明的 Ports 得到外 Ports).
-        #       ... 外 Ports 类型最外层应为 IOWrapper, 例如如果是 Bundle, 应递归寻找到 IOWrapper 为止, 可能得到多个 Ports.
+        # 添加 Box
         add_ab = res.add_box("add_ab", Addition[UInt[8], Auto])
         add_abc = res.add_box("add_abc", Addition[Auto, Auto])
         
-        # TODO 加入连接关系 / Ports (非 IO), 自动维护集合.
+        # 添加连接关系 / 非 IO 节点
         res.connect(ab.a, add_ab.IO.op1)
         res.connect(ab.b, add_ab.IO.op2)
         res.connect(add_ab.IO.res, add_abc.IO.op1)
