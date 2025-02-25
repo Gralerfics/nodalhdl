@@ -35,8 +35,10 @@ class Addition(Diagram): # 带参基本算子示例, 整数加法
         return res
     
     def deduction(s: Structure): # @operator 将自动将该函数注册进 structure_template 中
+        print("deduction")
         pass
     
     def vhdl(s: Structure): # @operator 将自动将该函数注册进 structure_template 中
+        print("vhdl")
         pass
 

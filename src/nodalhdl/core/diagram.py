@@ -3,6 +3,8 @@ from .utils import DictObject
 
 import hashlib
 
+from inspect import isfunction
+
 
 """ Diagram Type """
 class DiagramTypeException(Exception): pass
@@ -252,8 +254,8 @@ class Structure:
     @property
     def IO(self):
         # 给外面看的? 似乎暂时可以补药. 写的话也应该不是 StructureNode, 而是作为信息展示
-        # TODO 还有与此相似的需求: 是否要允许以 structure.xxx.<name> 的形式 (即类似 box.IO 的对象结构) 引用 boxes 和 nodes/ports?
-        pass
+        # 还有与此相似的需求: 是否要允许以 structure.xxx.<name> 的形式 (即类似 box.IO 的对象结构) 引用 boxes 和 nodes/ports?
+        pass # [NOTICE]
     
     @property
     def determined(self):
@@ -266,6 +268,14 @@ class Structure:
                 return d.determined
         
         return _search(port_dict)
+    
+    def copy(self):
+        """
+            对结构进行深度复制, 不只是对象的建立, 还需要考虑 nodes 和 net 的关系, 故需要遍历.
+            注意 custom_deduction 和 custom_vhdl 等也需要被复制, 不过函数只需引用即可.
+            复制所得是自由结构.
+        """
+        pass # TODO
     
     def register_deduction(self, func):
         self.custom_deduction = func
@@ -392,19 +402,37 @@ class Diagram(metaclass = DiagramType):
 def operator(cls):
     """
         类装饰器 operator, 置于 Diagram 的子类前表明该类为基本算子 (即不可再分, 直接对应 VHDL).
+        基本算子也允许 undetermined, 可能出现几种情况:
+            (1.) TODO 关于在 setup 后为无 Auto args 运行 deduction 的设想, 这种情况下如果运行后 determined 了, 就没问题了. 例如用户省略 output 的类型.
+            (2.) 若确确实实就是 undetermined, 那么就需要参与到推导中. 当然, 此时已经例化了.
         其实现:
             (1.) 增加或修改类属性 is_operator 为 True, 作为标记.
-            (2.) 关于类型推导:
-                (2.1) 要求类中必须实现 setup(args) 方法, 用于检查参数和声明结构 (基本算子中只管 ports).
-                (2.2) 要求类中必须实现 deduction(s) 方法, 用于类型推导.
-                (2.3) 自动包装 setup 方法, 取使其返回的 structure 对象用 register_deduction 注册 deduction 方法.
-            (3.) 要求类中必须实现 vhdl(s) 方法, 用于生成 VHDL 代码.
-                (3.1) 自动包装 setup 方法, 取使其返回的 structure 对象用 register_vhdl 注册 vhdl 方法.
-            (4.) 返回类.
+            (2.) 关于成员方法:
+                (2.1) 要求类中必须实现 deduction(s) 方法, 用于类型推导.
+                    (2.1.1) 自动包装 setup 方法, 取使其返回的 structure 对象用 register_deduction 注册 deduction 方法.
+                (2.2) 要求类中必须实现 vhdl(s) 方法, 用于生成 VHDL 代码.
+                    (2.2.1) 自动包装 setup 方法, 取使其返回的 structure 对象用 register_vhdl 注册 vhdl 方法.
+            (3.) 返回类.
     """
     setattr(cls, "is_operator", True) # (1.)
     
-    pass # TODO
+    if not any(isfunction(method) and method.__name__ == 'deduction' for method in cls.__dict__.values()): # (2.1)
+        raise DiagramTypeException(f"Diagram type \'{cls.__name__}\' must implement method \'deduction\'.")
     
-    return cls
+    if not any(isfunction(method) and method.__name__ == 'vhdl' for method in cls.__dict__.values()): # (2.2)
+        raise DiagramTypeException(f"Diagram type \'{cls.__name__}\' must implement method \'vhdl\'.")
+    
+    setup_func = cls.setup
+    
+    def setup_wrapper(args):
+        res: Structure = setup_func(args)
+        
+        res.register_deduction(cls.deduction) # (2.1.1)
+        res.register_vhdl(cls.vhdl) # (2.2.1)
+        
+        return res
+    
+    cls.setup = setup_wrapper
+    
+    return cls # (3.)
 

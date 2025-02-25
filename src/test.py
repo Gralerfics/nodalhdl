@@ -52,3 +52,5 @@ print(b2.IO.op1.located_box.name)
 
 print(b1.structure.determined)
 
+Addition[UInt8, UInt8].structure_template.custom_vhdl(None)
+
