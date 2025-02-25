@@ -1,8 +1,8 @@
 from ..core.signal import SignalType, UInt, SInt, Input, Output, Auto, Bundle
-from ..core.diagram import Diagram, DiagramTypeException, Structure
+from ..core.diagram import Diagram, DiagramTypeException, Structure, operator
 
 
-# @operator
+@operator
 class Addition(Diagram): # 带参基本算子示例, 整数加法
     @staticmethod
     def setup(args):

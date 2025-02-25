@@ -211,6 +211,8 @@ class Structure:
         self.instantiated = False # 是否为例化后的结构
         self.determined = False # 推导后确定值 TODO: 写成 @property 用所有 port 的 determined 计算?
         
+        self.custom_deduction = None # 自定义类型推导, 用于定义 operator
+        
         self.boxes = {} # 包含的 boxes
         
         """
@@ -232,7 +234,7 @@ class Structure:
         # TODO 还有与此相似的需求: 是否要允许以 structure.xxx.<name> 的形式 (即类似 box.IO 的对象结构) 引用 boxes 和 nodes/ports?
         pass
     
-    def deduction(self):
+    def deduction(self) -> bool:
         """
             TODO 可分结构的自动推导, 通过从 structure 和 box 的 port 出发沿 net 的迭代完成.
             注:
@@ -242,7 +244,13 @@ class Structure:
         if not self.instantiated:
             raise DiagramInstantiationException(f"Instantiation is needed before deduction")
         
+        if self.custom_deduction is not None:
+            return self.custom_deduction(self)
+        
         pass # TODO
+    
+    def register_deduction(self, func):
+        self.custom_deduction = func
     
     def add_node(self, name: str, signal_type: SignalType):
         """
@@ -301,7 +309,7 @@ class Structure:
 class DiagramInstantiationException(Exception): pass
 
 class Diagram(metaclass = DiagramType):
-    is_operator = False # 是否是基本算子 (即无内部结构)
+    is_operator = False # 是否是基本算子 (见 @operator)
     structure_template: Structure = None # 结构模板
     
     def __init__(self):
@@ -317,8 +325,9 @@ class Diagram(metaclass = DiagramType):
                             ... 故不一定是完全的复制, 搜索应是从 ports 开始, 不与 ports 以某种方式相连的部分或可认为无意义
             注:
                 (1.) 统一过程, 继承者不可覆写.
+            TODO [!] 一个问题, 如果有些模板是确定的, 类型推导没有改变它, 那么这个模板在生成代码中是可以复用的.
+                    ... 但例化将结构与框图类型切割, 例如一个确定模板在一个结构中被使用于两处, 例化后难以获知这两处是否来自同一模板, 就难以复用 hdl 文件.
         """
-        
         
         pass # TODO
     
@@ -329,15 +338,23 @@ class Diagram(metaclass = DiagramType):
         """
         return None
 
-# def operator(cls):
-#     """
-#         类装饰器 operator, 置于 Diagram 的子类前表明该类为基本算子 (即不可再分, 直接对应 VHDL).
-#         其实现:
-#             (1.) 增加或修改类属性 is_operator 为 True, 作为标记.
-#     """
-#     setattr(cls, "is_operator", True) # (1.)
+def operator(cls):
+    """
+        类装饰器 operator, 置于 Diagram 的子类前表明该类为基本算子 (即不可再分, 直接对应 VHDL).
+        其实现:
+            (1.) 增加或修改类属性 is_operator 为 True, 作为标记.
+            (2.) 关于类型推导:
+                (2.1) 要求类中必须实现 setup(args) 方法, 用于检查参数和声明结构 (基本算子中只管 ports).
+                (2.2) 要求类中必须实现 deduction(s) 方法, 用于类型推导.
+                (2.3) 自动包装 setup 方法, 取使其返回的 structure 对象用 register_deduction 注册 deduction 方法.
+            (3.) 要求类中必须实现 TODO vhdl
+        TODO [!] 一个问题, 基本算子似乎不方便使用 Auto 等不定类型. 因为 hdl 的生成依赖 args 而非仅仅信号类型, 但 args 未被规定一定是信号类型.
+                ... 具体地, 一个不定的基本算子, 类型推导后或可确定信号类型, 但无法获知信号类型如何对应 args, 也就无法获得生成 hdl 的具体 args.
+                ... 是否要特殊化基本算子? 因为 Addition[Auto, Auto] 这种还挺好用的. 让生成 hdl 的函数不仅接收 args 还接收 ports!
+    """
+    setattr(cls, "is_operator", True) # (1.)
     
-#     # TODO
+    # TODO
     
-#     return cls
+    return cls
 
