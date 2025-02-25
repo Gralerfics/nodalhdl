@@ -6,6 +6,10 @@ from ..core.diagram import Diagram, DiagramTypeException, Structure, operator
 class Addition(Diagram): # 带参基本算子示例, 整数加法
     @staticmethod
     def setup(args):
+        # 未定义空参行为, 返回 None 以防后续异常
+        if not args:
+            return None
+        
         # 参数合法性检查
         if len(args) != 2:
             raise DiagramTypeException(f"Invalid argument(s) \'{args}\' for diagram type Addition[<op1_type (SignalType)>, <op2_type (SignalType)>].")

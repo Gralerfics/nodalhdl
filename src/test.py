@@ -43,7 +43,6 @@ print(s.boxes)
 eeb = s.EEB
 b1 = s.boxes['add_ab']
 b2 = s.boxes['add_abc']
-print(eeb, b1, b2)
 
 print(eeb.IO.to_dict())
 print(b1.IO.to_dict())

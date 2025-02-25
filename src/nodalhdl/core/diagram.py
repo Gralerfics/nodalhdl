@@ -41,14 +41,8 @@ class DiagramType(type):
             
             try:
                 new_cls.structure_template = setup_func(inst_args) # 生成结构
-            except DiagramTypeException as e: # TODO 异常处理
-                if e.args and len(e.args) >= 2 and e.args[1] == "force":
-                    raise # 内部抛出重要异常, 原样处理
-                
-                if inst_args: # 有参数还出错, 说明是结构确实有误, 抛出原异常信息, 附带 force
-                    raise DiagramTypeException(e.args[0], "force")
-                
-                new_cls.structure_template = None # 否则可能是 class 创建时空参构建导致的未定义行为, 结构留空, 待后续带参构建
+            except DiagramTypeException as e:
+                raise # TODO 异常处理 (如果是在设计 class 时就出错, 还无法处理), 这里直接全部抛出, 要求用户必须处理无参行为
             
             mcs.diagram_type_pool[new_name] = new_cls # 加入框图类型池
 
@@ -151,27 +145,44 @@ class StructureNode:
 class StructureBox:
     """
         装有结构或框图类型的容易, 作为 structure 的子模块.
-        Box 存在两种场景中:
+        Box 存在多种使用场景:
             (1.) 作为框图类型下 structure_template (Structure) 中的 box, 存有 diagram_type.
                  此时为了让嵌套结构更加统一, box.structure 将引用 diagram_type.structure_template.
                  structure_template 在框图类型构建后应是只读的, 不会被修改, 适合被重复引用.
                  在这种情况下, box 创建时需要参考 structure_template 里的 EEB 注册 IO.
-            (2.) 作为 Extern Equivalent Box (EEB), 由调用者 structure 手动注册 IO.
-            (3.) 作为框图类型例化后所得 structure 中的 box, 存有新的 structure.
-                 例化过程需要参考框图类型下 structure_template 的结构, 深拷贝 (需要特别实现) 出新的 structure.
-        判断标准在于传入的 diagram_type 是否为 None, 为 None 则为场景 (2.).
+            (2.) 作为新创建的 box 准备直接装入新的 structure (例如例化过程中可能需要).
+            (3.) 作为普通的空 box, 待处理, 例如 Extern Equivalent Box (EEB), 准备手动注册 IO.
+        根据参数确定具体情况:
+            (1.) in_template 为 True 代表 box 在框图类型 (模板) 中, 要求提供 diagram_type 并使用其 structure_template 作为 self.structure, 且不允许提供多余的 structure.
+            (2.) in_template 为 False 则不要求提供 diagram_type. 此时若提供 structure 则使用提供的 structure 作为 self.structure, 否则暂时留 None, 可后续手动操作.
+            (3.) auto_port_register 指示是否自动注册 IO, 要求经过 (1.) 和 (2.) 的处理后结构不为 None.
+        注:
+            (1.) 默认情况下 in_template 和 auto_port_register 为 True, 即要求提供一个 diagram_type 并自动注册 IO. 例如用于使用框图类型模板创建 box.
+                (1.1) 注意默认值要和 Structure.add_box 处设置统一.
+            (2.) 如果需要创建空的 box, 则将二者都置为 False. 例如用于 Structure.__init__ 中创建 EEB.
+            (3.) Not in template 但提供 structure, 甚至自动注册时, diagram_type 或可仅当作是记录. 例如用于例化后模块来源的标记. 注意此时 diagram_type 和实际结构不一定统一.
     """
-    def __init__(self, name: str, diagram_type: DiagramType = None):
+    def __init__(self, name: str, diagram_type: DiagramType = None, structure: 'Structure' = None, in_template = True, auto_port_register = True):
         self.inst_name = None
         
         self.name = name
         self.diagram_type = diagram_type
-        self.structure: Structure = None
+        self.structure: Structure = structure
         
         self.IO_dict = {} # 值为 StructureNode 的引用. 不要直接修改, 除非修改同时置 IO_obj_up_to_date 为 False
         
-        if diagram_type is not None:
-            self.structure = diagram_type.structure_template # (1.)
+        if in_template: # (1.)
+            if structure is not None:
+                raise DiagramTypeException(f"StructureBox in template does not need a structure")
+            
+            if diagram_type is None:
+                raise DiagramTypeException(f"StructureBox in template must have a diagram type")
+            
+            self.structure = diagram_type.structure_template
+        
+        if auto_port_register:
+            if self.structure is None:
+                raise DiagramTypeException(f"A structure is needed for automatic port registration")
             
             def _build(d):
                 if isinstance(d, dict):
@@ -180,7 +191,6 @@ class StructureBox:
                     return StructureNode(d.name, d.signal_type)
             
             self.IO_dict = _build(self.structure.EEB.IO_dict)
-        # else: # (2.) & (3.) TODO 不提供模板时, 例如例化时的处理, 是否还允许提供 structure 以自动提取 ports? 或是都要求手动 register_port?
         
         # IO 对象结构构造
         self.IO_obj: DictObject = DictObject(self.IO_dict) # 不要直接调用, 会延迟更新
@@ -222,7 +232,7 @@ class Structure:
             
             在创建 structure 时, 需要创建一个 EEB, 并在后续的 add_port 调用中为其注册 IO.
         """
-        self.add_box("_extern_equivalent_box", None)
+        self.add_box("_extern_equivalent_box", in_template = False, auto_port_register = False)
     
     @property
     def EEB(self) -> StructureBox:
@@ -283,12 +293,12 @@ class Structure:
         
         return DictObject(new_port_dict) if isinstance(new_port_dict, dict) else new_port_dict # 返回便于使用的对象结构或 StructureNode 对象
     
-    def add_box(self, name: str, diagram_type: DiagramType = None):
+    def add_box(self, name: str, diagram_type: DiagramType = None, structure: 'Structure' = None, in_template = True, auto_port_register = True):
         """
             添加盒子, 创建后加入 boxes 并返回即可.
             若传入了 diagram_type, 在 StructureBox 的构造方法中会自动注册 IO.
         """
-        new_box = StructureBox(name, diagram_type)
+        new_box = StructureBox(name, diagram_type = diagram_type, structure = structure, in_template = in_template, auto_port_register = auto_port_register)
         
         self.boxes[name] = new_box
         
