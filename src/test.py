@@ -7,7 +7,7 @@ class TestDiagram(Diagram): # 带参 Diagram 示例
     @staticmethod
     def setup(args):
         # 创建结构
-        res = Structure()
+        res = Structure("test_diagram")
         
         # 声明 IO Ports, 必须 perfectly IO-wrapped, 类型不确定可使用 Auto 或其他 undetermined 类型待推导
         ab = res.add_port("ab", Bundle[{"a": Input[UInt[8]], "b": Input[UInt[8]]}])

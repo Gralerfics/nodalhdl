@@ -18,7 +18,7 @@ class Addition(Diagram): # 带参基本算子示例, 整数加法
             raise DiagramTypeException(f"Only UInt + UInt or SInt + SInt is acceptable")
         
         # 创建结构
-        res = Structure()
+        res = Structure("addition")
         
         # 声明 IO Ports
         res.add_port("op1", Input[op1_type])
