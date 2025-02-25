@@ -25,9 +25,9 @@ class DiagramType(type):
             注:
                 (1.) 框图类型具有唯一性, 在 diagram_type_pool 中进行去重.
                 (2.) 框图类型一旦创建, 会且仅会在创建中执行一次 setup, structure_template 由此固定 (*).
-                (3.) 框图类型创建过程中, 结构固定前, 不应该运行 deduction, 因为:
-                        (a.) 此举会破坏类型名 (即基类名和参数) 和结构之间的直接对应关系 (由 setup 定义).
-                        (b.) deduction 目前规定为只可在例化后的 structure 上进行.
+                (3.) 框图类型创建过程中, 结构固定前, 不应该运行 deduction, 因为: TODO 有变动, 见 Addition 的 `TOD O !!! TOD O`
+                    (a.) 此举会破坏类型名 (即基类名和参数) 和结构之间的直接对应关系 (由 setup 定义).
+                    (b.) deduction 目前规定为只可在例化后的 structure 上进行.
         """
         inst_args = attr.get("instantiation_arguments", ()) # 获取可能从 __getitem__ 传来的参数, 无则默认为空
         
@@ -104,18 +104,6 @@ class StructureNode:
         
         node 指向唯一的 net, net 存有所包含 node 的集合.
         node 指向唯一的 box (如有), box 也存有所有的相关 node (port).
-        
-        分析需求: TODO to be removed
-            (1.) 类型推导: 可以通过遍历每个 port (需要存储推导范围内所有 port), 分别 find,
-                    准备好多个类别 (Net) 各自对应一类的 root, find 到哪个就在哪个 Net 记录 fan_in, fan_out 和类型情况,
-                    每次迭代需要更新各 net 的驱动情况, 并反映到每个相关的 port (net 中也要记录相连的 port, 以及合法情况下 fan_out 只应有一个, 可专门存),
-                    如果 box 未 determined, 则还需要更新 box 的情况 (如果已经 determined 则其 in 和 out 都已经确定) ...
-            (2.) 内部展开: 主要是端口连接以及结构的问题, port 和 box 等列表需要添加被展开的结构的列表,
-                    外 port 和内 port 需要消除 IOWrapper 后合并集合, 或最好能合并后直接删掉.
-            (3.) 自动寄存器插入: 每个 net 连接一个 fan_out (驱动源) 和多个 fan_in (被驱动端), 寄存器实际上就是插在 fan_out 路线上,
-                    注意! 为了插入寄存器需要将 port 从 net 中分离! 需要删除操作. 或需放弃并查集 (虚点法太脏了);
-                    寄存器插入还要考虑同步的问题, 需要从输入端一级一级赋予秩, 迭代可能有点慢;
-                    选取插入位置还需要进行时序分析, 估计中间模块的延迟.
     """
     def __init__(self, name: str, signal_type: SignalType, located_net: StructureNet = None, located_box: 'StructureBox' = None):
         self.located_net: StructureNet = located_net
@@ -176,7 +164,7 @@ class StructureBox:
     def free(self): # box 的自由情况取决于其 structure
         if self.structure is None:
             # raise DiagramTypeException(f"This box has no structure")
-            return False # TODO None 应算不自由吗
+            return False # [NOTICE]
         
         return self.structure.free
     
@@ -211,7 +199,7 @@ class StructureBox:
         self.reset()
         
         self.structure = diagram_type.structure_template
-        self.diagram_type = diagram_type # TODO 好像没有被用到过, 哪里用到记得回来想一下
+        self.diagram_type = diagram_type
         
         self._register_ports_from_structure()
     
@@ -242,8 +230,6 @@ class Structure:
     def __init__(self, name: str):
         self.name = name
         self.free = True # 默认创建时为自由结构, 若经过框图类型 setup, 在 __new__ 时会被设置为 False
-        
-        # self.determined = False # 推导后确定值 TODO: 写成 @property 用所有 port 的 determined 计算?
         
         self.custom_deduction = None # 自定义类型推导, 用于定义 operator
         self.custom_vhdl = None # 自定义 VHDL 生成, 用于定义 operator
@@ -345,20 +331,30 @@ class Structure:
     
     def deduction(self) -> bool:
         """
-            TODO 可分结构的自动推导, 通过从 structure 和 box 的 port 出发沿 net 的迭代完成.
-            注:
-                (1.) 
-            如果迭代结束还存在 undetermined 类型的信号, 则说明该结构 undetermined (这里是否给了 A[x][y][z] 这样的结构一些存在的可能性? 分步固化?)
+            可分结构的自动推导, 通过从 structure 和 box 的 port 出发沿 net 的迭代完成.
         """
-        if not self.free:
+        if not self.free: # deduction 不负责拷贝例化, 只能对自由结构进行推导
             raise DiagramInstantiationException(f"Only free structure can be deduced")
         
-        # if self.custom_deduction is not None:
-        #     return self.custom_deduction(self)
+        if self.custom_deduction is not None:
+            return self.custom_deduction(self)
         
         pass # TODO
     
     def vhdl(self):
+        """
+            生成 VHDL.
+            注:
+                (1.) 暂时只考虑 VHDL.
+                (2.) 关于 vhdl 方法只接收 structure 作为参数合理性的推导:
+                     operator 内部结构仅有 ports 有意义 => args 只影响 ports 声明 => args 的信息已经在 ports 中体现 (如果涉及复杂的映射那就不管了) => 无需 args
+        """
+        if not self.determined: # 只有确定的结构才能转换为 HDL
+            raise DiagramInstantiationException(f"Only determined structure can be converted to HDL")
+        
+        if self.custom_vhdl is not None:
+            return self.custom_vhdl(self)
+        
         pass # TODO
 
 
@@ -375,15 +371,13 @@ class Diagram(metaclass = DiagramType):
     @classmethod
     def instantiate(cls) -> Structure:
         """
-            TODO 例化, 与框图类型切割, 把 structure_template 深拷贝出来, 返回一个仅表示结构的 Structure 对象
-                    ... 内部也这样递归下来, 框图类型中或许要有地方标注一下类型, 这里就全去掉
-                    ... 分配 inst_name
-                    ... 分布式地存储 net 和 node 导致此处复制的方法需要考虑, 可能也需要搜索
-                            ... 故不一定是完全的复制, 搜索应是从 ports 开始, 不与 ports 以某种方式相连的部分或可认为无意义
+            例化, 与框图类型切割, 把 structure_template 深拷贝出来, 返回一个仅表示结构的 Structure 对象
+                ... 内部也这样递归下来, 框图类型中或许要有地方标注一下类型, 这里就全去掉
+                ... 分配 inst_name
+                ... 分布式地存储 net 和 node 导致此处复制的方法需要考虑, 可能也需要搜索
+                        ... 故不一定是完全的复制, 搜索应是从 ports 开始, 不与 ports 以某种方式相连的部分或可认为无意义
             注:
                 (1.) 统一过程, 继承者不可覆写.
-            TODO [!] 一个问题, 如果有些模板是确定的, 类型推导没有改变它, 那么这个模板在生成代码中是可以复用的.
-                    ... 但例化将结构与框图类型切割, 例如一个确定模板在一个结构中被使用于两处, 例化后难以获知这两处是否来自同一模板, 就难以复用 hdl 文件.
         """
         
         pass # TODO
@@ -404,16 +398,13 @@ def operator(cls):
                 (2.1) 要求类中必须实现 setup(args) 方法, 用于检查参数和声明结构 (基本算子中只管 ports).
                 (2.2) 要求类中必须实现 deduction(s) 方法, 用于类型推导.
                 (2.3) 自动包装 setup 方法, 取使其返回的 structure 对象用 register_deduction 注册 deduction 方法.
-            (3.) 要求类中必须实现 TODO vhdl
-        TODO [!] 一个问题, 基本算子似乎不方便使用 Auto 等不定类型. 因为 hdl 的生成依赖 args 而非仅仅信号类型, 但 args 未被规定一定是信号类型.
-                ... 具体地, 一个不定的基本算子, 类型推导后或可确定信号类型, 但无法获知信号类型如何对应 args, 也就无法获得生成 hdl 的具体 args.
-                ... 是否要特殊化基本算子? 因为 Addition[Auto, Auto] 这种还挺好用的.
-                        ... operator 无内部结构仅声明 ports => args 只影响 ports 声明 => args 的信息已经在 ports 中体现 (如果涉及复杂的映射那就不管你了) => 无需 args
-                        ... => 总结: hdl() 只需要传入 structure (self)
+            (3.) 要求类中必须实现 vhdl(s) 方法, 用于生成 VHDL 代码.
+                (3.1) 自动包装 setup 方法, 取使其返回的 structure 对象用 register_vhdl 注册 vhdl 方法.
+            (4.) 返回类.
     """
     setattr(cls, "is_operator", True) # (1.)
     
-    # TODO
+    pass # TODO
     
     return cls
 
