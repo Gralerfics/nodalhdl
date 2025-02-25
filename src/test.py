@@ -48,3 +48,7 @@ print(eeb.IO.to_dict())
 print(b1.IO.to_dict())
 print(b2.IO.to_dict())
 
+print(b2.IO.op1.located_box.name)
+
+print(b1.structure.determined)
+

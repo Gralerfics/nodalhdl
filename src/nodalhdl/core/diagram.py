@@ -105,7 +105,7 @@ class StructureNode:
         node 指向唯一的 net, net 存有所包含 node 的集合.
         node 指向唯一的 box (如有), box 也存有所有的相关 node (port).
         
-        分析需求:
+        分析需求: TODO to be removed
             (1.) 类型推导: 可以通过遍历每个 port (需要存储推导范围内所有 port), 分别 find,
                     准备好多个类别 (Net) 各自对应一类的 root, find 到哪个就在哪个 Net 记录 fan_in, fan_out 和类型情况,
                     每次迭代需要更新各 net 的驱动情况, 并反映到每个相关的 port (net 中也要记录相连的 port, 以及合法情况下 fan_out 只应有一个, 可专门存),
@@ -133,6 +133,10 @@ class StructureNode:
     
     def __repr__(self):
         return f"<{self.name} ({self.signal_type.__name__})>"
+    
+    @property
+    def determined(self): # 信号类型是否已经确定
+        return self.signal_type.determined
     
     def merge(self, other_node: 'StructureNode'):
         self.located_net.merge_net(other_node.located_net)
@@ -181,8 +185,7 @@ class StructureBox:
         self.diagram_type = None
         
         self.IO_dict = {} # 值为 StructureNode 的引用. 不要直接修改, 除非修改同时置 IO_obj_up_to_date 为 False
-        self.IO_obj: DictObject = DictObject(self.IO_dict) # 不要直接调用, 会延迟更新
-        self.IO_obj_up_to_date = True
+        self.IO_obj_up_to_date = False
 
     def _register_ports_from_structure(self): # 从 self.structure 自动注册端口, 内部方法, 由两个 set_xxx 自动调用
         if self.structure is None:
@@ -192,7 +195,7 @@ class StructureBox:
             if isinstance(d, dict):
                 return {sub_key: _build(sub_val) for sub_key, sub_val in d.items()}
             else: # 正常情况这里一定是 StructureNode, 需要到这一级重新创建
-                return StructureNode(d.name, d.signal_type)
+                return StructureNode(d.name, d.signal_type, located_box = self) # 注意创建时引用所属 box (self)
         
         self.IO_dict = _build(self.structure.EEB.IO_dict)
         self.IO_obj_up_to_date = False
@@ -240,9 +243,10 @@ class Structure:
         self.name = name
         self.free = True # 默认创建时为自由结构, 若经过框图类型 setup, 在 __new__ 时会被设置为 False
         
-        self.determined = False # 推导后确定值 TODO: 写成 @property 用所有 port 的 determined 计算?
+        # self.determined = False # 推导后确定值 TODO: 写成 @property 用所有 port 的 determined 计算?
         
-        # self.custom_deduction = None # 自定义类型推导, 用于定义 operator
+        self.custom_deduction = None # 自定义类型推导, 用于定义 operator
+        self.custom_vhdl = None # 自定义 VHDL 生成, 用于定义 operator
         
         self.boxes = {} # 包含的 boxes
         
@@ -265,8 +269,23 @@ class Structure:
         # TODO 还有与此相似的需求: 是否要允许以 structure.xxx.<name> 的形式 (即类似 box.IO 的对象结构) 引用 boxes 和 nodes/ports?
         pass
     
-    # def register_deduction(self, func):
-    #     self.custom_deduction = func
+    @property
+    def determined(self):
+        port_dict = self.EEB.IO_dict
+    
+        def _search(d):
+            if isinstance(d, dict):
+                return all(_search(sub_val) for sub_val in d.values())
+            else: # StructureNode
+                return d.determined
+        
+        return _search(port_dict)
+    
+    def register_deduction(self, func):
+        self.custom_deduction = func
+    
+    def register_vhdl(self, func):
+        self.custom_vhdl = func
     
     def add_node(self, name: str, signal_type: SignalType):
         """
@@ -289,7 +308,7 @@ class Structure:
         
         def _build(key: str, t: SignalType):
             if t.belongs(IOWrapper):
-                return StructureNode(key, t)
+                return StructureNode(key, t, located_box = self.EEB) # 注意创建时引用所属 box (EEB)
             else: # 必然是 Bundle, 否则通不过 perfectly_io_wrapped
                 return {sub_key: _build(sub_key, sub_t) for sub_key, sub_t in t._bundle_types.items()}
         
@@ -339,7 +358,7 @@ class Structure:
         
         pass # TODO
     
-    def hdl(self) -> str:
+    def vhdl(self):
         pass # TODO
 
 

@@ -23,13 +23,20 @@ class Addition(Diagram): # 带参基本算子示例, 整数加法
         # 声明 IO Ports
         res.add_port("op1", Input[op1_type])
         res.add_port("op2", Input[op2_type])
-        res.add_port("res", Output[Auto]) # Output[UInt[max(op1_type.W, op2_type.W) + 1]])
+        res.add_port("res", Output[Auto])
+        
+        # if op1_type.belongs(Auto) or op2_type.belongs(Auto):
+        #     res.add_port("res", Output[Auto])
+        # else:
+        #     res.add_port("res", Output[UInt[max(op1_type.W, op2_type.W) + 1]])
+        
+        # TODO !!! TODO 在这里 (当然是说 __new__ 里), 锁定前, 运行一遍 deduction, 如果 args 当中没有 Auto 的存在. 这样的话类型名 (由参数和类名得到) 就不会与结构不一致, 例如用于输出 Auto 的情况
         
         return res
     
     def deduction(s: Structure): # @operator 将自动将该函数注册进 structure_template 中
         pass
     
-    def hdl():
+    def vhdl(s: Structure): # @operator 将自动将该函数注册进 structure_template 中
         pass
 
