@@ -244,21 +244,6 @@ class Structure:
         # TODO 还有与此相似的需求: 是否要允许以 structure.xxx.<name> 的形式 (即类似 box.IO 的对象结构) 引用 boxes 和 nodes/ports?
         pass
     
-    def deduction(self) -> bool:
-        """
-            TODO 可分结构的自动推导, 通过从 structure 和 box 的 port 出发沿 net 的迭代完成.
-            注:
-                (1.) 
-            如果迭代结束还存在 undetermined 类型的信号, 则说明该结构 undetermined (这里是否给了 A[x][y][z] 这样的结构一些存在的可能性? 分步固化?)
-        """
-        if not self.instantiated:
-            raise DiagramInstantiationException(f"Instantiation is needed before deduction")
-        
-        if self.custom_deduction is not None:
-            return self.custom_deduction(self)
-        
-        pass # TODO
-    
     def register_deduction(self, func):
         self.custom_deduction = func
     
@@ -313,6 +298,24 @@ class Structure:
         for idx, port in enumerate(ports):
             if idx != 0:
                 ports[0].merge(port)
+    
+    def deduction(self) -> bool:
+        """
+            TODO 可分结构的自动推导, 通过从 structure 和 box 的 port 出发沿 net 的迭代完成.
+            注:
+                (1.) 
+            如果迭代结束还存在 undetermined 类型的信号, 则说明该结构 undetermined (这里是否给了 A[x][y][z] 这样的结构一些存在的可能性? 分步固化?)
+        """
+        if not self.instantiated:
+            raise DiagramInstantiationException(f"Instantiation is needed before deduction")
+        
+        if self.custom_deduction is not None:
+            return self.custom_deduction(self)
+        
+        pass # TODO
+    
+    def hdl(self, module_name: str) -> str:
+        pass # TODO
 
 
 """ Diagram Base """
@@ -360,7 +363,9 @@ def operator(cls):
             (3.) 要求类中必须实现 TODO vhdl
         TODO [!] 一个问题, 基本算子似乎不方便使用 Auto 等不定类型. 因为 hdl 的生成依赖 args 而非仅仅信号类型, 但 args 未被规定一定是信号类型.
                 ... 具体地, 一个不定的基本算子, 类型推导后或可确定信号类型, 但无法获知信号类型如何对应 args, 也就无法获得生成 hdl 的具体 args.
-                ... 是否要特殊化基本算子? 因为 Addition[Auto, Auto] 这种还挺好用的. 让生成 hdl 的函数不仅接收 args 还接收 ports!
+                ... 是否要特殊化基本算子? 因为 Addition[Auto, Auto] 这种还挺好用的.
+                        ... operator 无内部结构仅声明 ports => args 只影响 ports 声明 => args 的信息已经在 ports 中体现 (如果涉及复杂的映射那就不管你了) => 无需 args
+                        ... => 总结: hdl() 只需要传入 structure (self)
     """
     setattr(cls, "is_operator", True) # (1.)
     

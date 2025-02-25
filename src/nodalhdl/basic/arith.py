@@ -25,7 +25,11 @@ class Addition(Diagram): # 带参基本算子示例, 整数加法
         res.add_port("op2", Input[op2_type])
         res.add_port("res", Output[Auto]) # Output[UInt[max(op1_type.W, op2_type.W) + 1]])
         
-        # TODO deduction 如何给出? 现在它在 structure 里了, 应该给个函数接口什么的吧.
-        
         return res
+    
+    def deduction(s: Structure): # @operator 将自动将该函数注册进 structure_template 中
+        pass
+    
+    def hdl():
+        pass
 
