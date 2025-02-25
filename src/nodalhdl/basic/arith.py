@@ -25,18 +25,24 @@ class Addition(Diagram): # 带参基本算子示例, 整数加法
         res.add_port("op2", Input[op2_type])
         res.add_port("res", Output[Auto])
         
-        # if op1_type.belongs(Auto) or op2_type.belongs(Auto):
-        #     res.add_port("res", Output[Auto])
-        # else:
-        #     res.add_port("res", Output[UInt[max(op1_type.W, op2_type.W) + 1]])
-        
-        # TODO !!! TODO 在这里 (当然是说 __new__ 里), 锁定前, 运行一遍 deduction, 如果 args 当中没有 Auto 的存在. 这样的话类型名 (由参数和类名得到) 就不会与结构不一致, 例如用于输出 Auto 的情况
-        
         return res
     
     def deduction(s: Structure): # @operator 将自动将该函数注册进 structure_template 中
-        print("deduction")
-        pass
+        """
+            TODO 除了从确定输入推得确定输出, 还可以:
+                (1.) 从某个确定类型但不确定长度的信号, 推得其他信号类型. # 反之, 确定参数不确定类型的情况就还是不要存在了
+                (2.) 输出长度大于某个输入信号的长度, 则另一个输入信号的长度必等于输出信号的长度.
+        """
+        io = s.EEB.IO
+        op1_type, op2_type = io.op1.signal_type.T, io.op2.signal_type.T
+        
+        if op1_type.belongs(Auto) or op2_type.belongs(Auto):
+            io.res.signal_type = Auto
+        else:
+            if op1_type.belongs(SInt):
+                io.res.signal_type = SInt[max(op1_type.W, op2_type.W) + 1]
+            else:
+                io.res.signal_type = UInt[max(op1_type.W, op2_type.W)]
     
     def vhdl(s: Structure): # @operator 将自动将该函数注册进 structure_template 中
         print("vhdl")

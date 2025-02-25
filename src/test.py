@@ -54,3 +54,5 @@ print(b1.structure.determined)
 
 Addition[UInt8, UInt8].structure_template.custom_vhdl(None)
 
+print(Addition[UInt8, UInt8].structure_template.EEB.IO_dict)
+

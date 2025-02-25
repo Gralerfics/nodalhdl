@@ -1,4 +1,4 @@
-from .signal import SignalType, IOWrapper
+from .signal import SignalType, IOWrapper, Auto
 from .utils import DictObject
 
 import hashlib
@@ -44,7 +44,8 @@ class DiagramType(type):
             try:
                 new_cls.structure_template = setup_func(inst_args) # 生成结构
                 if new_cls.structure_template is not None:
-                    new_cls.structure_template.free = False # 生成的模板非自由结构, 不能再修改
+                    new_cls.structure_template.deduction() # TODO 生成后, 固定前, 进行一次推导, 自动补完与外界无关的省略信息 TODO 注意, 内部万一, 就得例化了.
+                    new_cls.structure_template.lock() # 固定生成的模板为非自由结构, 不能再修改
             except DiagramTypeException as e:
                 raise # [NOTICE] 异常处理, 这里直接全部抛出, 要求用户必须处理无参行为
             
@@ -170,6 +171,13 @@ class StructureBox:
         
         return self.structure.free
     
+    @property
+    def determined(self): # box 的结构是否确定取决于其 structure
+        if self.structure is None:
+            return True # [NOTICE]
+
+        return self.structure.determined
+    
     def reset(self): # 重置 box 状态
         self.structure: Structure = None
         self.diagram_type = None
@@ -231,7 +239,7 @@ class Structure:
     """
     def __init__(self, name: str):
         self.name = name
-        self.free = True # 默认创建时为自由结构, 若经过框图类型 setup, 在 __new__ 时会被设置为 False
+        self.free = True # 默认创建时为自由结构, 若经过框图类型 setup, 在 __new__ 时会被 .lock() 递归锁定
         
         self.custom_deduction = None # 自定义类型推导, 用于定义 operator
         self.custom_vhdl = None # 自定义 VHDL 生成, 用于定义 operator
@@ -268,14 +276,16 @@ class Structure:
                 return d.determined
         
         return _search(port_dict)
-    
-    def copy(self):
+        
+    def lock(self):
         """
-            对结构进行深度复制, 不只是对象的建立, 还需要考虑 nodes 和 net 的关系, 故需要遍历.
-            注意 custom_deduction 和 custom_vhdl 等也需要被复制, 不过函数只需引用即可.
-            复制所得是自由结构.
+            锁定结构, 使其变为非自由结构, 不能再修改.
+            递归锁定该结构以及其下属所有 box 的结构.
         """
-        pass # TODO
+        self.free = False
+        for box in self.boxes.values():
+            if box.structure is not None: # 忽略例如 EEB 这样无结构的 box
+                box.structure.lock()
     
     def register_deduction(self, func):
         self.custom_deduction = func
@@ -339,15 +349,23 @@ class Structure:
             if idx != 0:
                 ports[0].merge(port)
     
+    def expand(self, box: StructureBox):
+        pass # TODO 展开 box 到该 structure 中, 放在 Structure 下吗 (因为将内部 box 移出时要访问外部 boxes)? 或者让 box 记录所属 structure, 这样似乎就可以把该方法放在 StructureBox 中了?
+    
     def deduction(self) -> bool:
         """
             可分结构的自动推导, 通过从 structure 和 box 的 port 出发沿 net 的迭代完成.
+            进行推导的结构必须 free, 但其下 box 的结构可能是锁定的.
+            
+            从所有 box 的 ports 迭代, 处理到 box 的时候看下是否 .determined, 是的话似乎不用做什么;
+            不是的话再看是否 .free, 是的话递归推导, 不是的话先例化 (例化直接递归到 determined 模块), 再递归推导, 推导可能导致 box ports 更新, 更新的 ports 重新加入队列.
+                    ... 所以或许可以不用等碰到了再例化, 而是直接把 boxes 中非 determined 的非 free 的 box 先例化掉.
         """
-        if not self.free: # deduction 不负责拷贝例化, 只能对自由结构进行推导
+        if not self.free:
             raise DiagramInstantiationException(f"Only free structure can be deduced")
         
         if self.custom_deduction is not None:
-            return self.custom_deduction(self)
+            return self.custom_deduction(self) # 基本算子的自定义推导
         
         pass # TODO
     
@@ -362,7 +380,7 @@ class Structure:
         if not self.determined: # 只有确定的结构才能转换为 HDL
             raise DiagramInstantiationException(f"Only determined structure can be converted to HDL")
         
-        if self.custom_vhdl is not None:
+        if self.custom_vhdl is not None: # 基本算子的自定义 VHDL 生成
             return self.custom_vhdl(self)
         
         pass # TODO
@@ -378,6 +396,13 @@ class Diagram(metaclass = DiagramType):
     def __init__(self):
         raise DiagramTypeException(f"Use `.instantiate()` instead if you want to instantiate a Diagram")
     
+    @property
+    def determined(self):
+        if self.structure_template is None:
+            return True # [NOTICE]
+        
+        return self.structure_template.determined
+    
     @classmethod
     def instantiate(cls) -> Structure:
         """
@@ -388,6 +413,10 @@ class Diagram(metaclass = DiagramType):
                         ... 故不一定是完全的复制, 搜索应是从 ports 开始, 不与 ports 以某种方式相连的部分或可认为无意义
             注:
                 (1.) 统一过程, 继承者不可覆写.
+                (2.) 递归例化, 直到 determined 的框图类型.
+                    (2.1) 推导不需要进入或修改 determined 的结构.
+                    (2.2) 保留 determined 的模板结构, 可以复用以及使用预先生成并保存好的 HDL 等.
+                    (2.3) 考虑展开操作, 需要展开时可以再例化, 例化不要求当前结构不是 determined 的.
         """
         
         pass # TODO
@@ -403,7 +432,7 @@ def operator(cls):
     """
         类装饰器 operator, 置于 Diagram 的子类前表明该类为基本算子 (即不可再分, 直接对应 VHDL).
         基本算子也允许 undetermined, 可能出现几种情况:
-            (1.) TODO 关于在 setup 后为无 Auto args 运行 deduction 的设想, 这种情况下如果运行后 determined 了, 就没问题了. 例如用户省略 output 的类型.
+            (1.) 关于在 setup 后运行 deduction, 这种情况下如果运行后 determined 了, 就没问题了. 例如用户省略 output 的类型.
             (2.) 若确确实实就是 undetermined, 那么就需要参与到推导中. 当然, 此时已经例化了.
         其实现:
             (1.) 增加或修改类属性 is_operator 为 True, 作为标记.
