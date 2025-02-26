@@ -181,22 +181,22 @@ class StructureBox:
         if self.structure is None:
             raise DiagramTypeException(f"A structure is needed for automatic port registration")
         
-        def _build(d, update, io_dict = None):
+        def _build(d, update, io = None):
             if isinstance(d, ObjDict):
                 if update:
                     for sub_key, sub_val in d.items():
-                        _build(sub_val, update, io_dict[sub_key])
+                        _build(sub_val, update, io[sub_key])
                 else:
-                    return ObjDict({sub_key: _build(sub_val, update, io_dict) for sub_key, sub_val in d.items()})
+                    return ObjDict({sub_key: _build(sub_val, update, io) for sub_key, sub_val in d.items()})
             else: # StructureNode
                 if update:
-                    io_dict.signal_type = d.signal_type.flip_io()
+                    io.signal_type = d.signal_type.flip_io()
                 else:
                     return StructureNode(d.name, d.signal_type.flip_io(), located_box = self) # 注意创建时引用所属 box (self)
         
-            return io_dict
+            return io
 
-        self.IO = _build(self.structure.EEB.IO, update = update, io_dict = self.IO)
+        self.IO = _build(self.structure.EEB.IO, update = update, io = self.IO)
     
     def set_structure(self, structure: 'Structure'): # 用 structure 重置结构
         self.reset()
@@ -383,11 +383,11 @@ class Structure:
             else: # 必然是 Bundle, 否则通不过 perfectly_io_wrapped
                 return ObjDict({sub_key: _build(sub_key, sub_t) for sub_key, sub_t in t._bundle_types.items()})
         
-        new_port_objdict = _build(name, signal_type) # 提取, 创建 Node, 合成 dict
+        new_port = _build(name, signal_type) # 提取, 创建 Node, 合成 dict
         
-        self.EEB.register_port(name, new_port_objdict) # 注册为 EEB 端口
+        self.EEB.register_port(name, new_port) # 注册为 EEB 端口
         
-        return new_port_objdict if isinstance(new_port_objdict, ObjDict) else new_port_objdict # 返回结构化端口或 StructureNode 对象
+        return new_port if isinstance(new_port, ObjDict) else new_port # 返回结构化端口或 StructureNode 对象
     
     def add_box(self, name: str, arg = None):
         """
