@@ -44,15 +44,19 @@ eeb = s.EEB
 b1 = s.boxes['add_ab']
 b2 = s.boxes['add_abc']
 
-print(eeb.IO.to_dict())
-print(b1.IO.to_dict())
-print(b2.IO.to_dict())
+print("s eeb IO: ", eeb.IO.to_dict())
+print("b1 IO: ", b1.IO.to_dict())
+print("b1 eeb IO: ", b1.structure.EEB.IO.to_dict())
+print("b2 IO: ", b2.IO.to_dict())
 
-print(b2.IO.op1.located_box.name)
+print(b1.IO.op1.located_net.nodes)
+print(b1.IO.res.located_net.nodes)
 
-print(b1.structure.determined)
+# print(b2.IO.op1.located_box.name)
 
-Addition[UInt8, UInt8].structure_template.custom_vhdl(None)
+# print(b1.structure.determined)
 
-print(Addition[UInt8, UInt8].structure_template.EEB.IO_dict)
+# Addition[UInt8, UInt8].structure_template.custom_vhdl(None)
+
+# print(Addition[UInt8, UInt8].structure_template.EEB.IO_dict)
 

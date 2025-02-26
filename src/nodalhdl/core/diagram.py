@@ -122,7 +122,7 @@ class StructureNode:
         self.signal_type = signal_type
     
     def __repr__(self):
-        return f"<{self.name} ({self.signal_type.__name__})>"
+        return f"<{self.name} ({self.signal_type.__name__}, id: {id(self)})>"
     
     @property
     def determined(self): # 信号类型是否已经确定
@@ -188,17 +188,26 @@ class StructureBox:
         self.IO_dict = {} # 值为 StructureNode 的引用. 不要直接修改, 除非修改同时置 IO_obj_up_to_date 为 False
         self.IO_obj_up_to_date = False
 
-    def _register_ports_from_structure(self): # 从 self.structure 自动注册端口, 内部方法, 由两个 set_xxx 自动调用
+    def _register_ports_from_structure(self, update: bool = False): # 从 self.structure 自动注册端口, 内部方法
         if self.structure is None:
             raise DiagramTypeException(f"A structure is needed for automatic port registration")
         
-        def _build(d):
+        def _build(d, update, io_dict = None):
             if isinstance(d, dict):
-                return {sub_key: _build(sub_val) for sub_key, sub_val in d.items()}
-            else: # 正常情况这里一定是 StructureNode, 需要到这一级重新创建
-                return StructureNode(d.name, d.signal_type, located_box = self) # 注意创建时引用所属 box (self)
+                if update:
+                    for sub_key, sub_val in d.items():
+                        _build(sub_val, update, io_dict[sub_key])
+                else:
+                    return {sub_key: _build(sub_val, update, io_dict) for sub_key, sub_val in d.items()}
+            else: # StructureNode
+                if update:
+                    io_dict.signal_type = d.signal_type.flip_io()
+                else:
+                    return StructureNode(d.name, d.signal_type.flip_io(), located_box = self) # 注意创建时引用所属 box (self)
         
-        self.IO_dict = _build(self.structure.EEB.IO_dict)
+            return io_dict
+    
+        self.IO_dict = _build(self.structure.EEB.IO_dict, update = update, io_dict = self.IO_dict)
         self.IO_obj_up_to_date = False
     
     def set_structure(self, structure: 'Structure'): # 用 structure 重置结构
@@ -206,7 +215,15 @@ class StructureBox:
         
         self.structure = structure
         
-        self._register_ports_from_structure()
+        self._register_ports_from_structure(update = False)
+    
+    def update_structure(self, structure: 'Structure'): # 用 structure 更新结构, 原有 IO 中的 StructureNode 是保留的, 只会更新其内容
+        # TODO 检查 structure 是否和现有的 IO 一致, 以及是否无 diagram_type (若有则应该去除, 已经变成了自由结构了)
+        
+        self.diagram_type = None
+        self.structure = structure
+        
+        self._register_ports_from_structure(update = True)
     
     def set_diagram_type(self, diagram_type): # 用 diagram_type 重置结构
         self.reset()
@@ -214,7 +231,7 @@ class StructureBox:
         self.structure = diagram_type.structure_template
         self.diagram_type = diagram_type
         
-        self._register_ports_from_structure()
+        self._register_ports_from_structure(update = False)
     
     def register_port(self, name: str, port_dict):
         """
@@ -309,13 +326,20 @@ class Structure:
                 (2.) 注意例如 custom_deduction 等属性也需要复制, 引用即可.
                 (3.) 不一定是完全的复制, 搜索应是从 ports 开始, 不与 ports 以某种方式相连的部分或可认为无意义.
         """
-        res = None
+        res: Structure = None
         
-        if self.free and in_situ: # 原位局部例化, 当前结构 free, 使用原结构引用
+        if self.free and in_situ: # 原位局部例化, 当前结构 free, 使用原结构引用, 只需要向下递归直至碰到 locked 的结构 TODO 待检查
             res = self
             
-            # TODO
-        else: # 全局例化, 创建新结构
+            for box in self.boxes.values():
+                if box.structure is None:
+                    continue # 无结构 box (例如 EEB) 局部例化中不需要处理
+                
+                if not reserve_safe_structure or not box.determined:
+                    # 不保留安全结构, 或者保留但遇到了非定态的结构, 需要继续深入
+                    box.update_structure(box.structure.instantiate(in_situ = in_situ, reserve_safe_structure = reserve_safe_structure)) # 使用 update 保留原有结构
+        
+        else: # 创建新自由结构, 从此向下递归都是新结构
             res = Structure(self.name)
             
             # 一些需要同步的属性
@@ -323,6 +347,10 @@ class Structure:
             res.custom_vhdl = self.custom_vhdl
         
             # TODO 处理 boxes, 每个 box 判断是否 determined, 是则复制 box 但还是用原 diagram_type 或 structure; 不是则递归例化...
+            
+            # TODO 注意 EEB
+            
+            # TODO 处理 Net
         
         return res
     
@@ -364,7 +392,7 @@ class Structure:
         
         def _build(key: str, t: SignalType):
             if t.belongs(IOWrapper):
-                return StructureNode(key, t, located_box = self.EEB) # 注意创建时引用所属 box (EEB)
+                return StructureNode(key, t.flip_io(), located_box = self.EEB) # 注意创建时引用所属 box (EEB)
             else: # 必然是 Bundle, 否则通不过 perfectly_io_wrapped
                 return {sub_key: _build(sub_key, sub_t) for sub_key, sub_t in t._bundle_types.items()}
         

@@ -36,13 +36,14 @@ class Addition(Diagram): # 带参基本算子示例, 整数加法
         io = s.EEB.IO
         op1_type, op2_type = io.op1.signal_type.T, io.op2.signal_type.T
         
+        # TODO TODO TODO
         if op1_type.belongs(Auto) or op2_type.belongs(Auto):
-            io.res.signal_type = Auto
+            io.res.signal_type = Input[Auto] # TODO EEB 的 IO 是反的
         else:
             if op1_type.belongs(SInt):
-                io.res.signal_type = SInt[max(op1_type.W, op2_type.W) + 1]
+                io.res.signal_type = Input[SInt[max(op1_type.W, op2_type.W) + 1]]
             else:
-                io.res.signal_type = UInt[max(op1_type.W, op2_type.W)]
+                io.res.signal_type = Input[UInt[max(op1_type.W, op2_type.W)]]
     
     def vhdl(s: Structure): # @operator 将自动将该函数注册进 structure_template 中
         print("vhdl")
