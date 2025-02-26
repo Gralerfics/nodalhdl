@@ -122,7 +122,7 @@ class StructureNode:
         self.signal_type = signal_type
     
     def __repr__(self):
-        return f"<{self.name} ({self.signal_type.__name__}, id: {id(self)})>"
+        return f"<Node {self.name} ({self.signal_type.__name__}, id: {id(self)})>"
     
     @property
     def determined(self): # 信号类型是否已经确定
@@ -152,7 +152,7 @@ class StructureBox:
                 (2.2) 如果是用于自定义的固定结构, structure 是 locked 的.
             (3.) 例如 Extern Equivalent Box (EEB), 只需要空 box 模型, 手动添加 IO, structure 为 None.
         Box 是否为自由结构取决于其 structure 的情况.
-        TODO ? Box.IO 与 structure 永远保持一致, 除非 structure 为 None, 仅此时允许手动注册 IO, 否则直接或间接修改 structure 时都会重置 box 的状态, 并自动注册 IO.
+        Box.IO 与 structure 永远保持一致, 除非 structure 为 None, 仅此时允许手动注册 IO, 否则直接或间接修改 structure 时都会重置 box 的状态, 并自动注册 IO.
     """
     def __init__(self, name: str, located_structure: 'Structure' = None):
         self.name = name
@@ -160,6 +160,9 @@ class StructureBox:
         
         self.structure: Structure = None
         self.IO = ObjDict()
+    
+    def __repr__(self):
+        return f"<Box {self.name} (io: {self.IO}, structure: {id(self.structure) if self.structure is not None else 'None'})>"
     
     @property
     def free(self): # box 的自由情况取决于其 structure
@@ -176,7 +179,7 @@ class StructureBox:
 
         return self.structure.determined
     
-    def _register_ports_from_structure(self, update: bool = False): # 从 self.structure 自动注册端口, 内部方法 TODO 待检查
+    def _register_ports_from_structure(self, update: bool = False): # 从 self.structure 自动注册端口, 内部方法
         if self.structure is None:
             raise DiagramTypeException(f"A structure is needed for automatic port registration")
         
@@ -318,12 +321,49 @@ class Structure:
             # 一些需要同步的属性
             res.custom_deduction = self.custom_deduction
             res.custom_vhdl = self.custom_vhdl
-        
-            # TODO 处理 boxes, 每个 box 判断是否 determined, 是则复制 box 但还是用原 diagram_type 或 structure; 不是则递归例化...
+
+            # 遍历 boxes, 复制结构
+            for box in self.boxes.values():
+                map_dict = dict()
+                
+                # 1. 创建新 box
+                new_box = res.add_box(box.name)
+                
+                # 2. 有结构的 box 需要考虑 structure 是否沿用
+                if box.structure is not None:
+                    if not reserve_safe_structure or not box.determined:
+                        # 不保留安全结构, 或者保留但遇到了非定态的结构, 一定递归例化
+                        new_box.set_structure(box.structure.instantiate(in_situ = in_situ, reserve_safe_structure = reserve_safe_structure))
+                    else:
+                        # 安全结构, 可用原先的 structure 引用
+                        new_box.set_structure(box.structure)
             
-            # TODO 注意 EEB
-            
-            # TODO 处理 Net
+                # 3. 建立从 box.IO 到 new_box.IO 的映射, 同时复制无结构 box 的 IO
+                def _build(d, new_d):
+                    if isinstance(d, ObjDict):
+                        for sub_key, sub_val in d.items():
+                            # 如果 new_box.IO 没有对应结构, 说明是无结构 box, 顺带在此创建其 IO 拷贝
+                            if not new_d.get(sub_key, False):
+                                if isinstance(sub_val, ObjDict):
+                                    new_d[sub_key] = ObjDict()
+                                else: # StructureNode
+                                    new_d[sub_key] = StructureNode(sub_key, sub_val.signal_type, located_box = new_box)
+                            
+                            # 递归建立映射
+                            _build(sub_val, new_d[sub_key])
+                    else: # StructureNode
+                        map_dict[d] = new_d
+                        
+                        # 4. 上溯到 net, 无则令 net' = new_d.located_net 并映射, 有则合并 net
+                        net = d.located_net
+                        if net not in map_dict.keys():
+                            map_dict[net] = new_d.located_net
+                        else:
+                            map_dict[net].merge_net(new_d.located_net)
+                
+                _build(box.IO, new_box.IO)
+                
+                # 5. 暂时忽略非 IO 的 node, 它们不影响连接关系, 如需处理可遍历 net
         
         return res
     

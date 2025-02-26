@@ -31,40 +31,56 @@ class TestDiagram(Diagram): # 带参 Diagram 示例
 print('=======================================================')
 
 
-# T = Addition[UInt8, UInt8]
+s = Structure("test")
+
+bi = s.add_port("bi", Bundle[{"i": Input[UInt[2]], "o": Output[Auto]}])
+t = s.add_port("t", Input[UInt[4]])
+n = s.add_port("n", Input[UInt[8]])
+m = s.add_port("m", Input[UInt[8]])
+
+td = s.add_box("td", TestDiagram)
+add_ti = s.add_box("add_ti", Addition[Auto, Auto])
+add_o = s.add_box("add_o", Addition[UInt[8], UInt[8]])
+
+s.connect(n, td.IO.ab.a)
+s.connect(m, td.IO.ab.b)
+s.connect(add_ti.IO.res, td.IO.c)
+
+s.connect(t, add_ti.IO.op1)
+s.connect(bi.i, add_ti.IO.op2)
+
+s.connect(td.IO.z, add_o.IO.op1)
+s.connect(add_ti.IO.res, add_o.IO.op2)
+
+s.connect(add_o.IO.res, bi.o)
+
+
+print('=======================================================')
+
+
+print(s.boxes['td'].structure.boxes['add_ab'].free)
+print(s.boxes['td'].structure.boxes['add_ab'])
+
+ss = s.instantiate(in_situ = False, reserve_safe_structure = False)
+
+print(ss.boxes['td'].structure.boxes['add_ab'].free)
+print(ss.boxes['td'].structure.boxes['add_ab'])
+
+
+print('=======================================================')
+
+
+# T = TestDiagram
 # s = T.structure_template
 
-# print(Addition[Auto, Auto].structure_template.EEB.IO)
+# b1: StructureBox = s.boxes['add_ab']
+# b2: StructureBox = s.boxes['add_abc']
 
-T = TestDiagram
-s = T.structure_template
-print(s.boxes)
+# print("b1: ", b1.IO, '\n', b1.structure.EEB.IO)
+# print("b2: ", b2.IO, '\n', b2.structure.EEB.IO)
 
-eeb = s.EEB
-b1: StructureBox = s.boxes['add_ab']
-b2: StructureBox = s.boxes['add_abc']
+# b1.update_structure(b2.structure)
 
-print("b1: ", b1.IO, '\n', b1.structure.EEB.IO)
-print("b2: ", b2.IO, '\n', b2.structure.EEB.IO)
-
-b1.set_structure(b2.structure)
-
-print("b1: ", b1.IO, '\n', b1.structure.EEB.IO)
-print("b2: ", b2.IO, '\n', b2.structure.EEB.IO)
-
-# print("s eeb IO: ", eeb.IO)
-# print("b1 IO: ", b1.IO)
-# print("b1 eeb IO: ", b1.structure.EEB.IO)
-# print("b2 IO: ", b2.IO)
-
-# print(b1.IO.op1.located_net.nodes)
-# print(b1.IO.res.located_net.nodes)
-
-# print(b2.IO.op1.located_box.name)
-
-# print(b1.structure.determined)
-
-# Addition[UInt8, UInt8].structure_template.custom_vhdl(None)
-
-# print(Addition[UInt8, UInt8].structure_template.EEB.IO_dict)
+# print("b1: ", b1.IO, '\n', b1.structure.EEB.IO)
+# print("b2: ", b2.IO, '\n', b2.structure.EEB.IO)
 
