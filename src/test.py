@@ -44,10 +44,10 @@ eeb = s.EEB
 b1 = s.boxes['add_ab']
 b2 = s.boxes['add_abc']
 
-print("s eeb IO: ", eeb.IO.to_dict())
-print("b1 IO: ", b1.IO.to_dict())
-print("b1 eeb IO: ", b1.structure.EEB.IO.to_dict())
-print("b2 IO: ", b2.IO.to_dict())
+print("s eeb IO: ", eeb.IO)
+print("b1 IO: ", b1.IO)
+print("b1 eeb IO: ", b1.structure.EEB.IO)
+print("b2 IO: ", b2.IO)
 
 print(b1.IO.op1.located_net.nodes)
 print(b1.IO.res.located_net.nodes)

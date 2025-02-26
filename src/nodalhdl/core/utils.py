@@ -19,53 +19,49 @@ def class_attribute_isolator(attrs: list[str]):
     return decorator
 
 
-class DictObject:
+class ObjDict(dict):
     """
-        实例化该类可将字典 d 的结构 (用方括号引用) 转为对象结构 (用点号引用).
+        直接继承 dict, 为其赋予属性访问的能力.
         示例:
-            d = {
-                "a": 1,
-                "b": 2,
-                "c": {
-                    "d": "x",
-                    "e": [5, 6],
-                    "f": {
-                        "g": 1.2,
-                        "h": None
-                    }
-                }
-            }
-            
-            o = DictObject(d)
-            print(o.__dict__)                       # {'a': 1, 'b': 2, 'c': <...DictObject object at ...>}
-            print(o.a)                              # 1
-            print(o.c.d)                            # x
-            o.a = 3
-            print(o.a)                              # 3
-            print(o.to_dict())                      # {'a': 3, 'b': 2, 'c': {'d': 'x', 'e': [5, 6], 'f': {'g': 1.2, 'h': None}}}
+            obj = ObjDict({"a": 1, "b": 2, "c": {"d": 3}})
+
+            print(obj.a)        # 1
+            print(obj.c)        # {'d': 3}
+            print(obj.c.d)      # 3
+
+            obj.a = 100
+            print(obj.a)        # 100
+
+            obj.e = 5
+            print(obj.e)        # 5
+
+            del obj.e
+            print(obj.get('e', None))   # None
+
+            print(obj.items())          # dict_items([('a', 100), ('b', 2), ('c', {'d': 3})])
     """
-    def __init__(self, d: dict):
+    def __init__(self, d: dict = {}):
         for key, value in d.items():
             if isinstance(value, dict):
-                setattr(self, key, DictObject(value))
+                self[key] = ObjDict(value)
             else:
-                setattr(self, key, value)
+                self[key] = value
     
-    def items(self):
-        return self.__dict__.items()
+    def __getattr__(self, name):
+        if name in self:
+            return self[name]
+        else:
+            raise AttributeError(f"\'{self.__class__.__name__}\' object has no attribute \'{name}\'")
 
-    def keys(self):
-        return self.__dict__.keys()
-    
-    def values(self):
-        return self.__dict__.values()
+    def __setattr__(self, name, value):
+        if name in self:
+            self[name] = value
+        else:
+            super().__setattr__(name, value)
 
-    def to_dict(self):
-        res = {}
-        for key, value in self.__dict__.items():
-            if isinstance(value, DictObject):
-                res[key] = value.to_dict()
-            else:
-                res[key] = value
-        return res
+    def __delattr__(self, name):
+        if name in self:
+            del self[name]
+        else:
+            super().__delattr__(name)
 

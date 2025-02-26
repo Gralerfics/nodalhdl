@@ -1,5 +1,5 @@
 from .signal import SignalType, IOWrapper, Auto
-from .utils import DictObject
+from .utils import ObjDict
 
 import hashlib
 
@@ -148,23 +148,13 @@ class StructureBox:
                 (2.2) 如果是用于自定义的固定结构, structure 是 locked 的.
             (3.) 例如 Extern Equivalent Box (EEB), 只需要空 box 模型, 手动添加 IO, structure 为 None.
         Box 是否为自由结构取决于其 structure 的情况.
-        Box.IO 与 structure 永远保持一致, 除非 structure 为 None, 仅此时允许手动注册 IO, 否则直接或间接修改 structure 时都会重置 box 的状态, 并自动注册 IO.
+        TODO ? Box.IO 与 structure 永远保持一致, 除非 structure 为 None, 仅此时允许手动注册 IO, 否则直接或间接修改 structure 时都会重置 box 的状态, 并自动注册 IO.
     """
     def __init__(self, name: str, located_structure: 'Structure' = None):
         self.name = name
-        
         self.located_structure = located_structure
         
         self.reset()
-    
-    @property
-    def IO(self): # 延迟更新, 调用时检查
-        if not self.IO_obj_up_to_date:
-            # del self.IO_obj
-            self.IO_obj = DictObject(self.IO_dict)
-            self.IO_obj_up_to_date = True
-        
-        return self.IO_obj
     
     @property
     def free(self): # box 的自由情况取决于其 structure
@@ -181,24 +171,23 @@ class StructureBox:
 
         return self.structure.determined
     
-    def reset(self): # 重置 box 状态
+    def reset(self): # 重置 box 内容, 所属 structure 保持不变
         self.structure: Structure = None
         self.diagram_type = None
         
-        self.IO_dict = {} # 值为 StructureNode 的引用. 不要直接修改, 除非修改同时置 IO_obj_up_to_date 为 False
-        self.IO_obj_up_to_date = False
+        self.IO = ObjDict()
 
-    def _register_ports_from_structure(self, update: bool = False): # 从 self.structure 自动注册端口, 内部方法
+    def _register_ports_from_structure(self, update: bool = False): # 从 self.structure 自动注册端口, 内部方法 TODO 待检查
         if self.structure is None:
             raise DiagramTypeException(f"A structure is needed for automatic port registration")
         
         def _build(d, update, io_dict = None):
-            if isinstance(d, dict):
+            if isinstance(d, ObjDict):
                 if update:
                     for sub_key, sub_val in d.items():
                         _build(sub_val, update, io_dict[sub_key])
                 else:
-                    return {sub_key: _build(sub_val, update, io_dict) for sub_key, sub_val in d.items()}
+                    return ObjDict({sub_key: _build(sub_val, update, io_dict) for sub_key, sub_val in d.items()})
             else: # StructureNode
                 if update:
                     io_dict.signal_type = d.signal_type.flip_io()
@@ -206,9 +195,8 @@ class StructureBox:
                     return StructureNode(d.name, d.signal_type.flip_io(), located_box = self) # 注意创建时引用所属 box (self)
         
             return io_dict
-    
-        self.IO_dict = _build(self.structure.EEB.IO_dict, update = update, io_dict = self.IO_dict)
-        self.IO_obj_up_to_date = False
+
+        self.IO = _build(self.structure.EEB.IO, update = update, io_dict = self.IO)
     
     def set_structure(self, structure: 'Structure'): # 用 structure 重置结构
         self.reset()
@@ -236,13 +224,12 @@ class StructureBox:
     def register_port(self, name: str, port_dict):
         """
             手动注册端口, 要求 structure 为 None.
-            port_dict 可能为 StructureNode 也可能是结构化存有 StructureNode 的 dict (内部都使用 dict, DictObject 仅方便用户使用).
+            port_dict 可能为 StructureNode 也可能是结构化存有 StructureNode 的 ObjDict.
         """
         if self.structure is not None:
             raise DiagramTypeException(f"IO ports are automatically registered from structure")
         
-        self.IO_dict[name] = port_dict
-        self.IO_obj_up_to_date = False
+        self.IO[name] = port_dict
     
     def expand(self):
         pass # TODO 展开 box 到 located_structure 中. (将内部 box 移出时要访问外部 boxes)
@@ -291,10 +278,10 @@ class Structure:
     
     @property
     def determined(self):
-        port_dict = self.EEB.IO_dict
+        port_dict = self.EEB.IO
     
         def _search(d):
-            if isinstance(d, dict):
+            if isinstance(d, ObjDict):
                 return all(_search(sub_val) for sub_val in d.values())
             else: # StructureNode
                 return d.determined
@@ -385,7 +372,7 @@ class Structure:
         """
             添加端口, 这里仅指 structure 的外显端口.
             独立于 node 进行处理是考虑 ports 需要翻转并附于 External Equivalent Box (EEB) 上 (见前注释, 需为 self.boxes["_extern_equivalent_box"] 注册 IO).
-            signal_type 应为 perfectly IO-wrapped, 这里需要递归提取出以 IO Wrapper 为最小单位的信号, 分别创建 StructureNode 后组成 DictObject 返回.
+            signal_type 应为 perfectly IO-wrapped, 这里需要递归提取出以 IO Wrapper 为最小单位的信号, 分别创建 StructureNode 后组成 ObjDict 返回.
         """
         if not signal_type.perfectly_io_wrapped:
             raise DiagramTypeException(f"Imperfect IO-wrapped signal type cannot be attached to a port")
@@ -394,13 +381,13 @@ class Structure:
             if t.belongs(IOWrapper):
                 return StructureNode(key, t.flip_io(), located_box = self.EEB) # 注意创建时引用所属 box (EEB)
             else: # 必然是 Bundle, 否则通不过 perfectly_io_wrapped
-                return {sub_key: _build(sub_key, sub_t) for sub_key, sub_t in t._bundle_types.items()}
+                return ObjDict({sub_key: _build(sub_key, sub_t) for sub_key, sub_t in t._bundle_types.items()})
         
-        new_port_dict = _build(name, signal_type) # 提取, 创建 Node, 合成 dict
+        new_port_objdict = _build(name, signal_type) # 提取, 创建 Node, 合成 dict
         
-        self.EEB.register_port(name, new_port_dict) # 注册为 EEB 端口
+        self.EEB.register_port(name, new_port_objdict) # 注册为 EEB 端口
         
-        return DictObject(new_port_dict) if isinstance(new_port_dict, dict) else new_port_dict # 返回便于使用的对象结构或 StructureNode 对象
+        return new_port_objdict if isinstance(new_port_objdict, ObjDict) else new_port_objdict # 返回结构化端口或 StructureNode 对象
     
     def add_box(self, name: str, arg = None):
         """
@@ -438,6 +425,8 @@ class Structure:
             从所有 box 的 ports 迭代, 处理到 box 的时候看下是否 .determined, 是的话似乎不用做什么;
             不是的话再看是否 .free, 是的话递归推导, 不是的话先例化 (例化直接递归到 determined 模块), 再递归推导, 推导可能导致 box ports 更新, 更新的 ports 重新加入队列.
                     ... 所以或许可以不用等碰到了再例化, 而是直接把 boxes 中非 determined 的非 free 的 box 先例化掉.
+            
+            [!] 进入 box 继续 deduction 前, 需要将 box.IO 同步到 box.structure.EEB.IO; deduction 后, 需要反向同步.
         """
         if not self.free:
             raise DiagramInstantiationException(f"Only free structure can be deduced. You can call .instantiate() to get a free structure")

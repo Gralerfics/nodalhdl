@@ -262,3 +262,54 @@ def use_setmgr_node(cls):
     
     return cls
 
+
+class DictObject:
+    """
+        实例化该类可将字典 d 的结构 (用方括号引用) 转为对象结构 (用点号引用).
+        示例:
+            d = {
+                "a": 1,
+                "b": 2,
+                "c": {
+                    "d": "x",
+                    "e": [5, 6],
+                    "f": {
+                        "g": 1.2,
+                        "h": None
+                    }
+                }
+            }
+            
+            o = DictObject(d)
+            print(o.__dict__)                       # {'a': 1, 'b': 2, 'c': <...DictObject object at ...>}
+            print(o.a)                              # 1
+            print(o.c.d)                            # x
+            o.a = 3
+            print(o.a)                              # 3
+            print(o.to_dict())                      # {'a': 3, 'b': 2, 'c': {'d': 'x', 'e': [5, 6], 'f': {'g': 1.2, 'h': None}}}
+    """
+    def __init__(self, d: dict):
+        for key, value in d.items():
+            if isinstance(value, dict):
+                setattr(self, key, DictObject(value))
+            else:
+                setattr(self, key, value)
+    
+    def items(self):
+        return self.__dict__.items()
+
+    def keys(self):
+        return self.__dict__.keys()
+    
+    def values(self):
+        return self.__dict__.values()
+
+    def to_dict(self):
+        res = {}
+        for key, value in self.__dict__.items():
+            if isinstance(value, DictObject):
+                res[key] = value.to_dict()
+            else:
+                res[key] = value
+        return res
+
