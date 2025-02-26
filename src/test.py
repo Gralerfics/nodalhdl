@@ -15,7 +15,7 @@ class TestDiagram(Diagram): # 带参 Diagram 示例
         z = res.add_port("z", Output[Auto])
         
         # 添加 Box
-        add_ab = res.add_box("add_ab", Addition[UInt[8], Auto])
+        add_ab = res.add_box("add_ab", Addition[UInt[8], UInt[8]])
         add_abc = res.add_box("add_abc", Addition[Auto, Auto])
         
         # 添加连接关系 / 非 IO 节点

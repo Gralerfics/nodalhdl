@@ -143,14 +143,18 @@ class StructureBox:
     """
         装有结构或框图类型的容器, 作为 structure 的子模块.
         Box 存在多种使用场景:
-            (1.) 创建框图类型时, 在 setup 中使用 add_box, 传入 diagram_type.
+            (1.) 创建框图类型时, 在 setup 中使用 add_box, 传入 diagram_type. 这种情况下 structure 指向 diagram_type 的 structure_template, 必然是 locked (non-free) 的.
             (2.) 例如例化时, 可能需要创建普通 box, 直接装入 structure.
+                (2.1) 如果是复制所得自由结构, structure 是 free 的.
+                (2.2) 如果是用于自定义的固定结构, structure 是 locked 的.
             (3.) 例如 Extern Equivalent Box (EEB), 只需要空 box 模型, 手动添加 IO, structure 为 None.
         Box 是否为自由结构取决于其 structure 的情况.
         Box.IO 与 structure 永远保持一致, 除非 structure 为 None, 仅此时允许手动注册 IO, 否则直接或间接修改 structure 时都会重置 box 的状态, 并自动注册 IO.
     """
-    def __init__(self, name: str):
+    def __init__(self, name: str, located_structure: 'Structure' = None):
         self.name = name
+        
+        self.located_structure = located_structure
         
         self.reset()
     
@@ -223,6 +227,9 @@ class StructureBox:
         
         self.IO_dict[name] = port_dict
         self.IO_obj_up_to_date = False
+    
+    def expand(self):
+        pass # TODO 展开 box 到 located_structure 中. (将内部 box 移出时要访问外部 boxes)
 
 class Structure:
     """
@@ -236,6 +243,7 @@ class Structure:
         
         structure 具有 free 属性, 用于判断是否为自由结构, 即不依赖于框图类型. 非自由结构是只读的, 要修改必须先拷贝.
                 ... TODO 添加措施强制不可修改非自由结构.
+        自由结构不代表内部所有部分都自由, 例如 box 可能是 locked 的, 但 structure 本身是 free 的. 此时可以修改 structure 的结构, 但不能修改 box 的内部结构.
     """
     def __init__(self, name: str):
         self.name = name
@@ -276,11 +284,51 @@ class Structure:
                 return d.determined
         
         return _search(port_dict)
+    
+    def instantiate(self): # , mode = "deep"):
+        """
+            复制当前结构, 返回一个新的自由的结构.
+            明明就是例化 ...
+            
+            主要是针对 box 的不同情况:
+                (1.) box 是 determined 的, 则可能考虑创建新 box 但仍然使用原 diagram_type 或 structure (需要复用时), 或递归复制下去 (需要拆其结构时).
+                (2.) box 非 determined:
+                    (1.1) box 包裹的是 diagram_type, 那么必然是 non-free 的, 此时可能考虑创建新 box 但仍然使用原 diagram_type (不知道做什么用), 或递归复制下去 (例如推导需要修改信号类型时).
+                    (1.2) box 包裹的是 structure:
+                        (1.2.1) structure 是 free 的, 那么递归复制下去即可. 这里不能复制引用因为 copy 就是为了得到一个独立的结构.
+                        (1.2.2) structure 是 locked 的, 那么可能考虑创建新 box 但仍然使用原 structure (不知道做什么用), 或递归复制下去 (例如推导需要修改信号类型时). 类似 (1.1), 但一个是 DiagramType, 一个是 Structure.
+            总而言之, 需要进行修改的部分就要递归复制, 根据修改的需求决定复制模式.
+            
+            复制模式可以有多种:
+                (1.) 目前暂时只考虑例化复制 (只需要修改 undetermined 的部分), 即递归复制直至 determined 的结构.
+                    ... 向上考虑, 什么情况下有些 undetermined 的部分不需要修改? 没有.
+                    ... 向下考虑, 什么情况下有些 determined 的部分需要修改? 只有流水化等需要 expand 的场景.
+                    ... 故递归复制直至 determined 的结构是合理的.
+                (2.) 还可以考虑的模式是, 外层 free 的 structure 无需复制. 例如 deduction 运行在例化后的结构上, 全部复制有些浪费. 或可称局部例化复制.
+                (3.) 以及全复制, 上至 free structure, 下至无 box 结构, 全部复制.
+            
+            注:
+                (1.) 注意例如 custom_deduction 等属性也需要复制, 引用即可.
+                (2.) 不一定是完全的复制, 搜索应是从 ports 开始, 不与 ports 以某种方式相连的部分或可认为无意义.
+        """
+        res = Structure(self.name) # 创建
         
+        # 一些需要同步的属性
+        res.custom_deduction = self.custom_deduction
+        res.custom_vhdl = self.custom_vhdl
+        
+        # TODO 处理 boxes, 每个 box 判断是否 determined, 是则复制 box 但还是用原 diagram_type 或 structure; 不是则递归例化...
+        
+        
+        # TODO
+        
+        return res
+    
     def lock(self):
         """
             锁定结构, 使其变为非自由结构, 不能再修改.
             递归锁定该结构以及其下属所有 box 的结构.
+            目前的 locked 某种意义上就是将 structure 作为一个可复用的模板了, 可以是用户自定义的, 或是使用 setup 生成的.
         """
         self.free = False
         for box in self.boxes.values():
@@ -329,7 +377,8 @@ class Structure:
             添加盒子, 创建后加入 boxes 并返回即可.
             可传入 diagram_type 或 structure, 用于确定 box 的结构.
         """
-        new_box = StructureBox(name)
+        new_box = StructureBox(name, located_structure = self) # 注意引用所属 structure (self)
+        
         if isinstance(arg, DiagramType):
             new_box.set_diagram_type(arg)
         elif isinstance(arg, Structure):
@@ -348,9 +397,6 @@ class Structure:
         for idx, port in enumerate(ports):
             if idx != 0:
                 ports[0].merge(port)
-    
-    def expand(self, box: StructureBox):
-        pass # TODO 展开 box 到该 structure 中, 放在 Structure 下吗 (因为将内部 box 移出时要访问外部 boxes)? 或者让 box 记录所属 structure, 这样似乎就可以把该方法放在 StructureBox 中了?
     
     def deduction(self) -> bool:
         """
@@ -406,20 +452,10 @@ class Diagram(metaclass = DiagramType):
     @classmethod
     def instantiate(cls) -> Structure:
         """
-            例化, 与框图类型切割, 把 structure_template 深拷贝出来, 返回一个仅表示结构的 Structure 对象
-                ... 内部也这样递归下来, 框图类型中或许要有地方标注一下类型, 这里就全去掉
-                ... 分配 inst_name
-                ... 分布式地存储 net 和 node 导致此处复制的方法需要考虑, 可能也需要搜索
-                        ... 故不一定是完全的复制, 搜索应是从 ports 开始, 不与 ports 以某种方式相连的部分或可认为无意义
-            注:
-                (1.) 统一过程, 继承者不可覆写.
-                (2.) 递归例化, 直到 determined 的框图类型.
-                    (2.1) 推导不需要进入或修改 determined 的结构.
-                    (2.2) 保留 determined 的模板结构, 可以复用以及使用预先生成并保存好的 HDL 等.
-                    (2.3) 考虑展开操作, 需要展开时可以再例化, 例化不要求当前结构不是 determined 的.
+            例化, 获得一个自由结构用于修改, 继承者不可覆写.
+            本质上只是调用 structure_template 的 instantiate 方法.
         """
-        
-        pass # TODO
+        return cls.structure_template.instantiate()
     
     @staticmethod
     def setup(args: tuple = ()) -> Structure:
