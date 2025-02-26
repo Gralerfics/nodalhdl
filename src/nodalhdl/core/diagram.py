@@ -137,6 +137,10 @@ class StructureNode:
         
         self.located_net.remove_node(self)
         StructureNet().add_node(self)
+    
+    def delete(self):
+        self.located_net.remove_node(self)
+        del self
 
 class StructureBox:
     """
@@ -154,7 +158,8 @@ class StructureBox:
         self.name = name
         self.located_structure = located_structure
         
-        self.reset()
+        self.structure: Structure = None
+        self.IO = ObjDict()
     
     @property
     def free(self): # box 的自由情况取决于其 structure
@@ -171,12 +176,6 @@ class StructureBox:
 
         return self.structure.determined
     
-    def reset(self): # 重置 box 内容, 所属 structure 保持不变
-        self.structure: Structure = None
-        self.diagram_type = None
-        
-        self.IO = ObjDict()
-
     def _register_ports_from_structure(self, update: bool = False): # 从 self.structure 自动注册端口, 内部方法 TODO 待检查
         if self.structure is None:
             raise DiagramTypeException(f"A structure is needed for automatic port registration")
@@ -195,31 +194,18 @@ class StructureBox:
                     return StructureNode(d.name, d.signal_type.flip_io(), located_box = self) # 注意创建时引用所属 box (self)
         
             return io
-
+        
         self.IO = _build(self.structure.EEB.IO, update = update, io = self.IO)
     
     def set_structure(self, structure: 'Structure'): # 用 structure 重置结构
-        self.reset()
-        
+        self.IO = ObjDict()
         self.structure = structure
-        
         self._register_ports_from_structure(update = False)
     
     def update_structure(self, structure: 'Structure'): # 用 structure 更新结构, 原有 IO 中的 StructureNode 是保留的, 只会更新其内容
-        # TODO 检查 structure 是否和现有的 IO 一致, 以及是否无 diagram_type (若有则应该去除, 已经变成了自由结构了)
-        
-        self.diagram_type = None
+        # TODO 检查 structure 是否和现有的 IO 一致
         self.structure = structure
-        
         self._register_ports_from_structure(update = True)
-    
-    def set_diagram_type(self, diagram_type): # 用 diagram_type 重置结构
-        self.reset()
-        
-        self.structure = diagram_type.structure_template
-        self.diagram_type = diagram_type
-        
-        self._register_ports_from_structure(update = False)
     
     def register_port(self, name: str, port_dict):
         """
@@ -371,8 +357,10 @@ class Structure:
     def add_port(self, name: str, signal_type: SignalType):
         """
             添加端口, 这里仅指 structure 的外显端口.
-            独立于 node 进行处理是考虑 ports 需要翻转并附于 External Equivalent Box (EEB) 上 (见前注释, 需为 self.boxes["_extern_equivalent_box"] 注册 IO).
-            signal_type 应为 perfectly IO-wrapped, 这里需要递归提取出以 IO Wrapper 为最小单位的信号, 分别创建 StructureNode 后组成 ObjDict 返回.
+            signal_type 应为 perfectly IO-wrapped 的, 这里需要递归提取出以 IO Wrapper 为最小单位的信号, 分别创建 StructureNode 后组成 ObjDict 返回.
+            注:
+                (1.) 理论上这里可以设计成直接用字典替代 Bundle 结构, 但为了保持一致性, 也便于验证, 还是传 SignalType.
+                (2.) 独立于 add_node 进行处理是考虑 ports 需要翻转并附于 External Equivalent Box (EEB) 上 (见前注释, 需为 self.EEB 注册 IO).
         """
         if not signal_type.perfectly_io_wrapped:
             raise DiagramTypeException(f"Imperfect IO-wrapped signal type cannot be attached to a port")
@@ -383,11 +371,11 @@ class Structure:
             else: # 必然是 Bundle, 否则通不过 perfectly_io_wrapped
                 return ObjDict({sub_key: _build(sub_key, sub_t) for sub_key, sub_t in t._bundle_types.items()})
         
-        new_port = _build(name, signal_type) # 提取, 创建 Node, 合成 dict
+        new_port = _build(name, signal_type)
         
         self.EEB.register_port(name, new_port) # 注册为 EEB 端口
         
-        return new_port if isinstance(new_port, ObjDict) else new_port # 返回结构化端口或 StructureNode 对象
+        return new_port # 返回结构化端口或 StructureNode 对象
     
     def add_box(self, name: str, arg = None):
         """
@@ -397,7 +385,7 @@ class Structure:
         new_box = StructureBox(name, located_structure = self) # 注意引用所属 structure (self)
         
         if isinstance(arg, DiagramType):
-            new_box.set_diagram_type(arg)
+            new_box.set_structure(arg.structure_template)
         elif isinstance(arg, Structure):
             new_box.set_structure(arg)
         

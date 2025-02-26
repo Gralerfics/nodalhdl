@@ -1,5 +1,5 @@
 from nodalhdl.core.signal import UInt, SInt, Bits, Bit, Bundle, UInt8, Input, Output, Auto
-from nodalhdl.core.diagram import Diagram, Structure
+from nodalhdl.core.diagram import Diagram, Structure, StructureBox
 from nodalhdl.basic.arith import Addition
 
 
@@ -34,23 +34,31 @@ print('=======================================================')
 # T = Addition[UInt8, UInt8]
 # s = T.structure_template
 
-# print(s.EEB.IO.res.signal_type.determined)
+# print(Addition[Auto, Auto].structure_template.EEB.IO)
 
 T = TestDiagram
 s = T.structure_template
 print(s.boxes)
 
 eeb = s.EEB
-b1 = s.boxes['add_ab']
-b2 = s.boxes['add_abc']
+b1: StructureBox = s.boxes['add_ab']
+b2: StructureBox = s.boxes['add_abc']
 
-print("s eeb IO: ", eeb.IO)
-print("b1 IO: ", b1.IO)
-print("b1 eeb IO: ", b1.structure.EEB.IO)
-print("b2 IO: ", b2.IO)
+print("b1: ", b1.IO, '\n', b1.structure.EEB.IO)
+print("b2: ", b2.IO, '\n', b2.structure.EEB.IO)
 
-print(b1.IO.op1.located_net.nodes)
-print(b1.IO.res.located_net.nodes)
+b1.set_structure(b2.structure)
+
+print("b1: ", b1.IO, '\n', b1.structure.EEB.IO)
+print("b2: ", b2.IO, '\n', b2.structure.EEB.IO)
+
+# print("s eeb IO: ", eeb.IO)
+# print("b1 IO: ", b1.IO)
+# print("b1 eeb IO: ", b1.structure.EEB.IO)
+# print("b2 IO: ", b2.IO)
+
+# print(b1.IO.op1.located_net.nodes)
+# print(b1.IO.res.located_net.nodes)
 
 # print(b2.IO.op1.located_box.name)
 
