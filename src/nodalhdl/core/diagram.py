@@ -27,9 +27,7 @@ class DiagramType(type):
             注:
                 (1.) 框图类型具有唯一性, 在 diagram_type_pool 中进行去重.
                 (2.) 框图类型一旦创建, 会且仅会在创建中执行一次 setup, structure_template 由此固定 (*).
-                (3.) 框图类型创建过程中, 结构固定前, 不应该运行 deduction, 因为: TODO 有变动, 见 Addition 的 `TOD O !!! TOD O`
-                    (a.) 此举会破坏类型名 (即基类名和参数) 和结构之间的直接对应关系 (由 setup 定义).
-                    (b.) deduction 目前规定为只可在例化后的 structure 上进行.
+                (3.) 框图类型创建过程中, 结构固定前, 将原位局部非定态例化并运行一次 deduction.
         """
         inst_args = attr.get("instantiation_arguments", ()) # 获取可能从 __getitem__ 传来的参数, 无则默认为空
         
@@ -44,7 +42,8 @@ class DiagramType(type):
             try:
                 new_cls.structure_template = setup_func(inst_args) # 生成结构
                 if new_cls.structure_template is not None:
-                    new_cls.structure_template.deduction() # TODO 生成后, 固定前, 进行一次推导, 自动补完与外界无关的省略信息 TODO 注意, 内部万一, 就得例化了.
+                    new_cls.structure_template = new_cls.structure_template.instantiate(in_situ = True, reserve_safe_structure = True) # 原位局部非定态例化, 将可能需要修改的 undetermined 部分例化, 为推导做准备
+                    new_cls.structure_template.deduction() # 生成后, 固定前, 进行一次推导, 自动补完与外界无关的省略信息, 理论上经过上一步的例化, 这里内部不会再需要例化
                     new_cls.structure_template.lock() # 固定生成的模板为非自由结构, 不能再修改
             except DiagramTypeException as e:
                 raise # [NOTICE] 异常处理, 这里直接全部抛出, 要求用户必须处理无参行为
@@ -285,42 +284,45 @@ class Structure:
         
         return _search(port_dict)
     
-    def instantiate(self): # , mode = "deep"):
+    def instantiate(self, in_situ: bool = True, reserve_safe_structure: bool = True):
         """
-            复制当前结构, 返回一个新的自由的结构.
-            明明就是例化 ...
-            
-            主要是针对 box 的不同情况:
-                (1.) box 是 determined 的, 则可能考虑创建新 box 但仍然使用原 diagram_type 或 structure (需要复用时), 或递归复制下去 (需要拆其结构时).
-                (2.) box 非 determined:
-                    (1.1) box 包裹的是 diagram_type, 那么必然是 non-free 的, 此时可能考虑创建新 box 但仍然使用原 diagram_type (不知道做什么用), 或递归复制下去 (例如推导需要修改信号类型时).
-                    (1.2) box 包裹的是 structure:
-                        (1.2.1) structure 是 free 的, 那么递归复制下去即可. 这里不能复制引用因为 copy 就是为了得到一个独立的结构.
-                        (1.2.2) structure 是 locked 的, 那么可能考虑创建新 box 但仍然使用原 structure (不知道做什么用), 或递归复制下去 (例如推导需要修改信号类型时). 类似 (1.1), 但一个是 DiagramType, 一个是 Structure.
-            总而言之, 需要进行修改的部分就要递归复制, 根据修改的需求决定复制模式.
-            
-            复制模式可以有多种:
-                (1.) 目前暂时只考虑例化复制 (只需要修改 undetermined 的部分), 即递归复制直至 determined 的结构.
-                    ... 向上考虑, 什么情况下有些 undetermined 的部分不需要修改? 没有.
-                    ... 向下考虑, 什么情况下有些 determined 的部分需要修改? 只有流水化等需要 expand 的场景.
-                    ... 故递归复制直至 determined 的结构是合理的.
-                (2.) 还可以考虑的模式是, 外层 free 的 structure 无需复制. 例如 deduction 运行在例化后的结构上, 全部复制有些浪费. 或可称局部例化复制.
-                (3.) 以及全复制, 上至 free structure, 下至无 box 结构, 全部复制.
-            
+            例化当前结构.
             注:
-                (1.) 注意例如 custom_deduction 等属性也需要复制, 引用即可.
-                (2.) 不一定是完全的复制, 搜索应是从 ports 开始, 不与 ports 以某种方式相连的部分或可认为无意义.
+                (1.) 在此拓展 `例化` 之概念, 不是只有 DiagramType 才算模板, 可以例化, 用户自定义的 non-free structure 也是模板, 也可以例化.
+                     区别在于前者允许以参数化的方式创建结构 (setup), 后者则是直接靠用户搭建.
+                     前者是基于后者的, 因为前者创建后得到的 structure_template 也是一个 non-free structure, 所以 `例化` 正统在 Structure.
+                     由此需要对例化作出一些分类:
+                    (1.1) 向上考虑 (注意, lock 操作是递归的, non-free structure 下必然都是 non-free 的; determined 也是类似, determined 的结构下必然都是 determined 的):
+                        (1.1.1) 原位局部例化: 浅层 free 的部分不复制, 就在原地修改, 返回原 structure 的引用.
+                                考虑的是例如 setup 中的 deduction 场景, 结构已经是新建的.
+                                (in_situ = True)
+                        (1.1.2) 全局例化: 返回的 structure 是一个全新的结构.
+                                (in_situ = False)
+                    (1.2) 向下考虑 (注意, 只有 locked 的结构才能被多处引用, 因为 locked 之后才能保证不被修改, 是安全的):
+                        (1.2.0) 注意, in_situ 优先于 reserve_safe_structure.
+                                例如若 in_situ 为 True, 在非定态例化中碰到 undetermined 但 free 的结构, 也不会例化, 保留原结构.
+                        (1.2.1) 非定态例化: 只例化 undetermined 的部分, 保留 determined 的部分.
+                                例化的目的是创建一个用于修改而不影响原结构的结构, 故此处的考虑就是在推导场景下, 只例化需要修改的部分.
+                                (reserve_safe_structure = True)
+                        (1.2.2) 深度例化: 深层 determined 且 locked 部分也例化.
+                                (reserve_safe_structure = False)
+                (2.) 注意例如 custom_deduction 等属性也需要复制, 引用即可.
+                (3.) 不一定是完全的复制, 搜索应是从 ports 开始, 不与 ports 以某种方式相连的部分或可认为无意义.
         """
-        res = Structure(self.name) # 创建
+        res = None
         
-        # 一些需要同步的属性
-        res.custom_deduction = self.custom_deduction
-        res.custom_vhdl = self.custom_vhdl
+        if self.free and in_situ: # 原位局部例化, 当前结构 free, 使用原结构引用
+            res = self
+            
+            # TODO
+        else: # 全局例化, 创建新结构
+            res = Structure(self.name)
+            
+            # 一些需要同步的属性
+            res.custom_deduction = self.custom_deduction
+            res.custom_vhdl = self.custom_vhdl
         
-        # TODO 处理 boxes, 每个 box 判断是否 determined, 是则复制 box 但还是用原 diagram_type 或 structure; 不是则递归例化...
-        
-        
-        # TODO
+            # TODO 处理 boxes, 每个 box 判断是否 determined, 是则复制 box 但还是用原 diagram_type 或 structure; 不是则递归例化...
         
         return res
     
@@ -401,19 +403,21 @@ class Structure:
     def deduction(self) -> bool:
         """
             可分结构的自动推导, 通过从 structure 和 box 的 port 出发沿 net 的迭代完成.
-            进行推导的结构必须 free, 但其下 box 的结构可能是锁定的.
+            
+            进行推导的结构必须 free, 而只有 determined 的结构不会被继续递归调用 deduction;
+            这意味着推导不应该碰到 non-free 的 undetermined 结构, 所以在推导前需要先进行一次例化 (建议原位局部非定态), 这可以将所有 undetermined 部分例化为 free 的.
             
             从所有 box 的 ports 迭代, 处理到 box 的时候看下是否 .determined, 是的话似乎不用做什么;
             不是的话再看是否 .free, 是的话递归推导, 不是的话先例化 (例化直接递归到 determined 模块), 再递归推导, 推导可能导致 box ports 更新, 更新的 ports 重新加入队列.
                     ... 所以或许可以不用等碰到了再例化, 而是直接把 boxes 中非 determined 的非 free 的 box 先例化掉.
         """
         if not self.free:
-            raise DiagramInstantiationException(f"Only free structure can be deduced")
+            raise DiagramInstantiationException(f"Only free structure can be deduced. You can call .instantiate() to get a free structure")
         
         if self.custom_deduction is not None:
             return self.custom_deduction(self) # 基本算子的自定义推导
         
-        pass # TODO
+        # TODO
     
     def vhdl(self):
         """
@@ -429,7 +433,7 @@ class Structure:
         if self.custom_vhdl is not None: # 基本算子的自定义 VHDL 生成
             return self.custom_vhdl(self)
         
-        pass # TODO
+        # TODO
 
 
 """ Diagram Base """
@@ -450,12 +454,12 @@ class Diagram(metaclass = DiagramType):
         return self.structure_template.determined
     
     @classmethod
-    def instantiate(cls) -> Structure:
+    def instantiate(cls, reserve_safe_structure = True) -> Structure:
         """
             例化, 获得一个自由结构用于修改, 继承者不可覆写.
-            本质上只是调用 structure_template 的 instantiate 方法.
+            本质上只是调用 structure_template 的 instantiate 方法 (见 Structure.instantiate 注释).
         """
-        return cls.structure_template.instantiate()
+        return cls.structure_template.instantiate(in_situ = False, reserve_safe_structure = reserve_safe_structure)
     
     @staticmethod
     def setup(args: tuple = ()) -> Structure:
