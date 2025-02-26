@@ -58,11 +58,13 @@ s.connect(add_o.IO.res, bi.o)
 print('=======================================================')
 
 
+print(id(s))
 print(s.boxes['td'].structure.boxes['add_ab'].free)
 print(s.boxes['td'].structure.boxes['add_ab'])
 
-ss = s.instantiate(in_situ = False, reserve_safe_structure = False)
+ss = s.instantiate(in_situ = True, reserve_safe_structure = True)
 
+print(id(ss))
 print(ss.boxes['td'].structure.boxes['add_ab'].free)
 print(ss.boxes['td'].structure.boxes['add_ab'])
 

@@ -200,15 +200,15 @@ class StructureBox:
         
         self.IO = _build(self.structure.EEB.IO, update = update, io = self.IO)
     
-    def set_structure(self, structure: 'Structure'): # 用 structure 重置结构
-        self.IO = ObjDict()
+    def set_structure(self, structure: 'Structure', update: bool = False): # 用 structure 重置结构
+        if update:
+            pass # TODO 检查 structure 是否和现有的 IO 一致
+        
+        if not update:
+            self.IO = ObjDict()
+        
         self.structure = structure
-        self._register_ports_from_structure(update = False)
-    
-    def update_structure(self, structure: 'Structure'): # 用 structure 更新结构, 原有 IO 中的 StructureNode 是保留的, 只会更新其内容
-        # TODO 检查 structure 是否和现有的 IO 一致
-        self.structure = structure
-        self._register_ports_from_structure(update = True)
+        self._register_ports_from_structure(update = update)
     
     def register_port(self, name: str, port_dict):
         """
@@ -304,7 +304,7 @@ class Structure:
         """
         res: Structure = None
         
-        if self.free and in_situ: # 原位局部例化, 当前结构 free, 使用原结构引用, 只需要向下递归直至碰到 locked 的结构 TODO 待检查
+        if self.free and in_situ: # 原位局部例化, 当前结构 free, 使用原结构引用, 只需要向下递归直至碰到 locked 的结构
             res = self
             
             for box in self.boxes.values():
@@ -313,7 +313,7 @@ class Structure:
                 
                 if not reserve_safe_structure or not box.determined:
                     # 不保留安全结构, 或者保留但遇到了非定态的结构, 需要继续深入
-                    box.update_structure(box.structure.instantiate(in_situ = in_situ, reserve_safe_structure = reserve_safe_structure)) # 使用 update 保留原有结构
+                    box.set_structure(box.structure.instantiate(in_situ = in_situ, reserve_safe_structure = reserve_safe_structure), update = True) # 使用 update 保留原有结构
         
         else: # 创建新自由结构, 从此向下递归都是新结构
             res = Structure(self.name)
