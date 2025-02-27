@@ -160,7 +160,7 @@ class SignalType(type):
             用在需要将无 IO 类型推导结果应用到 port 信号类型上的情况.
             但实际上用到这个方法的信号类型应该都只有最外层有 IO Wrapper, 写个通用的吧.
             [!] 不对, 好像用不着这个方法, deduction 前后双向同步时, 直接同步 net 的 runtime 信息即可; 生成 vhdl 时用 port 的结构对着 runtime 信息查询即可.
-            先留着位置吧.
+            [!!] 用得到, 在 deduction 的 modify_origin 模式 (将推导结果直接应用到 origin_signal_type 上) 时.
         """
         pass # [NOTICE]
 

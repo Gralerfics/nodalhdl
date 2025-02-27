@@ -45,7 +45,7 @@ class DiagramType(type):
                 new_cls.structure_template = setup_func(inst_args) # 生成结构
                 if new_cls.structure_template is not None:
                     new_cls.structure_template = new_cls.structure_template.instantiate(in_situ = True, reserve_safe_structure = True) # 原位局部非定态例化, 将可能需要修改的 undetermined 部分例化, 为推导做准备
-                    new_cls.structure_template.deduction(directly_modify_signal_type = True) # 生成后固定前进行一次推导, 自动补完与外界无关的省略信息, 并且直接修改信号类型原始值
+                    new_cls.structure_template.deduction(modify_origin = True) # 生成后固定前进行一次推导, 自动补完与外界无关的省略信息, 并且直接修改信号类型原始值
                     new_cls.structure_template.lock() # 固定生成的模板为非自由结构, 不能再修改
             except DiagramTypeException as e:
                 raise # [NOTICE] 异常处理, 这里直接全部抛出, 要求用户必须处理无参行为
@@ -349,6 +349,32 @@ class StructureBox:
         
         self.IO[name] = port_dict
     
+    def deduction(self, modify_origin: bool = False):
+        """
+            对 box 下的 structure 进行类型推导.
+            由于 box.IO 与 structure.EEB.IO 对应,
+        """
+        if self.structure is None:
+            return
+        
+        def _update(from_d, to_d): # 遍历 .IO, 将 from_d 的 runtime 信息更新到 to_d
+            if isinstance(from_d, ObjDict):
+                for sub_key, sub_val in from_d.items():
+                    _update(sub_val, to_d[sub_key])
+            else: # StructureNode
+                to_d.located_net.merge_runtime_type(from_d.located_net.get_runtime_type())
+        
+        _update(self.IO, self.structure.EEB.IO) # 将 box.IO 所属 net 的 runtime 信息更新到 structure.EEB.IO
+        if self.structure.determined:
+            print("Determined box after importing, skip.")
+            return # TODO 有时 box.IO 已经确定, structure 内部其他也都确定, 导入后就完全确定了, 不需要再推导
+        
+        print("Before: ", self.IO)
+        self.structure.deduction(modify_origin = modify_origin) # 递归推导
+        print("After: ", self.IO)
+        
+        _update(self.structure.EEB.IO, self.IO) # 将 structure.EEB.IO 的 runtime 信息更新到 box.IO
+    
     def expand(self):
         pass # TODO 展开 box 到 located_structure 中. (将内部 box 移出时要访问外部 boxes)
 
@@ -385,6 +411,9 @@ class Structure:
             在创建 structure 时, 需要创建一个 EEB, 并在后续的 add_port 调用中为其注册 IO.
         """
         self.add_box("_extern_equivalent_box")
+    
+    def __repr__(self):
+        return f"<Structure {self.name} (free: {self.free}, determined: {self.determined}, runtime_id: {self.runtime_id})>"
     
     @property
     def EEB(self) -> StructureBox:
@@ -579,7 +608,7 @@ class Structure:
             if idx != 0:
                 ports[0].merge(port)
     
-    def deduction(self, directly_modify_signal_type: bool = False) -> bool:
+    def deduction(self, modify_origin: bool = False):
         """
             可分结构的自动推导, 通过从 structure 和 box 的 port 出发沿 net 的迭代完成.
             
@@ -591,16 +620,33 @@ class Structure:
                     ... 所以或许可以不用等碰到了再例化, 而是直接把 boxes 中非 determined 的非 free 的 box 先例化掉.
             
             [!] 进入 box 继续 deduction 前, 需要将 box.IO 同步到 box.structure.EEB.IO; deduction 后, 需要反向同步.
-            [!] 为独立的顶层 structure 调用 deduction 时不需要上述操作, 因为外部已没有 box, 其他情况则需要注意, 目前没有想到除了 deduction 内部还有哪里需要单独运行 box 的 deduction.
-                    ... TODO [!!!] 但这个操作似乎是有道理的, 要不给 box 一个 deduction 方法, 前后加上双向同步, 中间调用 structure 的 deduction?
+            [!] 为独立的顶层 structure 调用 deduction 时不需要上述操作, 因为外部已没有 box, 其他情况则需要注意.
+            TODO modify_origin 是否要用独立的方法实现, 即 "应用 runtime 信息到 origin 上".
+            TODO 基于信息熵的顺序选择, 还没想好, 先直接遍历直到收敛.
         """
         if not self.free:
             raise DiagramInstantiationException(f"Only free structure can be deduced. You can call .instantiate() to get a free structure")
         
-        if self.custom_deduction is not None:
-            return self.custom_deduction(self) # 基本算子的自定义推导
+        print("Deduction on structure: ", self)
         
-        # TODO
+        if self.custom_deduction is not None:
+            print("Custom deduction:")
+            print("Before: ", self.EEB.IO)
+            self.custom_deduction(self) # 基本算子的自定义推导
+            print("After: ", self.EEB.IO)
+            return
+        
+        while not self.determined: # [!!!] TODO !!! 不对, 应该推导到没有变化了, 不一定最后能 determined
+            for box in self.boxes.values():
+                print("Deduction on box: ", box)
+                
+                if box.determined: # 已经确定的 box 不需要继续推导; 若未确定, deduction 前的例化应该已经保证其为 free 的
+                    print("Determined box, skip.")
+                    continue
+                
+                print("Before: ", box.IO)
+                box.deduction(modify_origin = modify_origin) # 递归推导, 双向同步在 StructureBox.deduction 中完成
+                print("After: ", box.IO)
     
     def vhdl(self):
         """

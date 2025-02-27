@@ -34,7 +34,7 @@ print('=======================================================')
 s = Structure("test")
 
 bi = s.add_port("bi", Bundle[{"i": Input[UInt[2]], "o": Output[Auto]}])
-t = s.add_port("t", Input[UInt])
+t = s.add_port("t", Input[UInt[4]]) # 改成 undetermined 测试 Addition 的反向推导 (未实现)
 n = s.add_port("n", Input[UInt[8]])
 m = s.add_port("m", Input[UInt[8]])
 
@@ -60,7 +60,15 @@ s.connect(add_o.IO.res, bi.o)
 print('=======================================================')
 
 
+s.instantiate(in_situ = True, reserve_safe_structure = True)
+s.deduction()
+
+
+print('=======================================================')
+
+
 print(id(s))
+print(id(s.boxes['add_ti'].structure))
 # print(s.boxes['td'].structure.boxes['add_ab'].free)
 # print(s.boxes['td'].structure.boxes['add_ab'])
 print(s.boxes['add_ti'].free)
@@ -69,10 +77,11 @@ print(s.boxes['add_ti'])
 ss = s.instantiate(in_situ = True, reserve_safe_structure = True)
 
 print(id(ss))
+print(id(ss.boxes['add_ti'].structure))
 # print(ss.boxes['td'].structure.boxes['add_ab'].free)
 # print(ss.boxes['td'].structure.boxes['add_ab'])
-print(s.boxes['add_ti'].free)
-print(s.boxes['add_ti'])
+print(ss.boxes['add_ti'].free)
+print(ss.boxes['add_ti'])
 
 
 print('=======================================================')
