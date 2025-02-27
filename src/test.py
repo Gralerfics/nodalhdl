@@ -54,6 +54,8 @@ s.connect(add_ti.IO.res, add_o.IO.op2)
 
 s.connect(add_o.IO.res, bi.o)
 
+# TODO 测一下 node
+
 
 print('=======================================================')
 

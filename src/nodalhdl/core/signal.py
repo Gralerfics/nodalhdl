@@ -122,7 +122,7 @@ class SignalType(type):
         return cls.type_pool.get(new_cls_name)
     
     """
-        有关信号类型关系判断的方法.
+        有关信号类型关系的方法.
     """
     def equals(signal_type, other):
         return signal_type == other
@@ -131,6 +131,10 @@ class SignalType(type):
         if issubclass(signal_type, Auto):
             return True # TODO
         return issubclass(signal_type, other)
+    
+    def merges(signal_type, other):
+        # TODO 信号类型合并 (填充 undetermined 部分)
+        pass
     
     """
         有关 IO Wrapper 的方法.

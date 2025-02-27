@@ -43,7 +43,7 @@ class DiagramType(type):
                 new_cls.structure_template = setup_func(inst_args) # 生成结构
                 if new_cls.structure_template is not None:
                     new_cls.structure_template = new_cls.structure_template.instantiate(in_situ = True, reserve_safe_structure = True) # 原位局部非定态例化, 将可能需要修改的 undetermined 部分例化, 为推导做准备
-                    new_cls.structure_template.deduction() # 生成后, 固定前, 进行一次推导, 自动补完与外界无关的省略信息, 理论上经过上一步的例化, 这里内部不会再需要例化
+                    new_cls.structure_template.deduction(directly_modify_signal_type = True) # 生成后固定前进行一次推导, 自动补完与外界无关的省略信息, 并且直接修改信号类型原始值
                     new_cls.structure_template.lock() # 固定生成的模板为非自由结构, 不能再修改
             except DiagramTypeException as e:
                 raise # [NOTICE] 异常处理, 这里直接全部抛出, 要求用户必须处理无参行为
@@ -72,6 +72,8 @@ class StructureNet:
     """
     def __init__(self):
         self.nodes = set()
+        
+        self.runtime_signal_type = None # 运行时信号类型, 不要直接修改, 而是调用方法
     
     def __len__(self):
         return len(self.nodes)
@@ -79,7 +81,7 @@ class StructureNet:
     def __repr__(self):
         return f"{self.nodes}"
     
-    def merge_net(self, other_net):
+    def merge_net(self, other_net: 'StructureNet'):
         if self == other_net:
             return
         
@@ -93,12 +95,33 @@ class StructureNet:
         
         del net_l
     
-    def add_node(self, node): # 添加节点, 双向绑定
+    def add_node(self, node: 'StructureNode'): # 添加节点, 双向绑定
         self.nodes.add(node)
         node.located_net = self
+        self.merge_runtime_type(node.signal_type) # [NOTICE] 加节点自动更新 runtime_signal_type
     
-    def remove_node(self, node):
+    def remove_node(self, node: 'StructureNode'):
         self.nodes.remove(node)
+    
+    def get_runtime_type(self):
+        return self.runtime_signal_type
+    
+    def init_runtime_type(self): # 遍历 nodes 得到初始情况
+        for node in self.nodes:
+            self.merge_runtime_type(node.signal_type)
+    
+    def set_runtime_type(self, signal_type: SignalType):
+        self.runtime_signal_type = signal_type
+    
+    def merge_runtime_type(self, signal_type: SignalType) -> bool: # 返回是否发生了变化
+        if self.runtime_signal_type is None:
+            self.runtime_signal_type = signal_type
+            return True
+        else:
+            new_st = self.runtime_signal_type.merges(signal_type)
+            flag = new_st != self.runtime_signal_type
+            self.runtime_signal_type = new_st
+            return flag
 
 class StructureNode:
     """
@@ -116,8 +139,6 @@ class StructureNode:
         
         self.located_box: StructureBox = located_box
         
-        self.inst_name = None
-        
         self.name = name
         self.signal_type = signal_type
     
@@ -125,9 +146,22 @@ class StructureNode:
         return f"<Node {self.name} ({self.signal_type.__name__}, id: {id(self)})>"
     
     @property
-    def determined(self): # 信号类型是否已经确定
+    def determined(self): # 信号类型是否已经确定 TODO 考虑改成运行时后 determined 的定义, 但也要考虑到前面非运行时的代码
         return self.signal_type.determined
     
+    """
+        TODO 以下操作可能变更框图结构, 执行后需要刷新 runtime_signal_type, 问题:
+            (1.) 如何确认图结构发生变化?
+                看操作是否波及 port, 如果操作没有让 ports 关系变化 (例如加入/删除单个 node), 则该操作并不会改变图结构.
+                若操作改变了 ports 关系 (例如导致了两个 ports 所在 net 合并 (即使操作的是 node), 分离某个 port 等), 则会改变拓扑.
+            (2.) 如何找到其所属 structure?
+                由 (1.), 变更必然由 port 导致, port 中记录有 located_box, 而 box 中记录有 located_structure.
+            (3.) 如何刷新 runtime_signal_type?
+                runtime_signal_type 保存在 net 中, 可以遍历 structure 找到所有 ports 后修改.
+                但每次修改都遍历 structure 太冗余, 或可考虑延迟更新, 在 structure 打一个 rtst up to date 标记 (下称 tag),
+                完成 deduction 则 tag 为 True, 结构有变更则设 tag 为 False,
+                任何地方 (例如 deduction 的过程, .determined 判断等) 需要使用 rtst 时都检查 tag, 如果为 False 则只能使用 st.
+    """
     def merge(self, other_node: 'StructureNode'):
         self.located_net.merge_net(other_node.located_net)
     
@@ -141,6 +175,21 @@ class StructureNode:
     def delete(self):
         self.located_net.remove_node(self)
         del self
+    
+    """
+        以下方法皆直接调用所在 net 的方法, 只是为了方便调用.
+    """
+    def get_runtime_type(self):
+        return self.located_net.get_runtime_type()
+    
+    def init_runtime_type(self):
+        self.located_net.init_runtime_type()
+    
+    def set_runtime_type(self, signal_type: SignalType):
+        self.located_net.set_runtime_type(signal_type)
+    
+    def merge_runtime_type(self, signal_type: SignalType) -> bool:
+        return self.located_net.merge_runtime_type(signal_type)
 
 class StructureBox:
     """
@@ -175,7 +224,7 @@ class StructureBox:
     @property
     def determined(self): # box 的结构是否确定取决于其 structure
         if self.structure is None:
-            return True # [NOTICE]
+            return True # EEB 是确定的
 
         return self.structure.determined
     
@@ -266,7 +315,7 @@ class Structure:
         pass # [NOTICE]
     
     @property
-    def determined(self):
+    def determined(self): # TODO: 要加上 boxes 确定; 以及考虑改成运行时后 node determined 的定义
         port_dict = self.EEB.IO
     
         def _search(d):
@@ -354,12 +403,14 @@ class Structure:
                     else: # StructureNode
                         map_dict[d] = new_d
                         
-                        # 4. 上溯到 net, 无则令 net' = new_d.located_net 并映射, 有则合并 net
-                        net = d.located_net
+                        # 4. 上溯到 net, 无则令 new_net (net') = new_d.located_net 并建立映射, 复制信息; 有则合并 net
+                        net: StructureNet = d.located_net
+                        new_net: StructureNet = new_d.located_net
+                        new_net.set_runtime_type(net.get_runtime_type()) # 复制 runtime_signal_type 信息 ([NOTICE] 结构完全复制, 推导结果自然也可以)
                         if net not in map_dict.keys():
-                            map_dict[net] = new_d.located_net
+                            map_dict[net] = new_net
                         else:
-                            map_dict[net].merge_net(new_d.located_net)
+                            map_dict[net].merge_net(new_net)
                 
                 _build(box.IO, new_box.IO)
                 
@@ -443,7 +494,7 @@ class Structure:
             if idx != 0:
                 ports[0].merge(port)
     
-    def deduction(self) -> bool:
+    def deduction(self, directly_modify_signal_type: bool = False) -> bool:
         """
             可分结构的自动推导, 通过从 structure 和 box 的 port 出发沿 net 的迭代完成.
             
@@ -455,6 +506,8 @@ class Structure:
                     ... 所以或许可以不用等碰到了再例化, 而是直接把 boxes 中非 determined 的非 free 的 box 先例化掉.
             
             [!] 进入 box 继续 deduction 前, 需要将 box.IO 同步到 box.structure.EEB.IO; deduction 后, 需要反向同步.
+            [!] 为独立的顶层 structure 调用 deduction 时不需要上述操作, 因为外部已没有 box, 其他情况则需要注意, 目前没有想到除了 deduction 内部还有哪里需要单独运行 box 的 deduction.
+                    ... TODO [!!!] 但这个操作似乎是有道理的, 要不给 box 一个 deduction 方法, 前后加上双向同步, 中间调用 structure 的 deduction?
         """
         if not self.free:
             raise DiagramInstantiationException(f"Only free structure can be deduced. You can call .instantiate() to get a free structure")
