@@ -84,6 +84,9 @@ class StructureNet:
     def __repr__(self):
         return f"{self.nodes}"
     
+    """
+        下面这些方法可能造成 net 结构变化, 请注意 runtime_signal_type 等信息的传递和更新.
+    """
     def merge_net(self, other_net: 'StructureNet'):
         if self == other_net:
             return
@@ -92,7 +95,6 @@ class StructureNet:
         if len(net_h) < len(net_l):
             net_h, net_l = net_l, net_h
         
-        # 若 net 存有其他信息, 注意需要于此添加其他操作
         for node in net_l.nodes: # [NOTICE] 效率问题
             net_h.add_node(node)
         
@@ -101,11 +103,15 @@ class StructureNet:
     def add_node(self, node: 'StructureNode'): # 添加节点, 双向绑定
         self.nodes.add(node)
         node.located_net = self
-        self.merge_runtime_type(node.origin_signal_type) # [NOTICE] 加节点自动更新 runtime_signal_type
+        self.merge_runtime_type(node.origin_signal_type) # 加节点自动更新 runtime_signal_type
     
     def remove_node(self, node: 'StructureNode'):
         self.nodes.remove(node)
+        self.init_runtime_type() # 删节点自动更新 runtime_signal_type
     
+    """
+        下面是对 runtime_signal_type 进行操作的方法.
+    """
     def get_runtime_type(self):
         return self.runtime_signal_type
     
