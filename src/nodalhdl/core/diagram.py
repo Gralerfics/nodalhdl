@@ -1,8 +1,7 @@
 from .signal import SignalType, IOWrapper, Auto
 from .utils import ObjDict
 
-import hashlib
-
+import uuid
 from inspect import isfunction
 
 
@@ -11,6 +10,8 @@ class DiagramTypeException(Exception): pass
 
 class DiagramType(type):
     diagram_type_pool = {} # 框图类型池, 去重
+    
+    UUID_NAMESPACE = uuid.UUID('00000000-0000-0000-0000-000000000000')
     
     def __new__(mcs, name: str, bases: tuple, attr: dict): # `mcs` here is the metaclass itself
         """
@@ -22,6 +23,7 @@ class DiagramType(type):
             创建类型:
                 (1.) 构建新类名, 查重, 并创建新类. (注意 hash() 是不稳定的, 与运行时环境有关, 建议使用稳定的映射)
                         ... TODO 构建方案需改进, 目前直接使用 str(inst_args), 与子结构的 str 结果高度相关, 可能限制参数传递的多样性 (内部结构未体现在 str 结果中) 以及破坏哈希的全局稳定性 (str 中出现内存地址). 同时, 哈希重复是否要再检查一下参数是否严格相同, 以防止小概率的哈希冲突?
+                        ... 改用一下 uuid3, 虽然还是 str.
                 (2.) 通过 setup 构建框图结构, 更新类属性 structure_template.
                 (3.) 返回新类型.
             注:
@@ -33,7 +35,7 @@ class DiagramType(type):
         
         new_name = name
         if inst_args: # 若参数不为空则依据参数构建新名
-            new_name = f"{name}_{hashlib.md5(str(inst_args).encode('utf-8')).hexdigest()}"
+            new_name = f"{name}_{uuid.uuid3(DiagramType.UUID_NAMESPACE, str(inst_args))}"
         
         if not new_name in mcs.diagram_type_pool.keys(): # 若尚未创建过
             new_cls = super().__new__(mcs, new_name, bases, attr) # 先创建类, setup() 可能未在子类中显式重写 (即未在 attr 中)
@@ -73,6 +75,7 @@ class StructureNet:
     def __init__(self):
         self.nodes = set()
         
+        self.runtime_id = None
         self.runtime_signal_type = None # 运行时信号类型, 不要直接修改, 而是调用方法
     
     def __len__(self):
@@ -98,7 +101,7 @@ class StructureNet:
     def add_node(self, node: 'StructureNode'): # 添加节点, 双向绑定
         self.nodes.add(node)
         node.located_net = self
-        self.merge_runtime_type(node.signal_type) # [NOTICE] 加节点自动更新 runtime_signal_type
+        self.merge_runtime_type(node.origin_signal_type) # [NOTICE] 加节点自动更新 runtime_signal_type
     
     def remove_node(self, node: 'StructureNode'):
         self.nodes.remove(node)
@@ -108,7 +111,7 @@ class StructureNet:
     
     def init_runtime_type(self): # 遍历 nodes 得到初始情况
         for node in self.nodes:
-            self.merge_runtime_type(node.signal_type)
+            self.merge_runtime_type(node.origin_signal_type)
     
     def set_runtime_type(self, signal_type: SignalType):
         self.runtime_signal_type = signal_type
@@ -132,21 +135,35 @@ class StructureNode:
     """
     def __init__(self, name: str, signal_type: SignalType, located_net: StructureNet = None, located_box: 'StructureBox' = None):
         self.located_net: StructureNet = located_net
-        if self.located_net is None:
-            StructureNet().add_node(self)
-        else:
-            self.located_net.add_node(self)
-        
         self.located_box: StructureBox = located_box
         
         self.name = name
-        self.signal_type = signal_type
+        self.origin_signal_type = signal_type
+        
+        if self.located_net is None: # 注意 add_node 中使用了 origin_signal_type, 要在赋值之后调用
+            StructureNet().add_node(self)
+        else:
+            self.located_net.add_node(self)
     
     def __repr__(self):
-        return f"<Node {self.name} ({self.signal_type.__name__}, id: {id(self)})>"
+        return f"<Node {self.name} ({self.origin_signal_type.__name__} -> {self.signal_type}, id: {id(self)})>"
     
     @property
-    def determined(self): # 信号类型是否已经确定 TODO 考虑改成运行时后 determined 的定义, 但也要考虑到前面非运行时的代码
+    def signal_type(self): # 根据 runtime_id 情况自动考虑
+        # TODO node (没有 located_box) 不方便直接获取所在 box 乃至 structure, 暂时不允许 node 访问
+        if self.located_box is None or self.located_box.located_structure is None:
+            raise AttributeError(f"signal_type is not available for non-IO node")
+        
+        s = self.located_box.located_structure
+        n = self.located_net
+        if n.runtime_id != s.runtime_id: # runtime_id 不一致, 更新 net 的 runtime_id, 重置 runtime_signal_type
+            n.init_runtime_type()
+            n.runtime_id = s.runtime_id
+        
+        return n.get_runtime_type()
+    
+    @property
+    def determined(self):
         return self.signal_type.determined
     
     """
@@ -161,6 +178,8 @@ class StructureNode:
                 但每次修改都遍历 structure 太冗余, 或可考虑延迟更新, 在 structure 打一个 rtst up to date 标记 (下称 tag),
                 完成 deduction 则 tag 为 True, 结构有变更则设 tag 为 False,
                 任何地方 (例如 deduction 的过程, .determined 判断等) 需要使用 rtst 时都检查 tag, 如果为 False 则只能使用 st.
+                [!!!] 有问题, deduction 完成后才能更新 structure 的 tag, 在此之前每次访问 st 都要 init 一遍?
+                [!!!!!] 不用 bool 的 tag, 每次修改生成一个字符串 runtime_tag 标识, net 里面也存一个, 一致表示 net 当前状态属于 structure 的状态.
     """
     def merge(self, other_node: 'StructureNode'):
         self.located_net.merge_net(other_node.located_net)
@@ -203,7 +222,7 @@ class StructureBox:
         Box 是否为自由结构取决于其 structure 的情况.
         Box.IO 与 structure 永远保持一致, 除非 structure 为 None, 仅此时允许手动注册 IO, 否则直接或间接修改 structure 时都会重置 box 的状态, 并自动注册 IO.
     """
-    def __init__(self, name: str, located_structure: 'Structure' = None):
+    def __init__(self, name: str, located_structure: 'Structure'):
         self.name = name
         self.located_structure = located_structure
         
@@ -232,22 +251,22 @@ class StructureBox:
         if self.structure is None:
             raise DiagramTypeException(f"A structure is needed for automatic port registration")
         
-        def _build(d, update, io = None):
+        def _build(d, update, old_d = None):
             if isinstance(d, ObjDict):
                 if update:
                     for sub_key, sub_val in d.items():
-                        _build(sub_val, update, io[sub_key])
+                        _build(sub_val, update, old_d[sub_key])
                 else:
-                    return ObjDict({sub_key: _build(sub_val, update, io) for sub_key, sub_val in d.items()})
+                    return ObjDict({sub_key: _build(sub_val, update, old_d) for sub_key, sub_val in d.items()})
             else: # StructureNode
                 if update:
-                    io.signal_type = d.signal_type.flip_io()
+                    old_d.origin_signal_type = d.origin_signal_type.flip_io() # TODO 注册端口应该只有构建和例化时, 应该就是直接改 origin_, 后续再确认一下.
                 else:
-                    return StructureNode(d.name, d.signal_type.flip_io(), located_box = self) # 注意创建时引用所属 box (self)
+                    return StructureNode(d.name, d.origin_signal_type.flip_io(), located_box = self) # 注意创建时引用所属 box (self)
         
-            return io
+            return old_d
         
-        self.IO = _build(self.structure.EEB.IO, update = update, io = self.IO)
+        self.IO = _build(self.structure.EEB.IO, update = update, old_d = self.IO)
     
     def set_structure(self, structure: 'Structure', update: bool = False): # 用 structure 重置结构
         if update:
@@ -295,6 +314,8 @@ class Structure:
         
         self.boxes = {} # 包含的 boxes
         
+        self.runtime_id = str(uuid.uuid4())
+        
         """
             关于 External Equivalent Box (EEB), 即将 structure 以外视作一个内外翻转的大 box,
             其 ports 为 structure 的外部端口, 注意 Input 和 Output 反转 (解决外部 IO 相对内部方向相反的问题).
@@ -318,13 +339,16 @@ class Structure:
     def determined(self): # TODO: 要加上 boxes 确定; 以及考虑改成运行时后 node determined 的定义
         port_dict = self.EEB.IO
     
-        def _search(d):
+        def _search(d): # 自身所有 IO
             if isinstance(d, ObjDict):
                 return all(_search(sub_val) for sub_val in d.values())
-            else: # StructureNode
+            else: # StructureNode, determined 来自会自动处理 runtime 问题的 .signal_type 的判断
                 return d.determined
         
-        return _search(port_dict)
+        return _search(port_dict) and all([box.determined for box in self.boxes]) # 加上所有下辖 box 确定
+    
+    def update_runtime_id(self):
+        self.runtime_id = str(uuid.uuid4())
     
     def instantiate(self, in_situ: bool = True, reserve_safe_structure: bool = True):
         """
@@ -395,8 +419,8 @@ class Structure:
                             if not new_d.get(sub_key, False):
                                 if isinstance(sub_val, ObjDict):
                                     new_d[sub_key] = ObjDict()
-                                else: # StructureNode
-                                    new_d[sub_key] = StructureNode(sub_key, sub_val.signal_type, located_box = new_box)
+                                else: # StructureNode, origin_ 就应复制 origin_, runtime 信息在后面 net 中复制
+                                    new_d[sub_key] = StructureNode(sub_key, sub_val.origin_signal_type, located_box = new_box)
                             
                             # 递归建立映射
                             _build(sub_val, new_d[sub_key])

@@ -124,17 +124,17 @@ class SignalType(type):
     """
         有关信号类型关系的方法.
     """
-    def equals(signal_type, other):
+    def equals(signal_type: 'SignalType', other: 'SignalType'):
         return signal_type == other
     
-    def belongs(signal_type, other):
+    def belongs(signal_type: 'SignalType', other: 'SignalType'):
         if issubclass(signal_type, Auto):
             return True # TODO
         return issubclass(signal_type, other)
     
-    def merges(signal_type, other):
+    def merges(signal_type: 'SignalType', other: 'SignalType'):
         # TODO 信号类型合并 (填充 undetermined 部分)
-        pass
+        return signal_type
     
     """
         有关 IO Wrapper 的方法.

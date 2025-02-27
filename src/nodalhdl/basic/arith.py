@@ -32,18 +32,18 @@ class Addition(Diagram): # 带参基本算子示例, 整数加法
             TODO 除了从确定输入推得确定输出, 还可以:
                 (1.) 从某个确定类型但不确定长度的信号, 推得其他信号类型. # 反之, 确定参数不确定类型的情况就还是不要存在了
                 (2.) 输出长度大于某个输入信号的长度, 则另一个输入信号的长度必等于输出信号的长度.
+            TODO TODO TODO EEB 的 IO 是反的等麻烦问题.
         """
         io = s.EEB.IO
-        op1_type, op2_type = io.op1.signal_type.T, io.op2.signal_type.T
-        
-        # TODO TODO TODO
+        op1_type, op2_type = io.op1.origin_signal_type.T, io.op2.origin_signal_type.T
+
         if op1_type.belongs(Auto) or op2_type.belongs(Auto):
-            io.res.signal_type = Input[Auto] # TODO EEB 的 IO 是反的
+            io.res.origin_signal_type = Input[Auto]
         else:
             if op1_type.belongs(SInt):
-                io.res.signal_type = Input[SInt[max(op1_type.W, op2_type.W) + 1]]
+                io.res.origin_signal_type = Input[SInt[max(op1_type.W, op2_type.W) + 1]]
             else:
-                io.res.signal_type = Input[UInt[max(op1_type.W, op2_type.W)]]
+                io.res.origin_signal_type = Input[UInt[max(op1_type.W, op2_type.W)]]
     
     def vhdl(s: Structure): # @operator 将自动将该函数注册进 structure_template 中
         print("vhdl")
