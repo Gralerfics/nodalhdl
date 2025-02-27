@@ -10,12 +10,10 @@ class Addition(Diagram): # 带参基本算子示例, 整数加法
         if not args:
             return None
         
-        # 参数合法性检查
+        # 参数合法性检查 (结构性检查, 即不影响结构生成即可, 因为这里可能涉及到 Auto 等未推导的父类型, 导就完了. 行为性检查在 vhdl 生成或仿真中进行)
         if len(args) != 2:
             raise DiagramTypeException(f"Invalid argument(s) \'{args}\' for diagram type Addition[<op1_type (SignalType)>, <op2_type (SignalType)>].")
         op1_type, op2_type = args
-        if not (op1_type.belongs(UInt) and op2_type.belongs(UInt) or op1_type.belongs(SInt) and op2_type.belongs(SInt)):
-            raise DiagramTypeException(f"Only UInt + UInt or SInt + SInt is acceptable")
         
         # 创建结构
         res = Structure("addition")
@@ -37,7 +35,7 @@ class Addition(Diagram): # 带参基本算子示例, 整数加法
         io = s.EEB.IO
         op1_type, op2_type = io.op1.origin_signal_type.T, io.op2.origin_signal_type.T
 
-        if op1_type.belongs(Auto) or op2_type.belongs(Auto):
+        if not op1_type.determined or not op2_type.determined:
             io.res.origin_signal_type = Input[Auto]
         else:
             if op1_type.belongs(SInt):
@@ -46,6 +44,7 @@ class Addition(Diagram): # 带参基本算子示例, 整数加法
                 io.res.origin_signal_type = Input[UInt[max(op1_type.W, op2_type.W)]]
     
     def vhdl(s: Structure): # @operator 将自动将该函数注册进 structure_template 中
-        print("vhdl")
+        # 端口合法性检查 (此时结构已经 determined, 可以进一步检查, 例如是否是 UInt + UInt 或 SInt + SInt)
+        
         pass
 

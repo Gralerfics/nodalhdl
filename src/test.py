@@ -34,13 +34,13 @@ print('=======================================================')
 s = Structure("test")
 
 bi = s.add_port("bi", Bundle[{"i": Input[UInt[2]], "o": Output[Auto]}])
-t = s.add_port("t", Input[UInt[4]])
+t = s.add_port("t", Input[UInt])
 n = s.add_port("n", Input[UInt[8]])
 m = s.add_port("m", Input[UInt[8]])
 
 td = s.add_box("td", TestDiagram)
 add_ti = s.add_box("add_ti", Addition[Auto, Auto])
-add_o = s.add_box("add_o", Addition[UInt[8], UInt[8]])
+add_o = s.add_box("add_o", Addition[UInt[8], UInt[4]])
 
 s.connect(n, td.IO.ab.a)
 s.connect(m, td.IO.ab.b)
@@ -61,14 +61,18 @@ print('=======================================================')
 
 
 print(id(s))
-print(s.boxes['td'].structure.boxes['add_ab'].free)
-print(s.boxes['td'].structure.boxes['add_ab'])
+# print(s.boxes['td'].structure.boxes['add_ab'].free)
+# print(s.boxes['td'].structure.boxes['add_ab'])
+print(s.boxes['add_ti'].free)
+print(s.boxes['add_ti'])
 
 ss = s.instantiate(in_situ = True, reserve_safe_structure = True)
 
 print(id(ss))
-print(ss.boxes['td'].structure.boxes['add_ab'].free)
-print(ss.boxes['td'].structure.boxes['add_ab'])
+# print(ss.boxes['td'].structure.boxes['add_ab'].free)
+# print(ss.boxes['td'].structure.boxes['add_ab'])
+print(s.boxes['add_ti'].free)
+print(s.boxes['add_ti'])
 
 
 print('=======================================================')

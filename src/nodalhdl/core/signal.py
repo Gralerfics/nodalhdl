@@ -127,15 +127,34 @@ class SignalType(type):
     def equals(signal_type: 'SignalType', other: 'SignalType'):
         return signal_type == other
     
-    def belongs(signal_type: 'SignalType', other: 'SignalType'):
-        if issubclass(signal_type, Auto):
-            return True # TODO
+    def belongs(signal_type: 'SignalType', other: 'SignalType'): # 要求从属于 other, 即比 other 更具体 (子类型) 或等同
         return issubclass(signal_type, other)
     
-    def merges(signal_type: 'SignalType', other: 'SignalType'):
-        # TODO 信号类型合并 (填充 undetermined 部分)
-        return signal_type
-    
+    def merges(signal_type: 'SignalType', other: 'SignalType'): # 合并两个信号类型的信息, 去 IO Wrapper
+        t1, t2 = signal_type.clear_io(), other.clear_io()
+        
+        def _merge(t1: SignalType, t2: SignalType):
+            if t1.belongs(Bundle) and t2.belongs(Bundle):
+                if t1._bundle_types.keys() != t2._bundle_types.keys():
+                    return None
+                
+                return Bundle[{key: _merge(T1, T2) for (key, T1), (_, T2) in zip(t1._bundle_types.items(), t2._bundle_types.items())}]
+            elif not t1.belongs(Bundle) and not t2.belongs(Bundle):
+                if t1.belongs(t2):
+                    return t1
+                elif t2.belongs(t1):
+                    return t2
+                else:
+                    return None
+            else:
+                return None
+        
+        res = _merge(t1, t2)
+        if res is None:
+            raise SignalTypeException(f"Signal types {t1.__name__} and {t2.__name__} are conflicting")
+        
+        return res
+
     """
         有关 IO Wrapper 的方法.
         Signal type 根据是否有 IO Wrapper 分类:
@@ -268,9 +287,9 @@ class BundleType(SignalType):
 """ Types """
 class Signal(metaclass = SignalType): pass
 
-class Auto(Signal): pass # undetermined
+class Auto(Signal): pass
 
-class Bits(Signal, metaclass = BitsType): pass
+class Bits(Auto, metaclass = BitsType): pass
 Bit = Bits[1]
 Byte = Bits[8]
 
@@ -292,14 +311,41 @@ class FloatingPoint(Bits, metaclass = FloatingPointType): pass
 Float = FloatingPoint[8, 23]
 Double = FloatingPoint[11, 52]
 
-class IOWrapper(Signal, metaclass = IOWrapperType): pass
-class Input(IOWrapper): pass
-class Output(IOWrapper): pass
-
-class Bundle(Signal, metaclass = BundleType):
+class Bundle(Auto, metaclass = BundleType):
     def __init__(self): # 递归式地实例化内部信号, TODO: IOWrapper 是否要去掉
         super().__init__()
         bundle_types = getattr(type(self), "_bundle_types")
         for key, T in bundle_types.items():
             setattr(self, key, T())
+
+class IOWrapper(Signal, metaclass = IOWrapperType): pass
+class Input(IOWrapper): pass
+class Output(IOWrapper): pass
+
+
+# S = Bundle[{
+#     "a": Input[Auto],
+#     "b": Output[UInt[8]],
+#     "c": Bundle[{
+#         "x": Input[Auto],
+#         "y": Output[SInt[5]]
+#     }],
+#     "d": Output[Bundle[{
+#         "t": Float
+#     }]]
+# }]
+
+# T = Bundle[{
+#     "a": Output[Auto],
+#     "b": Output[Bits],
+#     "c": Bundle[{
+#         "x": Input[SInt[3]],
+#         "y": Output[SInt]
+#     }],
+#     "d": Input[Bundle[{
+#         "t": Auto
+#     }]]
+# }]
+
+# print(S.merges(T).d._bundle_types)
 

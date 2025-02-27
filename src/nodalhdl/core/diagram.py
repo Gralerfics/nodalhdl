@@ -1,4 +1,4 @@
-from .signal import SignalType, IOWrapper, Auto
+from .signal import SignalType, IOWrapper
 from .utils import ObjDict
 
 import uuid
@@ -76,7 +76,7 @@ class StructureNet:
         self.nodes = set()
         
         self.runtime_id = None
-        self.runtime_signal_type = None # 运行时信号类型, 不要直接修改, 而是调用方法
+        self.runtime_signal_type = None # 运行时信号类型, 不要直接修改, 而是调用方法; 保证是去除 IO 的
     
     def __len__(self):
         return len(self.nodes)
@@ -113,17 +113,17 @@ class StructureNet:
         for node in self.nodes:
             self.merge_runtime_type(node.origin_signal_type)
     
-    def set_runtime_type(self, signal_type: SignalType):
-        self.runtime_signal_type = signal_type
+    def set_runtime_type(self, signal_type: SignalType): # 去除 IO
+        self.runtime_signal_type = signal_type.clear_io()
     
     def merge_runtime_type(self, signal_type: SignalType) -> bool: # 返回是否发生了变化
         if self.runtime_signal_type is None:
-            self.runtime_signal_type = signal_type
+            self.set_runtime_type(signal_type)
             return True
         else:
             new_st = self.runtime_signal_type.merges(signal_type)
             flag = new_st != self.runtime_signal_type
-            self.runtime_signal_type = new_st
+            self.set_runtime_type(new_st)
             return flag
 
 class StructureNode:
@@ -146,10 +146,10 @@ class StructureNode:
             self.located_net.add_node(self)
     
     def __repr__(self):
-        return f"<Node {self.name} ({self.origin_signal_type.__name__} -> {self.signal_type}, id: {id(self)})>"
+        return f"<Node {self.name} ({self.origin_signal_type.__name__} -> {self.signal_type.__name__}, id: {id(self)})>"
     
     @property
-    def signal_type(self): # 根据 runtime_id 情况自动考虑
+    def signal_type(self): # 根据 runtime_id 情况自动考虑, 是去除 IO 的 (按照注册 IO 的方式, origin_signal_type 一定都是最外层单 IO Wrapped 的)
         # TODO node (没有 located_box) 不方便直接获取所在 box 乃至 structure, 暂时不允许 node 访问
         if self.located_box is None or self.located_box.located_structure is None:
             raise AttributeError(f"signal_type is not available for non-IO node")
@@ -345,7 +345,7 @@ class Structure:
             else: # StructureNode, determined 来自会自动处理 runtime 问题的 .signal_type 的判断
                 return d.determined
         
-        return _search(port_dict) and all([box.determined for box in self.boxes]) # 加上所有下辖 box 确定
+        return _search(port_dict) and all([box.determined for box in self.boxes.values()]) # 加上所有下辖 box 确定
     
     def update_runtime_id(self):
         self.runtime_id = str(uuid.uuid4())
