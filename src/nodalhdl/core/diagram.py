@@ -157,6 +157,25 @@ class StructureNode:
     @property
     def origin_signal_type(self):
         return self._private_origin_signal_type
+
+    @property
+    def located_structure(self):
+        """
+            寻找节点所在 structure.
+            若节点为 port, 即作为某个 box 的端口, 那么可以通过 .located_box.located_structre 访问;
+            若节点为 node, 则需要遍历 .located_net, 寻找到一个 port 再访问.
+            如果未能成功, 返回 None, 代表该节点游离, 也就不会对结构产生影响.
+        """
+        if self.located_box is not None: # port
+            return self.located_box.located_structure
+        else: # node
+            if self.located_net is None:
+                return None
+            for node in self.located_net.nodes:
+                if node.located_box is not None:
+                    return node.located_box.located_structure
+        
+        return None
     
     @property
     def signal_type(self):
@@ -166,11 +185,10 @@ class StructureNode:
                     ... TODO 无驱动和多驱动问题的判断, 应该也是要写在 init_ 和 merge_ 里 (init_ 时把驱动存在 net 中, merge_ 方便直接判断).
             以及, 按照注册 IO 的方式, origin_signal_type 一定都是最外层单 IO Wrapped 的.
         """
-        # [NOTICE] node (没有 located_box) 不方便直接获取所在 box 乃至 structure, 暂时不允许 node 访问; 但遍历 net 也能实现, 有需要再实现
-        if self.located_box is None or self.located_box.located_structure is None:
-            raise AttributeError(f"signal_type is not available for non-IO node")
+        s = self.located_structure
+        if s is None:
+            raise AttributeError(f"The node is not connected to a structure")
         
-        s = self.located_box.located_structure
         n = self.located_net
         if n.runtime_id != s.runtime_id: # runtime_id 不一致, 更新 net 的 runtime_id, 重置 runtime_signal_type
             n.init_runtime_type()
@@ -204,6 +222,9 @@ class StructureNode:
     """
     def merge(self, other_node: 'StructureNode'):
         self.located_net.merge_net(other_node.located_net)
+        
+        if self.located_structure is not None:
+            self.located_structure.update_runtime_id() # 更新 structure runtime_id
     
     def separate(self):
         if len(self.located_net) <= 1: # 本就单独成集
@@ -211,9 +232,19 @@ class StructureNode:
         
         self.located_net.remove_node(self)
         StructureNet().add_node(self)
+        
+        if self.located_box is not None: # port 断连, 一定影响了结构, 更新 structure runtime_id
+            if self.located_structure is not None:
+                self.located_structure.update_runtime_id()
+        else: # node 断连, 只需要重置所在 net 的 runtime 信息
+            self.located_net.init_runtime_type()
     
     def delete(self):
+        if self.located_box is not None: # port, 不允许删除
+            raise DiagramTypeException(f"An active port (under a box) is not allowed to be deleted")
+        
         self.located_net.remove_node(self)
+        self.located_net.init_runtime_type() # node 删除, 重置 runtime 信息即可
         del self
     
     """
@@ -300,7 +331,7 @@ class StructureBox:
     
     def set_structure(self, structure: 'Structure', update: bool = False): # 用 structure 重置结构
         if update:
-            pass # TODO 检查 structure 是否和现有的 IO 一致
+            pass # [NOTICE] 检查 structure 是否和现有的 IO 一致
         
         if not update:
             self.IO = ObjDict()
