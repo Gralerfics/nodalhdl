@@ -144,7 +144,7 @@ class StructureNode:
         self.located_box: StructureBox = located_box
         
         self.name = name
-        self.origin_signal_type = signal_type
+        self._private_origin_signal_type = signal_type # 不要直接修改
         
         if self.located_net is None: # 注意 add_node 中使用了 origin_signal_type, 要在赋值之后调用
             StructureNet().add_node(self)
@@ -155,8 +155,18 @@ class StructureNode:
         return f"<Node {self.name} ({self.origin_signal_type.__name__} -> {self.signal_type.__name__}, id: {id(self)})>"
     
     @property
-    def signal_type(self): # 根据 runtime_id 情况自动考虑, 是去除 IO 的 (按照注册 IO 的方式, origin_signal_type 一定都是最外层单 IO Wrapped 的)
-        # TODO node (没有 located_box) 不方便直接获取所在 box 乃至 structure, 暂时不允许 node 访问
+    def origin_signal_type(self):
+        return self._private_origin_signal_type
+    
+    @property
+    def signal_type(self):
+        """
+            根据 runtime_id 情况自动更新所在 net 的 runtime_signal_type 并返回.
+            返回的类型是去除 IO 的, net 上存的类型不可能协调 Input 和 Output.
+                    ... TODO 无驱动和多驱动问题的判断, 应该也是要写在 init_ 和 merge_ 里 (init_ 时把驱动存在 net 中, merge_ 方便直接判断).
+            以及, 按照注册 IO 的方式, origin_signal_type 一定都是最外层单 IO Wrapped 的.
+        """
+        # [NOTICE] node (没有 located_box) 不方便直接获取所在 box 乃至 structure, 暂时不允许 node 访问; 但遍历 net 也能实现, 有需要再实现
         if self.located_box is None or self.located_box.located_structure is None:
             raise AttributeError(f"signal_type is not available for non-IO node")
         
@@ -173,19 +183,24 @@ class StructureNode:
         return self.signal_type.determined
     
     """
-        TODO 以下操作可能变更框图结构, 执行后需要刷新 runtime_signal_type, 问题:
+        以下方法可能修改 origin_signal_type, 这有可能影响其所在 net 的 runtime_signal_type (例如信息量减少), 注意要重置.
+    """
+    def set_origin_signal_type(self, signal_type: SignalType):
+        self._private_origin_signal_type = signal_type
+        self.located_net.init_runtime_type() # 重置
+    
+    """
+        以下操作可能变更框图结构, 执行后需要刷新 runtime_signal_type.
+        注:
             (1.) 如何确认图结构发生变化?
-                看操作是否波及 port, 如果操作没有让 ports 关系变化 (例如加入/删除单个 node), 则该操作并不会改变图结构.
-                若操作改变了 ports 关系 (例如导致了两个 ports 所在 net 合并 (即使操作的是 node), 分离某个 port 等), 则会改变拓扑.
+                 看操作是否波及 port, 如果操作没有让 ports 关系变化 (例如加入/删除单个 node), 则该操作并不会改变图结构.
+                 若操作改变了 ports 关系 (例如导致了两个 ports 所在 net 合并 (即使操作的是 node), 分离某个 port 等), 则会改变拓扑.
             (2.) 如何找到其所属 structure?
-                由 (1.), 变更必然由 port 导致, port 中记录有 located_box, 而 box 中记录有 located_structure.
+                 由 (1.), 变更必然由 port 导致, port 中记录有 located_box, 而 box 中记录有 located_structure.
             (3.) 如何刷新 runtime_signal_type?
-                runtime_signal_type 保存在 net 中, 可以遍历 structure 找到所有 ports 后修改.
-                但每次修改都遍历 structure 太冗余, 或可考虑延迟更新, 在 structure 打一个 rtst up to date 标记 (下称 tag),
-                完成 deduction 则 tag 为 True, 结构有变更则设 tag 为 False,
-                任何地方 (例如 deduction 的过程, .determined 判断等) 需要使用 rtst 时都检查 tag, 如果为 False 则只能使用 st.
-                [!!!] 有问题, deduction 完成后才能更新 structure 的 tag, 在此之前每次访问 st 都要 init 一遍?
-                [!!!!!] 不用 bool 的 tag, 每次修改生成一个字符串 runtime_tag 标识, net 里面也存一个, 一致表示 net 当前状态属于 structure 的状态.
+                 runtime_signal_type 保存在 net 中, 可以遍历 structure 找到所有 ports 后修改.
+                 但每次修改都遍历 structure 太冗余, 考虑延迟更新, 在 structure 中记录 runtime_id 作为运行时标识,
+                 net 里面也存一个, 二者一致表示 net 当前版本与 structure 同步.
     """
     def merge(self, other_node: 'StructureNode'):
         self.located_net.merge_net(other_node.located_net)
@@ -258,6 +273,15 @@ class StructureBox:
             raise DiagramTypeException(f"A structure is needed for automatic port registration")
         
         def _build(d, update, old_d = None):
+            """
+                遍历 structure.EEB.IO 参照其构建其所在 box 的 IO.
+                非 update 模式用于 box.IO 还未和其他结构发生联系的情况, 此时 box.IO 中的 StructureNode 都是复制属性新创建的;
+                update 模式用于 box.IO 已经被使用的情况, 此时要保留原先的 StructureNode 对象和它们身上携带的 net 关系, 不新创建 node 而是修改原有的属性,
+                所以 update 模式下应当要求传入的 structure.EEB.IO 和原 box.IO (self.IO) 结构一致.
+                
+                注: 为什么不合并两种用途?
+                    要建就重建, 要修就原封不动, 不允许出现混杂的操作, 没有物理意义.
+            """
             if isinstance(d, ObjDict):
                 if update:
                     for sub_key, sub_val in d.items():
@@ -266,7 +290,7 @@ class StructureBox:
                     return ObjDict({sub_key: _build(sub_val, update, old_d) for sub_key, sub_val in d.items()})
             else: # StructureNode
                 if update:
-                    old_d.origin_signal_type = d.origin_signal_type.flip_io() # TODO 注册端口应该只有构建和例化时, 应该就是直接改 origin_, 后续再确认一下.
+                    old_d.set_origin_signal_type(d.origin_signal_type.flip_io()) # 注意使用 set_ 函数, 其中会更新其所在 net 的 runtime_signal_type
                 else:
                     return StructureNode(d.name, d.origin_signal_type.flip_io(), located_box = self) # 注意创建时引用所属 box (self)
         
@@ -342,7 +366,7 @@ class Structure:
         pass # [NOTICE]
     
     @property
-    def determined(self): # TODO: 要加上 boxes 确定; 以及考虑改成运行时后 node determined 的定义
+    def determined(self):
         port_dict = self.EEB.IO
     
         def _search(d): # 自身所有 IO

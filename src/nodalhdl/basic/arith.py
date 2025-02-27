@@ -36,12 +36,12 @@ class Addition(Diagram): # 带参基本算子示例, 整数加法
         op1_type, op2_type = io.op1.origin_signal_type.T, io.op2.origin_signal_type.T
 
         if not op1_type.determined or not op2_type.determined:
-            io.res.origin_signal_type = Input[Auto]
+            io.res.set_origin_signal_type(Input[Auto])
         else:
             if op1_type.belongs(SInt):
-                io.res.origin_signal_type = Input[SInt[max(op1_type.W, op2_type.W) + 1]]
+                io.res.set_origin_signal_type(Input[SInt[max(op1_type.W, op2_type.W) + 1]])
             else:
-                io.res.origin_signal_type = Input[UInt[max(op1_type.W, op2_type.W)]]
+                io.res.set_origin_signal_type(Input[UInt[max(op1_type.W, op2_type.W)]])
     
     def vhdl(s: Structure): # @operator 将自动将该函数注册进 structure_template 中
         # 端口合法性检查 (此时结构已经 determined, 可以进一步检查, 例如是否是 UInt + UInt 或 SInt + SInt)
