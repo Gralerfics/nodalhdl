@@ -3,6 +3,9 @@ from nodalhdl.core.diagram import Diagram, Structure, StructureBox
 from nodalhdl.basic.arith import Addition
 
 
+print('哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈')
+
+
 class TestDiagram(Diagram): # 带参 Diagram 示例
     @staticmethod
     def setup(args):
@@ -64,27 +67,27 @@ s.instantiate(in_situ = True, reserve_safe_structure = True)
 s.deduction()
 
 
-print('=======================================================')
+# print('=======================================================')
 
 
-print(id(s))
-print(id(s.boxes['add_ti'].structure))
-# print(s.boxes['td'].structure.boxes['add_ab'].free)
-# print(s.boxes['td'].structure.boxes['add_ab'])
-print(s.boxes['add_ti'].free)
-print(s.boxes['add_ti'])
+# print(id(s))
+# print(id(s.boxes['add_ti'].structure))
+# # print(s.boxes['td'].structure.boxes['add_ab'].free)
+# # print(s.boxes['td'].structure.boxes['add_ab'])
+# print(s.boxes['add_ti'].free)
+# print(s.boxes['add_ti'])
 
-ss = s.instantiate(in_situ = True, reserve_safe_structure = True)
+# ss = s.instantiate(in_situ = True, reserve_safe_structure = True)
 
-print(id(ss))
-print(id(ss.boxes['add_ti'].structure))
-# print(ss.boxes['td'].structure.boxes['add_ab'].free)
-# print(ss.boxes['td'].structure.boxes['add_ab'])
-print(ss.boxes['add_ti'].free)
-print(ss.boxes['add_ti'])
+# print(id(ss))
+# print(id(ss.boxes['add_ti'].structure))
+# # print(ss.boxes['td'].structure.boxes['add_ab'].free)
+# # print(ss.boxes['td'].structure.boxes['add_ab'])
+# print(ss.boxes['add_ti'].free)
+# print(ss.boxes['add_ti'])
 
 
-print('=======================================================')
+# print('=======================================================')
 
 
 # T = TestDiagram

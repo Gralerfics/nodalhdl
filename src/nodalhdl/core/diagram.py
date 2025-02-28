@@ -23,7 +23,7 @@ class DiagramType(type):
             创建类型:
                 (1.) 构建新类名, 查重, 并创建新类. (注意 hash() 是不稳定的, 与运行时环境有关, 建议使用稳定的映射)
                         ... TODO 构建方案需改进, 目前直接使用 str(inst_args), 与子结构的 str 结果高度相关, 可能限制参数传递的多样性 (内部结构未体现在 str 结果中) 以及破坏哈希的全局稳定性 (str 中出现内存地址). 同时, 哈希重复是否要再检查一下参数是否严格相同, 以防止小概率的哈希冲突?
-                        ... 改用一下 uuid3, 虽然还是 str.
+                        ... 改用一下 uuid3, 虽然还是 str. TODO 把里面的减号改下划线或去掉.
                 (2.) 通过 setup 构建框图结构, 更新类属性 structure_template.
                 (3.) 返回新类型.
             注:
@@ -297,6 +297,8 @@ class StructureBox:
         if self.structure is None:
             return True # EEB 是确定的
 
+        # TODO 是否要为 _register_ports_from_structure - _build 注释 (2.) 的情况加双保险, 判断 box.IO 是否也确定?
+        
         return self.structure.determined
     
     def _register_ports_from_structure(self, update: bool = False): # 从 self.structure 自动注册端口, 内部方法
@@ -310,8 +312,12 @@ class StructureBox:
                 update 模式用于 box.IO 已经被使用的情况, 此时要保留原先的 StructureNode 对象和它们身上携带的 net 关系, 不新创建 node 而是修改原有的属性,
                 所以 update 模式下应当要求传入的 structure.EEB.IO 和原 box.IO (self.IO) 结构一致.
                 
-                注: 为什么不合并两种用途?
-                    要建就重建, 要修就原封不动, 不允许出现混杂的操作, 没有物理意义.
+                注:
+                    (1.) 为什么不合并两种用途?
+                         要建就重建, 要修就原封不动, 不允许出现混杂的操作, 没有物理意义.
+                    (2.) 为什么复制 runtime 信息?
+                         考虑情况, structure 推导后留下 runtime 信息, 放入 box 时只复制了 origin 信息, 导致 structure 是 determined 但 box 不是.
+                         如果 box.determined 不考虑 box.IO 是否 determined, 就可能导致不进入内部的推导, runtime 信息无法传递出来.
             """
             if isinstance(d, ObjDict):
                 if update:
@@ -322,8 +328,11 @@ class StructureBox:
             else: # StructureNode
                 if update:
                     old_d.set_origin_signal_type(d.origin_signal_type.flip_io()) # 注意使用 set_ 函数, 其中会更新其所在 net 的 runtime_signal_type
+                    old_d.located_net.merge_runtime_type(d.located_net.get_runtime_type()) # [!] 复制节点时 origin 信息应来自参考节点的 origin 信息 (上一行), 然后再更新可能携带的 runtime 信息到自己的 runtime 信息, 见注释 (2.)
                 else:
-                    return StructureNode(d.name, d.origin_signal_type.flip_io(), located_box = self) # 注意创建时引用所属 box (self)
+                    new_node = StructureNode(d.name, d.origin_signal_type.flip_io(), located_box = self) # 注意创建时引用所属 box (self)
+                    new_node.located_net.merge_runtime_type(d.located_net.get_runtime_type()) # [!] 同上
+                    return new_node
         
             return old_d
         
@@ -365,13 +374,11 @@ class StructureBox:
                 to_d.located_net.merge_runtime_type(from_d.located_net.get_runtime_type())
         
         _update(self.IO, self.structure.EEB.IO) # 将 box.IO 所属 net 的 runtime 信息更新到 structure.EEB.IO
-        if self.structure.determined:
-            print("Determined box after importing, skip.")
-            return # TODO 有时 box.IO 已经确定, structure 内部其他也都确定, 导入后就完全确定了, 不需要再推导
         
-        print("Before: ", self.IO)
-        self.structure.deduction(modify_origin = modify_origin) # 递归推导
-        print("After: ", self.IO)
+        if not self.structure.determined: # 实际上如果结构确定, deduction 也会很快退出来; 前后两个 _update 必须执行, 确保 box.IO 确定但结构不确定的情况以及 box.IO 不确定但结构确定的情况都能最终完成同步
+            print("Before: ", self.IO)
+            self.structure.deduction(modify_origin = modify_origin) # 递归推导
+            print("After: ", self.IO)
         
         _update(self.structure.EEB.IO, self.IO) # 将 structure.EEB.IO 的 runtime 信息更新到 box.IO
     
@@ -431,7 +438,7 @@ class Structure:
     
         def _search(d): # 自身所有 IO
             if isinstance(d, ObjDict):
-                return all(_search(sub_val) for sub_val in d.values())
+                return all([_search(sub_val) for sub_val in d.values()])
             else: # StructureNode, determined 来自会自动处理 runtime 问题的 .signal_type 的判断
                 return d.determined
         
@@ -608,7 +615,7 @@ class Structure:
             if idx != 0:
                 ports[0].merge(port)
     
-    def deduction(self, modify_origin: bool = False):
+    def deduction(self, modify_origin: bool = False) -> bool:
         """
             可分结构的自动推导, 通过从 structure 和 box 的 port 出发沿 net 的迭代完成.
             
