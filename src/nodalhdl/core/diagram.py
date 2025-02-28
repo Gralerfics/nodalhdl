@@ -115,22 +115,23 @@ class StructureNet:
     def get_runtime_type(self):
         return self.runtime_signal_type
     
-    def init_runtime_type(self): # 遍历 nodes 得到初始情况
+    def init_runtime_type(self) -> bool: # 遍历 nodes 得到初始情况, 返回是否发生变化
+        flag = False
         for node in self.nodes:
-            self.merge_runtime_type(node.origin_signal_type)
+            flag |= self.merge_runtime_type(node.origin_signal_type)
+        return flag
     
-    def set_runtime_type(self, signal_type: SignalType): # 去除 IO
-        self.runtime_signal_type = signal_type.clear_io()
+    def set_runtime_type(self, signal_type: SignalType) -> bool: # 忽略 IO, 返回是否发生变化
+        new_st = signal_type.clear_io()
+        flag = new_st != self.runtime_signal_type
+        self.runtime_signal_type = new_st
+        return flag
     
     def merge_runtime_type(self, signal_type: SignalType) -> bool: # 返回是否发生了变化
         if self.runtime_signal_type is None:
-            self.set_runtime_type(signal_type)
-            return True
+            return self.set_runtime_type(signal_type)
         else:
-            new_st = self.runtime_signal_type.merges(signal_type)
-            flag = new_st != self.runtime_signal_type
-            self.set_runtime_type(new_st)
-            return flag
+            return self.set_runtime_type(self.runtime_signal_type.merges(signal_type))
 
 class StructureNode:
     """

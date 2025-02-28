@@ -37,7 +37,7 @@ class Addition(Diagram): # 带参基本算子示例, 整数加法
         
         if not op1_type.determined or not op2_type.determined:
             # io.res.set_origin_signal_type(Input[Auto])
-            io.res.located_net.merge_runtime_type(Input[Auto]) # TODO 用这三个 test 会死循环, 明天找一下原因, 困了
+            io.res.located_net.merge_runtime_type(Input[Auto])
         else:
             if op1_type.belongs(SInt):
                 # io.res.set_origin_signal_type(Input[SInt[max(op1_type.W, op2_type.W) + 1]])
