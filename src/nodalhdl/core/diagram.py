@@ -124,7 +124,13 @@ class StructureNet:
     def set_runtime_type(self, signal_type: SignalType) -> bool: # 忽略 IO, 返回是否发生变化
         new_st = signal_type.clear_io()
         flag = new_st != self.runtime_signal_type
-        self.runtime_signal_type = new_st
+        self.runtime_signal_type = new_st # 仅该方法可直接修改 runtime_signal_type, 这是由于要考虑对 runtime_deduction_effected 的操作
+        
+        if flag: # 如果 runtime 信息发生了改变, 说明正在进行的类型推导产生收益, 标记在 runtime_deduction_effected 中
+            for node in self.nodes:
+                if node.located_box is not None and node.located_box.located_structure is not None:
+                    node.located_box.located_structure.runtime_deduction_effected = True
+        
         return flag
     
     def merge_runtime_type(self, signal_type: SignalType) -> bool: # 返回是否发生了变化
@@ -377,9 +383,7 @@ class StructureBox:
         _update(self.IO, self.structure.EEB.IO) # 将 box.IO 所属 net 的 runtime 信息更新到 structure.EEB.IO
         
         if not self.structure.determined: # 实际上如果结构确定, deduction 也会很快退出来; 前后两个 _update 必须执行, 确保 box.IO 确定但结构不确定的情况以及 box.IO 不确定但结构确定的情况都能最终完成同步
-            print("Before: ", self.IO)
             self.structure.deduction(modify_origin = modify_origin) # 递归推导
-            print("After: ", self.IO)
         
         _update(self.structure.EEB.IO, self.IO) # 将 structure.EEB.IO 的 runtime 信息更新到 box.IO
     
@@ -409,7 +413,8 @@ class Structure:
         
         self.boxes = {} # 包含的 boxes
         
-        self.runtime_id = str(uuid.uuid4())
+        self.runtime_id = str(uuid.uuid4()) # 用于表示结构变化的 id
+        self.runtime_deduction_effected = False # 用于表示推导中是否产生收益的标识
         
         """
             关于 External Equivalent Box (EEB), 即将 structure 以外视作一个内外翻转的大 box,
@@ -627,10 +632,15 @@ class Structure:
             不是的话再看是否 .free, 是的话递归推导, 不是的话先例化 (例化直接递归到 determined 模块), 再递归推导, 推导可能导致 box ports 更新, 更新的 ports 重新加入队列.
                     ... 所以或许可以不用等碰到了再例化, 而是直接把 boxes 中非 determined 的非 free 的 box 先例化掉.
             
-            [!] 进入 box 继续 deduction 前, 需要将 box.IO 同步到 box.structure.EEB.IO; deduction 后, 需要反向同步.
-            [!] 为独立的顶层 structure 调用 deduction 时不需要上述操作, 因为外部已没有 box, 其他情况则需要注意.
+            进入 box 继续 deduction 前, 需要将 box.IO 同步到 box.structure.EEB.IO; deduction 后, 需要反向同步. 这实现在了 StructureBox.deduction 中. 为独立的顶层 structure 调用 deduction 时不需要该操作, 因为外部已没有 box, 其他情况则需要注意.
+            
             TODO modify_origin 是否要用独立的方法实现, 即 "应用 runtime 信息到 origin 上".
+            
             TODO 基于信息熵的顺序选择, 还没想好, 先直接遍历直到收敛.
+            
+            关于 runtime_deduction_effected, deduction 针对一个 structure 进行, 每次调用 net 的 set_runtime_type 如果产生有效修改则会置 runtime_deduction_effected 为 True,
+            即该标记监测该 structure 下直辖的 net (located_structure = self) 的变化情况, 不包括 box 中 deduction 的结果,
+            这样做是由于, 即便假设 box 内部推导产生了收益但未反映到 ports, 而其他 net 都没有改变, 这种情况也可认为已经收敛, 因为再对 box 进行一次推导也不会有变化, 外围 net 不变 deduction 在 box 的状态上就幂等.
         """
         if not self.free:
             raise DiagramInstantiationException(f"Only free structure can be deduced. You can call .instantiate() to get a free structure")
@@ -645,6 +655,9 @@ class Structure:
             return
         
         while not self.determined: # [!!!] TODO !!! 不对, 应该推导到没有变化了, 不一定最后能 determined
+            self.runtime_deduction_effected = False # 开始一轮推导时置为未产生收益
+            print("New round.")
+        
             for box in self.boxes.values():
                 print("Deduction on box: ", box)
                 
@@ -655,6 +668,10 @@ class Structure:
                 print("Before: ", box.IO)
                 box.deduction(modify_origin = modify_origin) # 递归推导, 双向同步在 StructureBox.deduction 中完成
                 print("After: ", box.IO)
+            
+            if not self.runtime_deduction_effected: # 一轮结束无收益则结束推导
+                print("Not changed, stop.")
+                break
     
     def vhdl(self):
         """
