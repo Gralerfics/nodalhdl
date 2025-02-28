@@ -42,11 +42,13 @@ class DiagramType(type):
             setup_func = new_cls.setup
             
             try:
-                new_cls.structure_template = setup_func(inst_args) # 生成结构
-                if new_cls.structure_template is not None:
-                    new_cls.structure_template = new_cls.structure_template.instantiate(in_situ = True, reserve_safe_structure = True) # 原位局部非定态例化, 将可能需要修改的 undetermined 部分例化, 为推导做准备
-                    new_cls.structure_template.deduction(modify_origin = True) # 生成后固定前进行一次推导, 自动补完与外界无关的省略信息, 并且直接修改信号类型原始值
-                    new_cls.structure_template.lock() # 固定生成的模板为非自由结构, 不能再修改
+                new_structure: Structure = setup_func(inst_args) # 生成结构
+                if new_structure is not None:
+                    new_structure.instantiate(in_situ = True, reserve_safe_structure = True) # 原位局部非定态例化, 将可能需要修改的 undetermined 部分例化, 为推导做准备
+                    new_structure.deduction() # 生成后固定前进行一次推导, 自动补完与外界无关的省略信息
+                    new_structure.apply_runtime() # 直接固定信号类型原始值为首次推导结果
+                    new_structure.lock() # 固定生成的模板为非自由结构, 不能再修改
+                new_cls.structure_template = new_structure
             except DiagramTypeException as e:
                 raise # [NOTICE] 异常处理, 这里直接全部抛出, 要求用户必须处理无参行为
             
@@ -365,7 +367,7 @@ class StructureBox:
         
         self.IO[name] = port_dict
     
-    def deduction(self, modify_origin: bool = False):
+    def deduction(self):
         """
             对 box 下的 structure 进行类型推导.
             由于 box.IO 与 structure.EEB.IO 对应,
@@ -383,7 +385,7 @@ class StructureBox:
         _update(self.IO, self.structure.EEB.IO) # 将 box.IO 所属 net 的 runtime 信息更新到 structure.EEB.IO
         
         if not self.structure.determined: # 实际上如果结构确定, deduction 也会很快退出来; 前后两个 _update 必须执行, 确保 box.IO 确定但结构不确定的情况以及 box.IO 不确定但结构确定的情况都能最终完成同步
-            self.structure.deduction(modify_origin = modify_origin) # 递归推导
+            self.structure.deduction() # 递归推导
         
         _update(self.structure.EEB.IO, self.IO) # 将 structure.EEB.IO 的 runtime 信息更新到 box.IO
     
@@ -621,7 +623,13 @@ class Structure:
             if idx != 0:
                 ports[0].merge(port)
     
-    def deduction(self, modify_origin: bool = False) -> bool:
+    def apply_runtime(self):
+        """
+            将当前 runtime 推导信息直接应用到 origin 上.
+        """
+        pass # TODO
+    
+    def deduction(self) -> bool:
         """
             可分结构的自动推导, 通过从 structure 和 box 的 port 出发沿 net 的迭代完成.
             
@@ -633,8 +641,6 @@ class Structure:
                     ... 所以或许可以不用等碰到了再例化, 而是直接把 boxes 中非 determined 的非 free 的 box 先例化掉.
             
             进入 box 继续 deduction 前, 需要将 box.IO 同步到 box.structure.EEB.IO; deduction 后, 需要反向同步. 这实现在了 StructureBox.deduction 中. 为独立的顶层 structure 调用 deduction 时不需要该操作, 因为外部已没有 box, 其他情况则需要注意.
-            
-            TODO modify_origin 是否要用独立的方法实现, 即 "应用 runtime 信息到 origin 上".
             
             TODO 基于信息熵的顺序选择, 还没想好, 先直接遍历直到收敛.
             
@@ -666,7 +672,7 @@ class Structure:
                     continue
                 
                 print("Before: ", box.IO)
-                box.deduction(modify_origin = modify_origin) # 递归推导, 双向同步在 StructureBox.deduction 中完成
+                box.deduction() # 递归推导, 双向同步在 StructureBox.deduction 中完成
                 print("After: ", box.IO)
             
             if not self.runtime_deduction_effected: # 一轮结束无收益则结束推导
