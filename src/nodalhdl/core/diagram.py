@@ -228,6 +228,8 @@ class StructureNode:
                  runtime_signal_type 保存在 net 中, 可以遍历 structure 找到所有 ports 后修改.
                  但每次修改都遍历 structure 太冗余, 考虑延迟更新, 在 structure 中记录 runtime_id 作为运行时标识,
                  net 里面也存一个, 二者一致表示 net 当前版本与 structure 同步.
+                 当发生结构变化时, 更新 structure 的 runtime_id, 更新在 update_runtime_id() 中实现.
+                 注意, 这里需要递归更新所有子结构的 runtime_id, 这是由于外部推导结果的失效可能导致内部推导结果的失效, 但只更新外部 runtime_id 不会触发内部的延迟更新 (内部 net 的 located_structure 不涉外部).
     """
     def merge(self, other_node: 'StructureNode'):
         self.located_net.merge_net(other_node.located_net)
@@ -452,8 +454,16 @@ class Structure:
         
         return _search(port_dict) and all([box.determined for box in self.boxes.values()]) # 加上所有下辖 box 确定
     
-    def update_runtime_id(self):
+    def update_runtime_id(self): # TODO 这里是不是应该递归更新所有子结构的 runtime_id !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        """
+            递归更新当前以及所有子结构的 runtime_id.
+            变化即可, 无需内外 id 一致. 这是基于 structure 独立性的考虑, 即 structure 并不清楚自己是否被装入 box 成为了子结构, 所以涉及外部结构变化的更新都需要外部结构主动实施.
+        """
         self.runtime_id = str(uuid.uuid4())
+        
+        for box in self.boxes.values():
+            if box.structure is not None:
+                box.structure.update_runtime_id()
     
     def instantiate(self, in_situ: bool = True, reserve_safe_structure: bool = True):
         """
@@ -626,6 +636,8 @@ class Structure:
     def apply_runtime(self):
         """
             将当前 runtime 推导信息直接应用到 origin 上.
+            遍历所有 boxes 下的 ports, 修改 origin_signal_type.
+            TODO 是否需要考虑 nodes? 目前看没有影响, 暂时只考虑 ports. 考虑 nodes
         """
         
         

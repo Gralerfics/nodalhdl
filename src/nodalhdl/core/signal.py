@@ -140,28 +140,6 @@ class SignalType(type):
         t2 = other.clear_io() if other.io_wrapper_included else other
         
         return t1.applys(t2)
-        
-        # def _merge(t1: SignalType, t2: SignalType): # TODO
-        #     if t1.belongs(Bundle) and t2.belongs(Bundle):
-        #         if t1._bundle_types.keys() != t2._bundle_types.keys(): # .keys() 比较是比较内容
-        #             return None
-                
-        #         return Bundle[{key: _merge(T1, T2) for (key, T1), (_, T2) in zip(t1._bundle_types.items(), t2._bundle_types.items())}]
-        #     elif not t1.belongs(Bundle) and not t2.belongs(Bundle):
-        #         if t1.belongs(t2):
-        #             return t1
-        #         elif t2.belongs(t1):
-        #             return t2
-        #         else:
-        #             return None
-        #     else:
-        #         return None
-        
-        # res = _merge(t1, t2)
-        # if res is None:
-        #     raise SignalTypeException(f"Signal types {t1.__name__} and {t2.__name__} are conflicting")
-        
-        # return res
     
     def applys(signal_type: 'SignalType', other: 'SignalType'): # 将 other 的信息应用到 signal_type 上, other 是忽略 IO 的
         """
