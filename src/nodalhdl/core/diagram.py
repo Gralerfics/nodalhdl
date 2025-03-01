@@ -23,7 +23,7 @@ class DiagramType(type):
             创建类型:
                 (1.) 构建新类名, 查重, 并创建新类. (注意 hash() 是不稳定的, 与运行时环境有关, 建议使用稳定的映射)
                         ... TODO 构建方案需改进, 目前直接使用 str(inst_args), 与子结构的 str 结果高度相关, 可能限制参数传递的多样性 (内部结构未体现在 str 结果中) 以及破坏哈希的全局稳定性 (str 中出现内存地址). 同时, 哈希重复是否要再检查一下参数是否严格相同, 以防止小概率的哈希冲突?
-                        ... 改用一下 uuid3, 虽然还是 str. TODO 把里面的减号改下划线或去掉.
+                        ... 改用一下 uuid3, 虽然还是 str.
                 (2.) 通过 setup 构建框图结构, 更新类属性 structure_template.
                 (3.) 返回新类型.
             注:
@@ -35,7 +35,7 @@ class DiagramType(type):
         
         new_name = name
         if inst_args: # 若参数不为空则依据参数构建新名
-            new_name = f"{name}_{uuid.uuid3(DiagramType.UUID_NAMESPACE, str(inst_args))}"
+            new_name = f"{name}_{str(uuid.uuid3(DiagramType.UUID_NAMESPACE, str(inst_args))).replace('-', '_')}"
         
         if not new_name in mcs.diagram_type_pool.keys(): # 若尚未创建过
             new_cls = super().__new__(mcs, new_name, bases, attr) # 先创建类, setup() 可能未在子类中显式重写 (即未在 attr 中)
@@ -684,7 +684,7 @@ class Structure:
             print("After: ", self.EEB.IO)
             return
         
-        while not self.determined: # [!!!] TODO !!! 不对, 应该推导到没有变化了, 不一定最后能 determined
+        while not self.determined:
             self.runtime_deduction_effected = False # 开始一轮推导时置为未产生收益
             print("New round.")
         

@@ -16,7 +16,7 @@ class Addition(Diagram): # 带参基本算子示例, 整数加法
         op1_type, op2_type = args
         
         # 创建结构
-        res = Structure("addition")
+        res = Structure("addition") # TODO structure name 对应 entity name 和文件名, 需要有参数信息
         
         # 声明 IO Ports
         res.add_port("op1", Input[op1_type])
@@ -36,14 +36,11 @@ class Addition(Diagram): # 带参基本算子示例, 整数加法
         op1_type, op2_type = io.op1.signal_type, io.op2.signal_type
         
         if not op1_type.determined or not op2_type.determined:
-            # io.res.set_origin_signal_type(Input[Auto])
             io.res.located_net.merge_runtime_type(Input[Auto])
         else:
             if op1_type.belongs(SInt):
-                # io.res.set_origin_signal_type(Input[SInt[max(op1_type.W, op2_type.W) + 1]])
                 io.res.located_net.merge_runtime_type(Input[SInt[max(op1_type.W, op2_type.W) + 1]])
             else:
-                # io.res.set_origin_signal_type(Input[UInt[max(op1_type.W, op2_type.W)]])
                 io.res.located_net.merge_runtime_type(Input[UInt[max(op1_type.W, op2_type.W)]])
     
     def vhdl(s: Structure): # @operator 将自动将该函数注册进 structure_template 中
