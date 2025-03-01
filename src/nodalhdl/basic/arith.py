@@ -16,7 +16,7 @@ class Addition(Diagram): # 带参基本算子示例, 整数加法
         op1_type, op2_type = args
         
         # 创建结构
-        res = Structure("addition") # TODO structure name 对应 entity name 和文件名, 需要有参数信息 TODO 问题, 例如参数是类型, 此时可能未推导完成. 主要问题在于, 只有 locked 的 structure 才能复用, 其他都应该是单例的.
+        res = Structure()
         
         # 声明 IO Ports
         res.add_port("op1", Input[op1_type])

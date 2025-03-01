@@ -1,4 +1,4 @@
-from nodalhdl.core.signal import UInt, SInt, Bits, Bit, Bundle, UInt8, Input, Output, Auto
+from nodalhdl.core.signal import UInt, SInt, Bits, Bit, Bundle, Input, Output, Auto
 from nodalhdl.core.diagram import Diagram, Structure, StructureBox
 from nodalhdl.basic.arith import Addition
 
@@ -73,6 +73,13 @@ print('=======================================================')
 # s.apply_runtime() # 注释: update_runtime_id 后 s 的 推导需要重新进行; 不注释: s 上次推导已经 determined, 并被 apply_runtime 固定, 再次推导可直接结束
 s.update_runtime_id()
 s.deduction()
+
+
+print('=======================================================')
+
+
+print(add_ti.structure.name)
+print(td.structure.boxes['add_abc'].structure.name) # 这俩应该一致, 都是 Addition[Auto, Auto], 所以生成 hdl 时需要有 namespace 机制
 
 
 # print('=======================================================')

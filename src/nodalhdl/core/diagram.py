@@ -44,6 +44,7 @@ class DiagramType(type):
             try:
                 new_structure: Structure = setup_func(inst_args) # 生成结构
                 if new_structure is not None:
+                    new_structure.name = new_name # 结构原始名与新类名一致 (包含类型和参数信息; 是编码后的, 或可将参数原始值写到 hdl 文件的注释里) TODO
                     new_structure.instantiate(in_situ = True, reserve_safe_structure = True) # 原位局部非定态例化, 将可能需要修改的 undetermined 部分例化, 为推导做准备
                     new_structure.deduction() # 生成后固定前进行一次推导, 自动补完与外界无关的省略信息
                     new_structure.apply_runtime() # 直接固定信号类型原始值为首次推导结果
@@ -408,8 +409,8 @@ class Structure:
                 ... TODO 添加措施强制不可修改非自由结构.
         自由结构不代表内部所有部分都自由, 例如 box 可能是 locked 的, 但 structure 本身是 free 的. 此时可以修改 structure 的结构, 但不能修改 box 的内部结构.
     """
-    def __init__(self, name: str):
-        self.name = name
+    def __init__(self, name: str = None):
+        self.name = name # 此处为 primitive name, 首先肯定需要包含一些参数信息以和其他同名结构区分 (用户自定义, 或创建框图类型模板时自动设为类名), 其次该名称只有 locked structure 在生成 hdl 时才会直接使用, 否则应会在前加入 namespace 信息, 以确保具有 runtime 信息的同 name structure 不会冲突
         self.free = True # 默认创建时为自由结构, 若经过框图类型 setup, 在 __new__ 时会被 .lock() 递归锁定
         
         self.custom_deduction = None # 自定义类型推导, 用于定义 operator
