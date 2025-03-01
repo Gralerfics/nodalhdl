@@ -627,7 +627,9 @@ class Structure:
         """
             将当前 runtime 推导信息直接应用到 origin 上.
         """
-        pass # TODO
+        
+        
+        pass # TODO 应该需要用到 SignalType.applys 了
     
     def deduction(self) -> bool:
         """

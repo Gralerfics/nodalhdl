@@ -123,6 +123,7 @@ class SignalType(type):
     
     """
         有关信号类型关系的方法.
+        以下这些第一个参数为 signal_type 的方法被 Signal 类型和其子类继承后, 第一个参数相当于 self.
     """
     def equals(signal_type: 'SignalType', other: 'SignalType'):
         return signal_type == other
@@ -131,38 +132,70 @@ class SignalType(type):
         return issubclass(signal_type, other)
     
     def merges(signal_type: 'SignalType', other: 'SignalType'): # 合并两个信号类型的信息, 去 IO Wrapper
-        t1, t2 = signal_type.clear_io(), other.clear_io()
+        """
+            applys 本质上是将二者类型信息合并, 并保留 signal_type 的 IO Wrapper 结构.
+            merges 传入无 IO Wrapper 的 signal_type, 就使其成为单纯的信息合并.
+        """
+        t1 = signal_type.clear_io() if signal_type.io_wrapper_included else signal_type
+        t2 = other.clear_io() if other.io_wrapper_included else other
         
-        def _merge(t1: SignalType, t2: SignalType):
-            if t1.belongs(Bundle) and t2.belongs(Bundle):
-                if t1._bundle_types.keys() != t2._bundle_types.keys():
-                    return None
+        return t1.applys(t2)
+        
+        # def _merge(t1: SignalType, t2: SignalType): # TODO
+        #     if t1.belongs(Bundle) and t2.belongs(Bundle):
+        #         if t1._bundle_types.keys() != t2._bundle_types.keys(): # .keys() 比较是比较内容
+        #             return None
                 
-                return Bundle[{key: _merge(T1, T2) for (key, T1), (_, T2) in zip(t1._bundle_types.items(), t2._bundle_types.items())}]
-            elif not t1.belongs(Bundle) and not t2.belongs(Bundle):
-                if t1.belongs(t2):
-                    return t1
-                elif t2.belongs(t1):
-                    return t2
-                else:
-                    return None
-            else:
-                return None
+        #         return Bundle[{key: _merge(T1, T2) for (key, T1), (_, T2) in zip(t1._bundle_types.items(), t2._bundle_types.items())}]
+        #     elif not t1.belongs(Bundle) and not t2.belongs(Bundle):
+        #         if t1.belongs(t2):
+        #             return t1
+        #         elif t2.belongs(t1):
+        #             return t2
+        #         else:
+        #             return None
+        #     else:
+        #         return None
         
-        res = _merge(t1, t2)
-        if res is None:
-            raise SignalTypeException(f"Signal types {t1.__name__} and {t2.__name__} are conflicting")
+        # res = _merge(t1, t2)
+        # if res is None:
+        #     raise SignalTypeException(f"Signal types {t1.__name__} and {t2.__name__} are conflicting")
         
-        return res
+        # return res
     
     def applys(signal_type: 'SignalType', other: 'SignalType'): # 将 other 的信息应用到 signal_type 上, other 是忽略 IO 的
         """
             用在需要将无 IO 类型推导结果应用到 port 信号类型上的情况.
             但实际上用到这个方法的信号类型应该都只有最外层有 IO Wrapper, 写个通用的吧.
-            [!] 不对, 好像用不着这个方法, deduction 前后双向同步时, 直接同步 net 的 runtime 信息即可; 生成 vhdl 时用 port 的结构对着 runtime 信息查询即可.
-            [!!] 用得到, 在 deduction 的 modify_origin 模式 (将推导结果直接应用到 origin_signal_type 上) 时.
         """
-        pass # [NOTICE]
+        if other.io_wrapper_included:
+            other = other.clear_io()
+        
+        def _apply(d_port, d_rtst):
+            if d_port.belongs(Input):
+                return Input[_apply(d_port.T, d_rtst)]
+            elif d_port.belongs(Output):
+                return Output[_apply(d_port.T, d_rtst)]
+            elif d_port.belongs(Bundle) and d_rtst.belongs(Bundle):
+                if d_port._bundle_types.keys() != d_rtst._bundle_types.keys():
+                    return None
+                
+                return Bundle[{key: _apply(T1, T2) for (key, T1), (_, T2) in zip(d_port._bundle_types.items(), d_rtst._bundle_types.items())}]
+            elif not d_port.belongs(Bundle) and not d_rtst.belongs(Bundle):
+                if d_port.belongs(d_rtst):
+                    return d_port
+                elif d_rtst.belongs(d_port):
+                    return d_rtst
+                else:
+                    return None
+            else:
+                return None
+        
+        res = _apply(signal_type, other)
+        if res is None:
+            raise SignalTypeException(f"Signal types {signal_type.__name__} and {other.__name__} are conflicting")
+        
+        return res
 
     """
         有关 IO Wrapper 的方法.
@@ -356,5 +389,18 @@ class Output(IOWrapper): pass
 #     }]]
 # }]
 
-# print(S.merges(T).d._bundle_types)
+# P = Bundle[{
+#     "a": Auto,
+#     "b": Bits,
+#     "c": Bundle[{
+#         "x": SInt[3],
+#         "y": SInt
+#     }],
+#     "d": Input[Bundle[{
+#         "t": Auto
+#     }]]
+# }]
+
+# print(S.merges(T)._bundle_types)
+# print(S.applys(P).d)
 
