@@ -37,7 +37,7 @@ print('=======================================================')
 s = Structure("test")
 
 bi = s.add_port("bi", Bundle[{"i": Input[UInt[2]], "o": Output[Auto]}])
-t = s.add_port("t", Input[UInt]) # 改成 undetermined 测试 Addition 的反向推导 (未实现)
+t = s.add_port("t", Input[UInt[4]]) # 改成 undetermined 测试 Addition 的反向推导 (未实现)
 n = s.add_port("n", Input[UInt[8]])
 m = s.add_port("m", Input[UInt[8]])
 
@@ -64,6 +64,14 @@ print('=======================================================')
 
 
 s.instantiate(in_situ = True, reserve_safe_structure = True)
+s.deduction()
+
+
+print('=======================================================')
+
+
+# s.apply_runtime() # 注释: update_runtime_id 后 s 的 推导需要重新进行; 不注释: s 上次推导已经 determined, 并被 apply_runtime 固定, 再次推导可直接结束
+s.update_runtime_id()
 s.deduction()
 
 

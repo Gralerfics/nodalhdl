@@ -454,7 +454,7 @@ class Structure:
         
         return _search(port_dict) and all([box.determined for box in self.boxes.values()]) # 加上所有下辖 box 确定
     
-    def update_runtime_id(self): # TODO 这里是不是应该递归更新所有子结构的 runtime_id !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    def update_runtime_id(self):
         """
             递归更新当前以及所有子结构的 runtime_id.
             变化即可, 无需内外 id 一致. 这是基于 structure 独立性的考虑, 即 structure 并不清楚自己是否被装入 box 成为了子结构, 所以涉及外部结构变化的更新都需要外部结构主动实施.
@@ -636,12 +636,22 @@ class Structure:
     def apply_runtime(self):
         """
             将当前 runtime 推导信息直接应用到 origin 上.
-            遍历所有 boxes 下的 ports, 修改 origin_signal_type.
+            遍历所有 boxes 下的 ports, 修改 origin_signal_type, 再递归修改子结构.
             TODO 是否需要考虑 nodes? 目前看没有影响, 暂时只考虑 ports. 考虑 nodes
+            TODO [global] 用到的地方太多了, 什么时候把遍历 box.IO 的功能封装成迭代器之类的, 不要每次都写一遍递归.
         """
+        def _apply(d): # 遍历 .IO 操作每个 port
+            if isinstance(d, ObjDict):
+                for sub_val in d.values():
+                    _apply(sub_val)
+            elif isinstance(d, StructureNode):
+                d.set_origin_signal_type(d.origin_signal_type.applys(d.located_net.get_runtime_type()))
         
-        
-        pass # TODO 应该需要用到 SignalType.applys 了
+        for box in self.boxes.values():
+            _apply(box.IO) # EEB.IO 这次也要修改
+            
+            if box.structure is not None:
+                box.structure.apply_runtime()
     
     def deduction(self) -> bool:
         """
