@@ -10,7 +10,7 @@ class Addition(Diagram): # 带参基本算子示例, 整数加法
         if not args:
             return None
         
-        # 参数合法性检查 (结构性检查, 即不影响结构生成即可, 因为这里可能涉及到 Auto 等未推导的父类型, 导就完了. 行为性检查在 vhdl 生成或仿真中进行)
+        # 参数合法性检查 (结构性检查, 即不影响结构生成即可, 因为这里可能涉及到 Auto 等未推导的父类型, 导就完了. 行为性检查在 HDL 生成或仿真中进行)
         if len(args) != 2:
             raise DiagramTypeException(f"Invalid argument(s) \'{args}\' for diagram type Addition[<op1_type (SignalType)>, <op2_type (SignalType)>].")
         op1_type, op2_type = args
@@ -43,7 +43,7 @@ class Addition(Diagram): # 带参基本算子示例, 整数加法
             else:
                 io.res.located_net.merge_runtime_type(Input[UInt[max(op1_type.W, op2_type.W)]])
     
-    def vhdl(s: Structure): # @operator 将自动将该函数注册进 structure_template 中
+    def generation(s: Structure): # @operator 将自动将该函数注册进 structure_template 中
         # 端口合法性检查 (此时结构已经 determined, 可以进一步检查, 例如是否是 UInt + UInt 或 SInt + SInt)
         
         pass

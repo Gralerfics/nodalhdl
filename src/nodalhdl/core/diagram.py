@@ -1,10 +1,11 @@
 from .signal import SignalType, IOWrapper
+from .hdl import HDLFileModel
 from .utils import ObjDict
 
 import uuid
 from inspect import isfunction
 
-import logging
+import logging # TODO 搞一个分频道调试输出工具
 logging.basicConfig(level = logging.INFO,format = '%(asctime)s - [%(levelname)s] - %(message)s')
 logger = logging.getLogger(__name__)
 
@@ -49,10 +50,7 @@ class DiagramType(type):
                 new_structure: Structure = setup_func(inst_args) # 生成结构
                 if new_structure is not None:
                     new_structure.name = new_name # 结构原始名与新类名一致 (包含类型和参数信息; 是编码后的, 或可将参数原始值写到 hdl 文件的注释里) TODO
-                    new_structure.instantiate(in_situ = True, reserve_safe_structure = True) # 原位局部非定态例化, 将可能需要修改的 undetermined 部分例化, 为推导做准备
-                    new_structure.deduction() # 生成后固定前进行一次推导, 自动补完与外界无关的省略信息
-                    new_structure.apply_runtime() # 直接固定信号类型原始值为首次推导结果
-                    new_structure.lock() # 固定生成的模板为非自由结构, 不能再修改
+                    new_structure.lock() # 固定生成的模板为非自由结构, 不能再修改, 内部会进行例化, 推导, 固定, 有条件将进行 HDL 生成
                 new_cls.structure_template = new_structure
             except DiagramTypeException as e:
                 raise # [NOTICE] 异常处理, 这里直接全部抛出, 要求用户必须处理无参行为
@@ -418,17 +416,19 @@ class Structure:
     """
     def __init__(self, name: str = None):
         self.name = name # 此处为 primitive name, 首先肯定需要包含一些参数信息以和其他同名结构区分 (用户自定义, 或创建框图类型模板时自动设为类名), 其次该名称只有 locked structure 在生成 hdl 时才会直接使用, 否则应会在前加入 namespace 信息, 以确保具有 runtime 信息的同 name structure 不会冲突
-        self.free = True # 默认创建时为自由结构, 若经过框图类型 setup, 在 __new__ 时会被 .lock() 递归锁定
+        self.free = True # 默认创建时为自由结构, 若经过框图类型 setup, 仅会被 .lock() 操作锁定
         
-        self.custom_deduction = None # 自定义类型推导, 用于定义 operator
-        self.custom_vhdl = None # 自定义 VHDL 生成, 用于定义 operator
-        
-        self.params = ObjDict({}) # 用户参数, 可直接索引修改, e.g. 可在 setup 中添加, 在 custom_vhdl 中使用 TODO 加个接口?
+        self.hdl = None # lock (确保结构固定) 后若结构为 determined (确保可以生成), 则进行 HDL 生成并存储在此
         
         self.boxes = {} # 包含的 boxes
         
         self.runtime_id = str(uuid.uuid4()) # 用于表示结构变化的 id
         self.runtime_deduction_effected = False # 用于表示推导中是否产生收益的标识
+        
+        self.custom_deduction = None # 自定义类型推导, 用于定义 operator
+        self.custom_generation = None # 自定义 HDL 生成, 用于定义 operator
+        
+        self.params = ObjDict({}) # 用户参数, 可直接索引修改, e.g. 可在 setup 中添加, 在 custom_generation 中使用 TODO 加个接口?
         
         """
             关于 External Equivalent Box (EEB), 即将 structure 以外视作一个内外翻转的大 box,
@@ -518,7 +518,7 @@ class Structure:
             
             # 一些需要同步的属性
             res.custom_deduction = self.custom_deduction
-            res.custom_vhdl = self.custom_vhdl
+            res.custom_generation = self.custom_generation
 
             # 遍历 boxes, 复制结构
             for box in self.boxes.values():
@@ -569,20 +569,34 @@ class Structure:
     
     def lock(self):
         """
-            锁定结构, 使其变为非自由结构, 不能再修改.
-            递归锁定该结构以及其下属所有 box 的结构.
-            目前的 locked 某种意义上就是将 structure 作为一个可复用的模板了, 可以是用户自定义的, 或是使用 setup 生成的.
+            锁定结构.
+            
+            锁定前先锁定所有子结构, 直到已锁定结构; 未锁定的结构则进行原位例化, 再类型推导, 再应用, 再锁定.
+            结构锁定后会检查 determined, 若为真则可以进行 HDL 生成, 结果保存在 self.hdl 中留待复用.
+            锁定后的结构成为固定的模板, 结构乃至 runtime 信息不允许再更改, 如果 determined 则还将存有 HDL 文件对象.
+            一旦需要修改, 例如 undetermined locked 结构参与推导时, 须例化.
         """
-        self.free = False
-        for box in self.boxes.values():
+        if not self.free: # 已经锁定则无需操作
+            return
+        
+        for box in self.boxes.values(): # 递归锁定所有子结构
             if box.structure is not None: # 忽略例如 EEB 这样无结构的 box
                 box.structure.lock()
+        
+        self.instantiate(in_situ = True, reserve_safe_structure = True) # 原位局部非定态例化, 当前 self.free 还是 False, 可确保例化不会返回新结构
+        self.deduction() # 固定前进行一次推导, 自动补完与外界无关的省略信息
+        self.apply_runtime() # 固定信号类型原始值为推导结果
+        
+        self.free = False
+        
+        if self.determined: # 若结构确定, 则生成 HDL 文件对象
+            self.hdl = self.generation()
     
     def register_deduction(self, func):
         self.custom_deduction = func
     
-    def register_vhdl(self, func):
-        self.custom_vhdl = func
+    def register_generation(self, func):
+        self.custom_generation = func
     
     def add_node(self, name: str, signal_type: SignalType):
         """
@@ -663,7 +677,7 @@ class Structure:
             if box.structure is not None:
                 box.structure.apply_runtime()
     
-    def deduction(self) -> bool:
+    def deduction(self):
         """
             可分结构的自动推导, 通过从 structure 和 box 的 port 出发沿 net 的迭代完成.
             
@@ -713,19 +727,18 @@ class Structure:
                 logger.info("Not changed, stop.")
                 break
     
-    def vhdl(self):
+    def generation(self) -> HDLFileModel:
         """
-            生成 VHDL.
+            生成 HDLFileModel.
             注:
-                (1.) 暂时只考虑 VHDL.
-                (2.) 关于 vhdl 方法只接收 structure 作为参数:
-                     一些用户参数可在 setup 中通过修改 structure.params 添加, 在 custom_vhdl 中使用.
+                (1.) 关于 generation 方法只接收 structure 作为参数:
+                     一些用户参数可在 setup 中通过修改 structure.params 添加, 在 custom_generation 中使用.
         """
         if not self.determined: # 只有确定的结构才能转换为 HDL
             raise StructureGenerationException(f"Only determined structure can be converted to HDL")
         
-        if self.custom_vhdl is not None: # 基本算子的自定义 VHDL 生成
-            return self.custom_vhdl(self)
+        if self.custom_generation is not None: # 基本算子的自定义 HDL 生成
+            return self.custom_generation(self)
         
         # TODO
 
@@ -762,7 +775,7 @@ class Diagram(metaclass = DiagramType):
 
 def operator(cls):
     """
-        类装饰器 operator, 置于 Diagram 的子类前表明该类为基本算子 (即不可再分, 直接对应 VHDL).
+        类装饰器 operator, 置于 Diagram 的子类前表明该类为基本算子 (即不可再分, 直接对应 HDL).
         基本算子也允许 undetermined, 可能出现几种情况:
             (1.) 关于在 setup 后运行 deduction, 这种情况下如果运行后 determined 了, 就没问题了. 例如用户省略 output 的类型.
             (2.) 若确确实实就是 undetermined, 那么就需要参与到推导中. 当然, 此时已经例化了.
@@ -771,8 +784,8 @@ def operator(cls):
             (2.) 关于成员方法:
                 (2.1) 要求类中必须实现 deduction(s) 方法, 用于类型推导.
                     (2.1.1) 自动包装 setup 方法, 取使其返回的 structure 对象用 register_deduction 注册 deduction 方法.
-                (2.2) 要求类中必须实现 vhdl(s) 方法, 用于生成 VHDL 代码.
-                    (2.2.1) 自动包装 setup 方法, 取使其返回的 structure 对象用 register_vhdl 注册 vhdl 方法.
+                (2.2) 要求类中必须实现 generation(s) 方法, 用于生成 HDL 文件对象.
+                    (2.2.1) 自动包装 setup 方法, 取使其返回的 structure 对象用 register_generation 注册 generation 方法.
             (3.) 返回类.
     """
     setattr(cls, "is_operator", True) # (1.)
@@ -780,8 +793,8 @@ def operator(cls):
     if not any(isfunction(method) and method.__name__ == 'deduction' for method in cls.__dict__.values()): # (2.1)
         raise DiagramTypeException(f"Diagram type \'{cls.__name__}\' must implement method \'deduction\'.")
     
-    if not any(isfunction(method) and method.__name__ == 'vhdl' for method in cls.__dict__.values()): # (2.2)
-        raise DiagramTypeException(f"Diagram type \'{cls.__name__}\' must implement method \'vhdl\'.")
+    if not any(isfunction(method) and method.__name__ == 'generation' for method in cls.__dict__.values()): # (2.2)
+        raise DiagramTypeException(f"Diagram type \'{cls.__name__}\' must implement method \'generation\'.")
     
     setup_func = cls.setup
     
@@ -789,7 +802,7 @@ def operator(cls):
         res: Structure = setup_func(args)
         
         res.register_deduction(cls.deduction) # (2.1.1)
-        res.register_vhdl(cls.vhdl) # (2.2.1)
+        res.register_generation(cls.generation) # (2.2.1)
         
         return res
     
