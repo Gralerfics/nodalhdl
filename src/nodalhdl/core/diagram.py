@@ -4,6 +4,10 @@ from .utils import ObjDict
 import uuid
 from inspect import isfunction
 
+import logging
+logging.basicConfig(level = logging.INFO,format = '%(asctime)s - [%(levelname)s] - %(message)s')
+logger = logging.getLogger(__name__)
+
 
 """ Diagram Type """
 class DiagramTypeException(Exception): pass
@@ -70,6 +74,9 @@ class DiagramType(type):
 
 
 """ Structure """
+class StructureDeductionException(Exception): pass
+class StructureGenerationException(Exception): pass
+
 class StructureNet:
     """
         管理一组直接连接的 Nodes (Ports) 的集合为 Net.
@@ -416,6 +423,8 @@ class Structure:
         self.custom_deduction = None # 自定义类型推导, 用于定义 operator
         self.custom_vhdl = None # 自定义 VHDL 生成, 用于定义 operator
         
+        self.params = ObjDict({}) # 用户参数, 可直接索引修改, e.g. 可在 setup 中添加, 在 custom_vhdl 中使用 TODO 加个接口?
+        
         self.boxes = {} # 包含的 boxes
         
         self.runtime_id = str(uuid.uuid4()) # 用于表示结构变化的 id
@@ -674,34 +683,34 @@ class Structure:
             这样做是由于, 即便假设 box 内部推导产生了收益但未反映到 ports, 而其他 net 都没有改变, 这种情况也可认为已经收敛, 因为再对 box 进行一次推导也不会有变化, 外围 net 不变 deduction 在 box 的状态上就幂等.
         """
         if not self.free:
-            raise DiagramInstantiationException(f"Only free structure can be deduced. You can call .instantiate() to get a free structure")
+            raise StructureDeductionException(f"Only free structure can be deduced. You can call .instantiate() to get a free structure")
         
-        print("Deduction on structure: ", self)
+        logger.info(f"Deduction on structure: {self}")
         
         if self.custom_deduction is not None:
-            print("Custom deduction:")
-            print("Before: ", self.EEB.IO)
+            logger.info("Custom deduction:")
+            logger.info(f"Before: {self.EEB.IO}")
             self.custom_deduction(self) # 基本算子的自定义推导
-            print("After: ", self.EEB.IO)
+            logger.info(f"After: {self.EEB.IO}")
             return
         
         while not self.determined:
             self.runtime_deduction_effected = False # 开始一轮推导时置为未产生收益
-            print("New round.")
+            logger.info("New round.")
         
             for box in self.boxes.values():
-                print("Deduction on box: ", box)
+                logger.info(f"Deduction on box: {box}")
                 
                 if box.determined: # 已经确定的 box 不需要继续推导; 若未确定, deduction 前的例化应该已经保证其为 free 的
-                    print("Determined box, skip.")
+                    logger.info("Determined box, skip.")
                     continue
                 
-                print("Before: ", box.IO)
+                logger.info(f"Before: {box.IO}")
                 box.deduction() # 递归推导, 双向同步在 StructureBox.deduction 中完成
-                print("After: ", box.IO)
+                logger.info(f"After: {box.IO}")
             
             if not self.runtime_deduction_effected: # 一轮结束无收益则结束推导
-                print("Not changed, stop.")
+                logger.info("Not changed, stop.")
                 break
     
     def vhdl(self):
@@ -709,11 +718,11 @@ class Structure:
             生成 VHDL.
             注:
                 (1.) 暂时只考虑 VHDL.
-                (2.) 关于 vhdl 方法只接收 structure 作为参数合理性的推导:
-                     operator 内部结构仅有 ports 有意义 => args 只影响 ports 声明 => args 的信息已经在 ports 中体现 (如果涉及复杂的映射那就不管了) => 无需 args
+                (2.) 关于 vhdl 方法只接收 structure 作为参数:
+                     一些用户参数可在 setup 中通过修改 structure.params 添加, 在 custom_vhdl 中使用.
         """
         if not self.determined: # 只有确定的结构才能转换为 HDL
-            raise DiagramInstantiationException(f"Only determined structure can be converted to HDL")
+            raise StructureGenerationException(f"Only determined structure can be converted to HDL")
         
         if self.custom_vhdl is not None: # 基本算子的自定义 VHDL 生成
             return self.custom_vhdl(self)
@@ -722,14 +731,12 @@ class Structure:
 
 
 """ Diagram Base """
-class DiagramInstantiationException(Exception): pass
-
 class Diagram(metaclass = DiagramType):
     is_operator = False # 是否是基本算子 (见 @operator)
     structure_template: Structure = None # 结构模板
     
     def __init__(self):
-        raise DiagramTypeException(f"Use `.instantiate()` instead if you want to instantiate a Diagram")
+        raise DiagramTypeException(f"Use `Structure.instantiate()` instead if you want to instantiate a Diagram")
     
     @property
     def determined(self):

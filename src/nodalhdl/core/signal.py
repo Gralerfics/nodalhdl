@@ -2,6 +2,7 @@
 +--------------------------------------------------------------------+
     Signal Types:
         Signal;
+        Auto;
         Bits[<width>], Bit, Byte;
         UInt[<width>], UInt8, UInt16, UInt32, UInt64;
         SInt[<width>], SInt8, SInt16, SInt32, SInt64;
@@ -305,7 +306,7 @@ class BundleType(SignalType):
 
 
 """ Types """
-class Signal(metaclass = SignalType): pass
+class Signal(metaclass = SignalType): pass # TODO 叫 Signal 似乎不太合适, IO Wrapper 应该有 port 的意味
 
 class Auto(Signal): pass
 
