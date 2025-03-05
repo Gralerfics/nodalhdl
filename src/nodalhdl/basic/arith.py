@@ -62,11 +62,6 @@ class Addition(Diagram): # 带参基本算子示例, 整数加法
         
         res = HDLFileModel(entity_name, inline = False) # TODO inline
         
-        # TODO 或许 add_port 应该由 generation 自动根据 box.IO 调用
-        # res.add_port("op1", "in", op1_type)
-        # res.add_port("op2", "in", op2_type)
-        # res.add_port("res", "out", res_type)
-        
         res.set_raw(f".vhd", \
 f"""\
 library IEEE;

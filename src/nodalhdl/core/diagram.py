@@ -806,12 +806,6 @@ class Structure:
             for node in d.selective_values(StructureNode):
                 direction = "out" if node.origin_signal_type.belongs(Input) else "in"
                 hdl.add_port(node.name, direction, node.signal_type)
-            # if isinstance(d, ObjDict):
-            #     for sub_val in d.values():
-            #         _add_ports(sub_val, hdl)
-            # elif isinstance(d, StructureNode):
-            #     direction = "out" if d.origin_signal_type.belongs(Input) else "in" # 注意 self.EEB.IO 是翻转的, 所以这里反过来
-            #     hdl.add_port(d.name, direction, d.signal_type)
         
         res: HDLFileModel = None
         
@@ -823,19 +817,37 @@ class Structure:
         res = HDLFileModel(prefix + "_" + self.name)
         _add_ports(self.EEB.IO, res)
         
-        # 遍历 box 添加例化组件 TODO 如果 box 下安全结构且有 locked_hdl, 则直接添加 locked_hdl, 否则调用 generation 后添加
-        # TODO 还要遍历其关联的 Net, 添加连接关系, 以及要注意不重复添加
-        for box in self.boxes.values():
+        nets: set[StructureNet] = set()
+        
+        for box in self.boxes.values(): # 遍历 box 添加例化组件, 若 box 下为安全结构且有 locked_hdl, 则直接使用 locked_hdl, 否则递归调用 generation() 后获得 HDLFileModel
             if box.structure is not None:
                 mapping = {}
                 for node in box.IO.selective_values(StructureNode):
-                    mapping[node.name] = box.name + "_" + node.name # node_name => box_name_node_name
-                    res.add_signal(box.name + "_" + node.name, node.signal_type)
+                    port_wire_name = box.name + "_" + node.name # node_name => box_name_node_name
+                    mapping[node.name] = port_wire_name # port map
+                    res.add_signal(port_wire_name, node.signal_type) # 添加引出的信号 box_name_node_name
+                    nets.add(node.located_net) # 添加所在 net
                 
                 if not box.structure.free and box.structure.locked_hdl is not None:
                     res.inst_component(box.name, box.structure.locked_hdl, mapping)
                 else:
                     res.inst_component(box.name, box.structure.generation(prefix = prefix + "_" + box.name), mapping)
+        
+        for net in nets: # 遍历 net 添加连接
+            net_wire_name = "net_" + str(uuid.uuid4()).replace("-", "_") # 生成唯一的中转信号名, net 内所有 port 都连接到这个中转信号
+            res.add_signal(net_wire_name, net.get_runtime_type()) # 添加中转信号
+            
+            for node in net.nodes:
+                if node.located_box is not None: # 只管 port
+                    if node.located_box.name == "_extern_equivalent_box":
+                        port_wire_name = node.name
+                    else:
+                        port_wire_name = node.located_box.name + "_" + node.name # box_name_node_name
+                    
+                    if node.origin_signal_type.belongs(Input):
+                        res.add_assignment(port_wire_name, net_wire_name)
+                    else:
+                        res.add_assignment(net_wire_name, port_wire_name)
         
         return res
 
