@@ -1,4 +1,4 @@
-from .signal import SignalType, Bundle, IOWrapper
+from .signal import SignalType, Bundle
 
 
 class HDLFileModelException(Exception): pass
@@ -9,7 +9,7 @@ class HDLGlobalInfo:
         例如所用到的所有类型, 在 add_component 时会向上级传递, 最终顶层结构生成时会给出单独一个 types.vhd (以 VHDL 为例).
     """
     def __init__(self):
-        self.type_pool = set() # 类型池, 可用于查重
+        self.type_pool: set[SignalType] = set() # 类型池, 可用于查重
         self.type_pool_ordered: list[SignalType] = [] # 有序的 type_pool, 以防 HDL 要求顺序声明类型
     
     def merge(self, other: 'HDLGlobalInfo'):
@@ -36,26 +36,10 @@ class HDLGlobalInfo:
                     content += f"        {k}: std_logic_vector({T.W - 1} downto 0);\n"
             content += f"    end record;\n\n"
 
-        return {"types.vhd":
-f"""\
-library IEEE;
-use IEEE.std_logic_1164.all;
-use IEEE.numeric_std.all;
-
-package types is
-{content}\
-end package types;\
-"""
-        }
+        return {"types.vhd": f"library IEEE;\nuse IEEE.std_logic_1164.all;\nuse IEEE.numeric_std.all;\n\npackage types is\n{content}end package types;"}
     
     def header_vhdl(self):
-        return \
-"""\
-library IEEE;
-use IEEE.std_logic_1164.all;
-use IEEE.numeric_std.all;
-use work.types.all;\
-"""
+        return "library IEEE;\nuse IEEE.std_logic_1164.all;\nuse IEEE.numeric_std.all;\nuse work.types.all;"
     
     def add_type(self, t: SignalType):
         """
@@ -81,6 +65,7 @@ use work.types.all;\
         
         _add(t)
 
+
 class HDLFileModel:
     """
         HDL 文件模型.
@@ -89,7 +74,7 @@ class HDLFileModel:
     """
     def __init__(self, entity_name: str, inline: bool = False):
         self.entity_name: str = entity_name
-        self.inline: bool = inline # TODO operator 无法在 box 层面 expand, 像切片这种操作单独文件又太繁琐, 或许可以在文件模型中标记, 在 HDL 层面展开.
+        self.inline: bool = inline # TODO operator 无法在 box 层面 expand, 像切片这种操作单独文件又太繁琐, 或许可以在文件模型中标记, 在 HDL 层面展开
         
         self.global_info: HDLGlobalInfo = HDLGlobalInfo()
         
@@ -99,112 +84,93 @@ class HDLFileModel:
         self.signals: dict[str, SignalType] = {}
         self.assignments: list[tuple[str, str]] = []
         
-        self.raw: bool = False # 是否直接使用 HDL 定义 (即使使用 HDL 定义也应当声明 entity_name 和 ports [*], 以便上级结构生成) TODO
-        self.raw_filename: str = None
+        self.raw: bool = False # 是否直接使用 HDL 定义 (即使使用 HDL 定义也应当声明 entity_name; port 应与 box 相符) TODO
+        self.raw_file_suffix: str = None
         self.raw_content: str = None
     
-    def emit_vhdl(self, prefix: str = None):
+    def emit_vhdl(self):
         """
             递归生成 VHDL.
             非 locked 结构对应的文件名需要带有 namespace 信息, 如为 None 则为最外层模块, 需要处理全局信息.
                     ... TODO 最外层或许并非顶层, 之后可能还要添加单独的 top, 并允许在其中实现三态门等结构.
             所有文件名前 (包括顶层模块) 添加标识 (例如 "vhdl_"), 以免和 types.vhd 等冲突.
             
-            TODO 可复用模块不用前缀 namespace 还没实现.
+            文件名就应该是 entity_name.
+            namespace 信息应该在 generation 时创建 HDLFileModel 时就写入, 也在那是控制是否 reusable.
         """
-        if self.raw:
-            if self.raw_filename is None or self.raw_content is None:
-                raise HDLFileModelException(f"Raw HDL file model should be defined by .set_raw(filename, content)")
-            return {self.raw_filename: self.raw_content}
-        
         res = {}
         
-        if prefix is None: # 最外层模块
-            res.update(self.global_info.emit_vhdl()) # 全局信息
-            prefix = "vhdl"
+        res.update(self.global_info.emit_vhdl()) # 全局信息
         
-        next_prefix = prefix + "_" + self.entity_name
-        for comp in self.components: # 子结构文件
-            if not comp.inline: # inline 的结构不需要单独生成文件
-                res.update(comp.emit_vhdl(next_prefix))
+        def _collect(model: 'HDLFileModel'):
+            models = set({model}) # 加入自身
+            for comp in model.components:
+                if not comp.inline: # inline 的结构不需要单独生成文件
+                    sub_models = _collect(comp)
+                    models.update(sub_models)
+            return models
         
-        # 实体声明
-        def emit_ports(hdl: HDLFileModel, part: str = "entity", indent: str = ""):
-            port_content = ""
-            for name, (direction, t) in hdl.ports.items():
+        models = _collect(self) # 递归收集所有 HDLFileModel (去重)
+        
+        def gen_vhdl(model: HDLFileModel):
+            # 实体声明
+            def gen_ports(hdl: HDLFileModel, part: str = "entity", indent: str = ""):
+                port_content = ""
+                for name, (direction, t) in hdl.ports.items():
+                    if t.belongs(Bundle):
+                        port_content += f"{indent}        {name}: {direction} {t.__name__};\n"
+                    else:
+                        port_content += f"{indent}        {name}: {direction} std_logic_vector({t.W - 1} downto 0);\n"
+                if port_content:
+                    port_content = port_content[:-2] # 去掉最后的分号和换行
+                return f"{indent}{part} {hdl.entity_name} is\n{indent}    port (\n{port_content}\n{indent}    );\n{indent}end {part};"
+        
+            # 组件声明
+            comp_declaration = ""
+            for comp in model.components:
+                comp_declaration += gen_ports(comp, "component", "    ") + "\n"
+            if comp_declaration:
+                comp_declaration = comp_declaration[:-1]
+        
+            # 信号声明
+            signal_declaration = ""
+            for name, t in model.signals.items():
                 if t.belongs(Bundle):
-                    port_content += f"{indent}        {name}: {direction} {t.__name__};\n"
+                    signal_declaration += f"    signal {name}: {t.__name__};\n"
                 else:
-                    port_content += f"{indent}        {name}: {direction} std_logic_vector({t.W - 1} downto 0);\n"
-            if port_content:
-                port_content = port_content[:-2] # 去掉最后的分号和换行
-            return \
-f"""\
-{indent}{part} {hdl.entity_name} is
-{indent}    port (
-{port_content}
-{indent}    );
-{indent}end {part};\
-"""
+                    signal_declaration += f"    signal {name}: std_logic_vector({t.W - 1} downto 0);\n"
+            if signal_declaration:
+                signal_declaration = signal_declaration[:-1]
+            
+            # 模块例化
+            comp_content = ""
+            for inst_name, (comp_name, mapping) in model.inst_comps.items():
+                mapping_content = ""
+                for comp_port, inst_port in mapping.items():
+                    mapping_content += f"            {comp_port} => {inst_port},\n"
+                if mapping_content:
+                    mapping_content = mapping_content[:-2]
+                comp_content += f"    {inst_name}: {comp_name}\n        port map (\n{mapping_content}\n        );\n\n"
+            if comp_content:
+                comp_content = comp_content[:-1]
+            
+            # 并行赋值
+            assignment_content = ""
+            for target, value in model.assignments:
+                assignment_content += f"    {target} <= {value};\n"
+            if assignment_content:
+                assignment_content = assignment_content[:-1]
+            
+            # 拼接文件内容
+            return f"{model.global_info.header_vhdl()}\n\n{gen_ports(model, "entity")}\n\narchitecture Structural of {model.entity_name} is\n{comp_declaration}\n{signal_declaration}\nbegin\n{comp_content}\n{assignment_content}\nend architecture;"
         
-        # 组件声明
-        comp_declaration = ""
-        for comp in self.components:
-            comp_declaration += emit_ports(comp, "component", "    ") + "\n"
-        if comp_declaration:
-            comp_declaration = comp_declaration[:-1]
-        
-        # 信号声明
-        signal_declaration = ""
-        for name, t in self.signals.items():
-            if t.belongs(Bundle):
-                signal_declaration += f"    signal {name}: {t.__name__};\n"
+        for model in models:
+            if model.raw:
+                if model.raw_file_suffix is None or model.raw_content is None:
+                    raise HDLFileModelException(f"Raw HDL file model should be defined by .set_raw(filename, content)")
+                res[model.entity_name + model.raw_file_suffix] = model.raw_content
             else:
-                signal_declaration += f"    signal {name}: std_logic_vector({t.W - 1} downto 0);\n"
-        if signal_declaration:
-            signal_declaration = signal_declaration[:-1]
-        
-        # 模块例化
-        comp_content = ""
-        for inst_name, (comp_name, mapping) in self.inst_comps.items():
-            mapping_content = ""
-            for comp_port, inst_port in mapping.items():
-                mapping_content += f"            {comp_port} => {inst_port},\n"
-            if mapping_content:
-                mapping_content = mapping_content[:-2]
-            comp_content += \
-f"""\
-    {inst_name}: {comp_name}
-        port map (
-{mapping_content}
-        );
-
-"""
-        if comp_content:
-            comp_content = comp_content[:-1]
-        
-        # 并行赋值
-        assignment_content = ""
-        for target, value in self.assignments:
-            assignment_content += f"    {target} <= {value};\n"
-        if assignment_content:
-            assignment_content = assignment_content[:-1]
-        
-        # 拼接文件内容
-        res[prefix + "_" + self.entity_name + ".vhd"] = \
-f"""\
-{self.global_info.header_vhdl()}
-
-{emit_ports(self, "entity")}
-
-architecture Structural of {self.entity_name} is
-{comp_declaration}
-{signal_declaration}
-begin
-{comp_content}
-{assignment_content}
-end architecture;\
-"""
+                res[model.entity_name + ".vhd"] = gen_vhdl(model)
         
         return res
     
@@ -232,12 +198,13 @@ end architecture;\
     def add_assignment(self, target: str, value: str):
         self.assignments.append((target, value))
     
-    def set_raw(self, filename: str, content: str):
+    def set_raw(self, file_suffix: str, content: str):
         self.raw = True
-        self.raw_filename = filename
+        self.raw_file_suffix = file_suffix
         self.raw_content = content
 
-def write_to_files(d: dict[str, str], path: str):
+
+def write_to_files(d: dict[str, str], path: str): # TODO Temprary
     for filename, content in d.items():
         with open(path + "/" + filename, "w") as f:
             f.write(content)

@@ -54,17 +54,20 @@ class Addition(Diagram): # 带参基本算子示例, 整数加法
         io = s.EEB.IO
         op1_type, op2_type, res_type = io.op1.signal_type, io.op2.signal_type, io.res.signal_type
         if not (op1_type.belongs(UInt) and op2_type.belongs(UInt) or op1_type.belongs(SInt) and op2_type.belongs(SInt)):
-            pass # TODO
+            raise StructureGenerationException(f"Only accept UInt + UInt or SInt + SInt")
+        if not res_type.W == max(op1_type.W, op2_type.W):
+            raise StructureGenerationException(f"Result width should be the maximum of the two operands")
         
         entity_name = f"Addition_{op1_type.__name__}_{op2_type.__name__}"
         
         res = HDLFileModel(entity_name, inline = False) # TODO inline
         
+        # TODO 或许 add_port 应该由 generation 自动根据 box.IO 调用
         res.add_port("op1", "in", op1_type)
         res.add_port("op2", "in", op2_type)
         res.add_port("res", "out", res_type)
         
-        res.set_raw(f"{entity_name}.vhd", \
+        res.set_raw(f".vhd", \
 f"""\
 library IEEE;
 use IEEE.std_logic_1164.all;
@@ -79,16 +82,8 @@ entity {entity_name} is
 end entity;
 
 architecture Behavioral of {entity_name} is
-    signal a_s: signed({op1_type.W - 1} downto 0);
-    signal b_s: signed({op2_type.W - 1} downto 0);
-    signal z_s: signed({res_type.W - 1} downto 0);
 begin
-    a_s <= signed(op1);
-    b_s <= signed(op2);
-
-    z_s <= a_s + b_s;
-
-    res <= std_logic_vector(z_s);
+    res <= std_logic_vector(signed(op1) + signed(op2));
 end architecture;
 """)
         
