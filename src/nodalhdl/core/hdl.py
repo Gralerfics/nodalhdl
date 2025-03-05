@@ -112,9 +112,9 @@ class HDLFileModel:
         
         models = _collect(self) # 递归收集所有 HDLFileModel (去重)
         
-        def gen_vhdl(model: HDLFileModel):
+        def _gen_vhdl(model: HDLFileModel):
             # 实体声明
-            def gen_ports(hdl: HDLFileModel, part: str = "entity", indent: str = ""):
+            def _gen_ports(hdl: HDLFileModel, part: str = "entity", indent: str = ""):
                 port_content = ""
                 for name, (direction, t) in hdl.ports.items():
                     if t.belongs(Bundle):
@@ -128,7 +128,7 @@ class HDLFileModel:
             # 组件声明
             comp_declaration = ""
             for comp in model.components:
-                comp_declaration += gen_ports(comp, "component", "    ") + "\n"
+                comp_declaration += _gen_ports(comp, "component", "    ") + "\n"
             if comp_declaration:
                 comp_declaration = comp_declaration[:-1]
         
@@ -162,7 +162,7 @@ class HDLFileModel:
                 assignment_content = assignment_content[:-1]
             
             # 拼接文件内容
-            return f"{model.global_info.header_vhdl()}\n\n{gen_ports(model, "entity")}\n\narchitecture Structural of {model.entity_name} is\n{comp_declaration}\n{signal_declaration}\nbegin\n{comp_content}\n{assignment_content}\nend architecture;"
+            return f"{model.global_info.header_vhdl()}\n\n{_gen_ports(model, "entity")}\n\narchitecture Structural of {model.entity_name} is\n{comp_declaration}\n{signal_declaration}\nbegin\n{comp_content}\n{assignment_content}\nend architecture;"
         
         for model in models:
             if model.raw:
@@ -170,11 +170,14 @@ class HDLFileModel:
                     raise HDLFileModelException(f"Raw HDL file model should be defined by .set_raw(filename, content)")
                 res[model.entity_name + model.raw_file_suffix] = model.raw_content
             else:
-                res[model.entity_name + ".vhd"] = gen_vhdl(model)
+                res[model.entity_name + ".vhd"] = _gen_vhdl(model)
         
         return res
     
     def add_port(self, name: str, direction: str, t: SignalType):
+        """
+            不应该在 custom_generation 中使用, generation 时会根据结构自动调用.
+        """
         if t.belongs(Bundle):
             self.global_info.add_type(t) # 添加类型到全局信息
         

@@ -87,36 +87,44 @@ print(td.structure.boxes['add_abc'].structure.name) # 这俩应该一致, 都是
 print('=======================================================')
 
 
-p = Addition[UInt[8], UInt[8]].structure_template.generation()
-# print(p.emit_vhdl()["addition_UInt_8_UInt_8.vhd"])
-
-r = HDLFileModel("test_submodule")
-r.add_port("op1", "in", UInt[8])  
-r.add_port("op2", "in", UInt[8])
-r.add_port("res", "out", UInt[8])
-r.inst_component("add", p, {"op1": "op1", "op2": "op2", "res": "res"})
-# print(r.emit_vhdl()["vhdl_test_submodule.vhd"])
-
-t = HDLFileModel("test_module")
-t.add_port("a", "in", UInt[8])
-t.add_port("b", "in", Bundle[{"x": SInt[3], "y": Float, "z": Bundle[{"p": UInt[8], "q": Bit}]}])
-t.add_port("c", "out", Bits[8])
-t.add_port("d", "out", UInt[8])
-t.add_signal("node_1", UInt[8])
-t.add_signal("node_2", UInt[8])
-t.add_signal("node_3", UInt[8])
-t.add_signal("node_4", UInt[8])
-t.inst_component("add", p, {"op1": "node_1", "op2": "node_2", "res": "node_3"})
-t.add_assignment("node_1", "a")
-t.add_assignment("node_2", "b.z.p")
-t.add_assignment("c", "node_3")
-t.inst_component("ts", r, {"op1": "node_1", "op2": "node_2", "res": "node_4"})
-t.add_assignment("d", "node_4")
-# print(t.emit_vhdl()["types.vhd"])
-# print(t.emit_vhdl()["vhdl_test_module.vhd"])
-
 from nodalhdl.core.hdl import write_to_files
-write_to_files(t.emit_vhdl(), "C:/Workspace/test_project/test_project.srcs/sources_1/new")
+
+h = s.generation()
+write_to_files(h.emit_vhdl(), "C:/Workspace/test_project/test_project.srcs/sources_1/new")
+
+
+# p = Addition[UInt[8], UInt[8]].structure_template.generation()
+# p.add_port("op1", "in", UInt[8])
+# p.add_port("op2", "in", UInt[8])
+# p.add_port("res", "out", UInt[8])
+# # print(p.emit_vhdl()["addition_UInt_8_UInt_8.vhd"])
+
+# r = HDLFileModel("test_submodule")
+# r.add_port("op1", "in", UInt[8])  
+# r.add_port("op2", "in", UInt[8])
+# r.add_port("res", "out", UInt[8])
+# r.inst_component("add", p, {"op1": "op1", "op2": "op2", "res": "res"})
+# # print(r.emit_vhdl()["vhdl_test_submodule.vhd"])
+
+# t = HDLFileModel("test_module")
+# t.add_port("a", "in", UInt[8])
+# t.add_port("b", "in", Bundle[{"x": SInt[3], "y": Float, "z": Bundle[{"p": UInt[8], "q": Bit}]}])
+# t.add_port("c", "out", Bits[8])
+# t.add_port("d", "out", UInt[8])
+# t.add_signal("node_1", UInt[8])
+# t.add_signal("node_2", UInt[8])
+# t.add_signal("node_3", UInt[8])
+# t.add_signal("node_4", UInt[8])
+# t.inst_component("add", p, {"op1": "node_1", "op2": "node_2", "res": "node_3"})
+# t.add_assignment("node_1", "a")
+# t.add_assignment("node_2", "b.z.p")
+# t.add_assignment("c", "node_3")
+# t.inst_component("ts", r, {"op1": "node_1", "op2": "node_2", "res": "node_4"})
+# t.add_assignment("d", "node_4")
+# # print(t.emit_vhdl()["types.vhd"])
+# # print(t.emit_vhdl()["vhdl_test_module.vhd"])
+
+# write_to_files(t.emit_vhdl(), "C:/Workspace/test_project/test_project.srcs/sources_1/new")
 
 
 # TODO 推导后结构变更, runtime 信息过期, 这一点尚未测试!

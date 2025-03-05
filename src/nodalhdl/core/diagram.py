@@ -1,4 +1,4 @@
-from .signal import SignalType, IOWrapper
+from .signal import SignalType, IOWrapper, Input
 from .hdl import HDLFileModel
 from .utils import ObjDict
 
@@ -456,7 +456,7 @@ class Structure:
         self.name = name # 此处为 primitive name, 首先肯定需要包含一些参数信息以和其他同名结构区分 (用户自定义, 或创建框图类型模板时自动设为类名), 其次该名称只有 locked structure 在生成 hdl 时才会直接使用, 否则应会在前加入 namespace 信息, 以确保具有 runtime 信息的同 name structure 不会冲突
         self.free = True # 默认创建时为自由结构
         
-        self.hdl: HDLFileModel = None # lock (确保结构固定) 后若结构为 determined (确保可以生成), 则进行 HDL 生成并存储在此
+        self.locked_hdl: HDLFileModel = None # lock (确保结构固定) 后若结构为 determined (确保可以生成), 则进行 HDL 生成并存储在此
         
         self.boxes: dict[str, StructureBox] = {} # 包含的 boxes
         
@@ -521,13 +521,11 @@ class Structure:
             runtime_id 变化即可, 无需内外 id 一致. 这是基于 structure 独立性的考虑, 即 structure 并不清楚自己是否被装入 box 成为了子结构, 所以涉及外部结构变化的更新都需要外部结构主动实施.
             runtime 依赖信息包括 (i.e. 结构变化会导致失效的信息):
                 (1.) runtime_id.
-                (2.) hdl.
-                (3.) StructureNet 的 runtime_signal_type (在 StructureNet 中延迟更新).
+                (2.) StructureNet 的 runtime_signal_type (在 StructureNet 中延迟更新).
         """
         self._check_free()
         
         self.runtime_id = str(uuid.uuid4())
-        self.hdl = None
         
         for box in self.boxes.values():
             if box.structure is not None and box.structure.free: # 锁定结构的信息不可修改, 理论上也不需要更新
@@ -652,7 +650,7 @@ class Structure:
         self.apply_runtime() # 固定信号类型原始值为推导结果
         
         if self.determined: # 若结构确定, 则生成 HDL 文件对象
-            self.hdl = self.generation()
+            self.locked_hdl = self.generation()
         
         self.free = False
     
@@ -793,20 +791,53 @@ class Structure:
                 logger.info("Not changed, stop.")
                 break
     
-    def generation(self) -> HDLFileModel:
+    def generation(self, prefix: str = "hdl") -> HDLFileModel:
         """
             生成 HDLFileModel.
             注:
                 (1.) 关于 generation 方法只接收 structure 作为参数:
                      一些用户参数可在 setup 中通过修改 structure.params 添加, 在 custom_generation 中使用.
+            TODO: 
         """
         if not self.determined: # 只有确定的结构才能转换为 HDL
             raise StructureGenerationException(f"Only determined structure can be converted to HDL")
         
-        if self.custom_generation is not None: # 基本算子的自定义 HDL 生成
-            return self.custom_generation(self)
+        def _add_ports(d, hdl: HDLFileModel): # 遍历 .IO 添加 ports [ITIO]
+            for node in d.selective_values(StructureNode):
+                direction = "out" if node.origin_signal_type.belongs(Input) else "in"
+                hdl.add_port(node.name, direction, node.signal_type)
+            # if isinstance(d, ObjDict):
+            #     for sub_val in d.values():
+            #         _add_ports(sub_val, hdl)
+            # elif isinstance(d, StructureNode):
+            #     direction = "out" if d.origin_signal_type.belongs(Input) else "in" # 注意 self.EEB.IO 是翻转的, 所以这里反过来
+            #     hdl.add_port(d.name, direction, d.signal_type)
         
-        # TODO
+        res: HDLFileModel = None
+        
+        if self.custom_generation is not None: # 基本算子的自定义 HDL 生成
+            res = self.custom_generation(self)
+            _add_ports(self.EEB.IO, res)
+            return res
+        
+        res = HDLFileModel(prefix + "_" + self.name)
+        _add_ports(self.EEB.IO, res)
+        
+        # 遍历 box 添加例化组件 TODO 如果 box 下安全结构且有 locked_hdl, 则直接添加 locked_hdl, 否则调用 generation 后添加
+        # TODO 还要遍历其关联的 Net, 添加连接关系, 以及要注意不重复添加
+        for box in self.boxes.values():
+            if box.structure is not None:
+                mapping = {}
+                for node in box.IO.selective_values(StructureNode):
+                    mapping[node.name] = box.name + "_" + node.name # node_name => box_name_node_name
+                    res.add_signal(box.name + "_" + node.name, node.signal_type)
+                
+                if not box.structure.free and box.structure.locked_hdl is not None:
+                    res.inst_component(box.name, box.structure.locked_hdl, mapping)
+                else:
+                    res.inst_component(box.name, box.structure.generation(prefix = prefix + "_" + box.name), mapping)
+        
+        return res
 
 
 """ Diagram Base """

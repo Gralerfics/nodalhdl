@@ -64,4 +64,24 @@ class ObjDict(dict):
             del self[name]
         else:
             super().__delattr__(name)
+    
+    def _collect_list(self, target_type, mode): # mode: keys, values, items
+        def _collect(d):
+            res = []
+            for key, value in d.items():
+                if isinstance(value, ObjDict):
+                    res.extend(_collect(value))
+                elif isinstance(value, target_type):
+                    res.append((key, value) if mode == "items" else (key if mode == "keys" else value))
+            return res
+        return _collect(self)
+    
+    def selective_keys(self, target_type): # 递归地将类型为 target_type 的键收集起来, 以下方法类似
+        return self._collect_list(target_type, "keys")
+    
+    def selective_values(self, target_type):
+        return self._collect_list(target_type, "values")
+    
+    def selective_items(self, target_type):
+        return self._collect_list(target_type, "items")
 
