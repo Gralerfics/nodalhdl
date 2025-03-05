@@ -82,7 +82,7 @@ class StructureNet:
         游离存储, 仅为下辖 node 所引用.
     """
     def __init__(self):
-        self.nodes = set()
+        self.nodes: set[StructureNode] = set()
         
         self.runtime_id = None
         self.runtime_signal_type = None # 运行时信号类型, 不要直接修改, 而是调用方法; 保证是去除 IO 的
@@ -314,10 +314,10 @@ class StructureBox:
     """
     def __init__(self, name: str, located_structure: 'Structure'):
         self.name = name
-        self.located_structure = located_structure
+        self.located_structure: Structure = located_structure
         
         self.structure: Structure = None
-        self.IO = ObjDict()
+        self.IO: ObjDict = ObjDict()
     
     def __repr__(self):
         return f"<Box {self.name} (io: {self.IO}, structure: {id(self.structure) if self.structure is not None else 'None'})>"
@@ -456,9 +456,9 @@ class Structure:
         self.name = name # 此处为 primitive name, 首先肯定需要包含一些参数信息以和其他同名结构区分 (用户自定义, 或创建框图类型模板时自动设为类名), 其次该名称只有 locked structure 在生成 hdl 时才会直接使用, 否则应会在前加入 namespace 信息, 以确保具有 runtime 信息的同 name structure 不会冲突
         self.free = True # 默认创建时为自由结构
         
-        self.hdl = None # lock (确保结构固定) 后若结构为 determined (确保可以生成), 则进行 HDL 生成并存储在此
+        self.hdl: HDLFileModel = None # lock (确保结构固定) 后若结构为 determined (确保可以生成), 则进行 HDL 生成并存储在此
         
-        self.boxes = {} # 包含的 boxes
+        self.boxes: dict[str, StructureBox] = {} # 包含的 boxes
         
         self.runtime_id = str(uuid.uuid4()) # 用于表示结构变化的 id
         self.runtime_deduction_effected = False # 用于表示推导中是否产生收益的标识
@@ -466,7 +466,7 @@ class Structure:
         self.custom_deduction = None # 自定义类型推导, 用于定义 operator
         self.custom_generation = None # 自定义 HDL 生成, 用于定义 operator, 用有这两个属性的结构会被视为 operator [*]
         
-        self.params = ObjDict({}) # 用户参数, 可直接索引修改, e.g. 可在 setup 中添加, 在 custom_generation 中使用 TODO 加个接口?
+        self.params: ObjDict = ObjDict({}) # 用户参数, 可直接索引修改, e.g. 可在 setup 中添加, 在 custom_generation 中使用 TODO 加个接口?
         
         """
             关于 External Equivalent Box (EEB), 即将 structure 以外视作一个内外翻转的大 box,

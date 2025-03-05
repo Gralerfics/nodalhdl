@@ -52,13 +52,45 @@ class Addition(Diagram): # 带参基本算子示例, 整数加法
         """
         # 端口合法性检查 (此时结构已经 determined, 可以进一步检查, 例如是否是 UInt + UInt 或 SInt + SInt)
         io = s.EEB.IO
-        op1_type, op2_type = io.op1.signal_type, io.op2.signal_type
+        op1_type, op2_type, res_type = io.op1.signal_type, io.op2.signal_type, io.res.signal_type
         if not (op1_type.belongs(UInt) and op2_type.belongs(UInt) or op1_type.belongs(SInt) and op2_type.belongs(SInt)):
-            pass
+            pass # TODO
         
-        res = HDLFileModel()
+        entity_name = f"Addition_{op1_type.__name__}_{op2_type.__name__}"
         
-        # res.add_port("op1", "in", )
+        res = HDLFileModel(entity_name, inline = False) # TODO inline
+        
+        res.add_port("op1", "in", op1_type)
+        res.add_port("op2", "in", op2_type)
+        res.add_port("res", "out", res_type)
+        
+        res.set_raw(f"{entity_name}.vhd", \
+f"""\
+library IEEE;
+use IEEE.std_logic_1164.all;
+use IEEE.numeric_std.all;
+
+entity {entity_name} is
+    port (
+        op1: in std_logic_vector({op1_type.W - 1} downto 0);
+        op2: in std_logic_vector({op2_type.W - 1} downto 0);
+        res: out std_logic_vector({res_type.W - 1} downto 0)
+    );
+end entity;
+
+architecture Behavioral of {entity_name} is
+    signal a_s: signed({op1_type.W - 1} downto 0);
+    signal b_s: signed({op2_type.W - 1} downto 0);
+    signal z_s: signed({res_type.W - 1} downto 0);
+begin
+    a_s <= signed(op1);
+    b_s <= signed(op2);
+
+    z_s <= a_s + b_s;
+
+    res <= std_logic_vector(z_s);
+end architecture;
+""")
         
         return res
 
