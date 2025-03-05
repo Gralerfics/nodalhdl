@@ -72,6 +72,7 @@ class DiagramType(type):
 
 
 """ Structure """
+class StructureException(Exception): pass
 class StructureDeductionException(Exception): pass
 class StructureGenerationException(Exception): pass
 
@@ -119,6 +120,7 @@ class StructureNet:
     
     """
         下面是对 runtime_signal_type 进行操作的方法.
+        不建议直接使用 StructureNet 的这些方法, 而是通过 StructureNode 的方法间接调用, 可以确保不修改锁定结构的 runtime 信息.
     """
     def get_runtime_type(self):
         return self.runtime_signal_type
@@ -164,6 +166,8 @@ class StructureNode:
         if self.located_net is None: # 注意 add_node 中使用了 origin_signal_type, 要在赋值之后调用
             StructureNet().add_node(self)
         else:
+            if self.located_structure is not None and not self.located_structure.free: # 不允许修改 locked structure
+                raise StructureException(f"Locked structure is not allowed to be modified")
             self.located_net.add_node(self)
     
     def __repr__(self):
@@ -219,6 +223,9 @@ class StructureNode:
         以下方法可能修改 origin_signal_type, 这有可能影响其所在 net 的 runtime_signal_type (例如信息量减少), 注意要重置.
     """
     def set_origin_signal_type(self, signal_type: SignalType):
+        if self.located_structure is not None and not self.located_structure.free: # 不允许修改 locked structure 下的节点信息
+            raise StructureException(f"Node under a locked structure is not allowed to be modified")
+        
         self._private_origin_signal_type = signal_type
         self.located_net.init_runtime_type() # 重置
     
@@ -238,12 +245,18 @@ class StructureNode:
                  注意, 这里需要递归更新所有子结构的 runtime_id, 这是由于外部推导结果的失效可能导致内部推导结果的失效, 但只更新外部 runtime_id 不会触发内部的延迟更新 (内部 net 的 located_structure 不涉外部).
     """
     def merge(self, other_node: 'StructureNode'):
+        if self.located_structure is not None and not self.located_structure.free: # 不允许修改 locked structure
+            raise StructureException(f"Locked structure is not allowed to be modified")
+        
         self.located_net.merge_net(other_node.located_net)
         
         if self.located_structure is not None:
             self.located_structure.update_runtime_id() # 更新 structure runtime_id
     
     def separate(self):
+        if self.located_structure is not None and not self.located_structure.free: # 不允许修改 locked structure
+            raise StructureException(f"Locked structure is not allowed to be modified")
+        
         if len(self.located_net) <= 1: # 本就单独成集
             return
         
@@ -257,6 +270,9 @@ class StructureNode:
             self.located_net.init_runtime_type()
     
     def delete(self):
+        if self.located_structure is not None and not self.located_structure.free: # 不允许修改 locked structure
+            raise StructureException(f"Locked structure is not allowed to be modified")
+        
         if self.located_box is not None: # port, 不允许删除
             raise DiagramTypeException(f"An active port (under a box) is not allowed to be deleted")
         
@@ -271,12 +287,21 @@ class StructureNode:
         return self.located_net.get_runtime_type()
     
     def init_runtime_type(self):
+        if self.located_structure is not None and not self.located_structure.free: # 不允许修改 locked structure 的信息
+            raise StructureException(f"Locked structure is not allowed to be modified")
+        
         self.located_net.init_runtime_type()
     
     def set_runtime_type(self, signal_type: SignalType):
+        if self.located_structure is not None and not self.located_structure.free: # 不允许修改 locked structure 的信息
+            raise StructureException(f"Locked structure is not allowed to be modified")
+        
         self.located_net.set_runtime_type(signal_type)
     
     def merge_runtime_type(self, signal_type: SignalType) -> bool:
+        if self.located_structure is not None and not self.located_structure.free: # 不允许修改 locked structure 的信息
+            raise StructureException(f"Locked structure is not allowed to be modified")
+        
         return self.located_net.merge_runtime_type(signal_type)
 
 class StructureBox:
@@ -383,7 +408,7 @@ class StructureBox:
         if self.structure is None:
             return
         
-        def _update(from_d, to_d): # 遍历 .IO, 将 from_d 的 runtime 信息更新到 to_d
+        def _update(from_d, to_d): # 遍历 .IO, 将 from_d 的 runtime 信息更新到 to_d [ITIO]
             if isinstance(from_d, ObjDict):
                 for sub_key, sub_val in from_d.items():
                     _update(sub_val, to_d[sub_key])
@@ -398,7 +423,19 @@ class StructureBox:
         _update(self.structure.EEB.IO, self.IO) # 将 structure.EEB.IO 的 runtime 信息更新到 box.IO
     
     def expand(self):
-        pass # TODO 展开 box 到 located_structure 中. (将内部 box 移出时要访问外部 boxes)
+        """
+            展开 box 到 located_structure.
+            located_structure 必须为 free.
+            operator 不允许在该层级展开, EEB 等空 box 也不允许展开.
+            考虑 box.structure 的 free 和 non-free 的情况, 后者需要先例化这一层 (TODO 或许要给 instantiate 加一个例化一层的选项?).
+        """
+        if self.located_structure is None or not self.located_structure.free:
+            raise StructureException(f"Box must be in a free structure to expand")
+        
+        if self.structure is None or self.structure.is_operator:
+            raise StructureException(f"Operator or empty box is not allowed to expand")
+        
+        pass # TODO
 
 class Structure:
     """
@@ -411,12 +448,14 @@ class Structure:
         同样地, 如果被内部展开, structure (entity) 一级就被消融了, 展开的结构名前以某种形式加上 box name (原 label) 作为前缀防止冲突.
         
         structure 具有 free 属性, 用于判断是否为自由结构, 即不依赖于框图类型. 非自由结构是只读的, 要修改必须先拷贝.
-                ... TODO 添加措施强制不可修改非自由结构.
         自由结构不代表内部所有部分都自由, 例如 box 可能是 locked 的, 但 structure 本身是 free 的. 此时可以修改 structure 的结构, 但不能修改 box 的内部结构.
+    
+        [*] 所有属性设置必须使用 setter. 下面是各属性最低层次的获取和设置方法:
+            TODO
     """
     def __init__(self, name: str = None):
         self.name = name # 此处为 primitive name, 首先肯定需要包含一些参数信息以和其他同名结构区分 (用户自定义, 或创建框图类型模板时自动设为类名), 其次该名称只有 locked structure 在生成 hdl 时才会直接使用, 否则应会在前加入 namespace 信息, 以确保具有 runtime 信息的同 name structure 不会冲突
-        self.free = True # 默认创建时为自由结构, 若经过框图类型 setup, 仅会被 .lock() 操作锁定
+        self.free = True # 默认创建时为自由结构
         
         self.hdl = None # lock (确保结构固定) 后若结构为 determined (确保可以生成), 则进行 HDL 生成并存储在此
         
@@ -426,7 +465,7 @@ class Structure:
         self.runtime_deduction_effected = False # 用于表示推导中是否产生收益的标识
         
         self.custom_deduction = None # 自定义类型推导, 用于定义 operator
-        self.custom_generation = None # 自定义 HDL 生成, 用于定义 operator
+        self.custom_generation = None # 自定义 HDL 生成, 用于定义 operator, 用有这两个属性的结构会被视为 operator [*]
         
         self.params = ObjDict({}) # 用户参数, 可直接索引修改, e.g. 可在 setup 中添加, 在 custom_generation 中使用 TODO 加个接口?
         
@@ -442,6 +481,12 @@ class Structure:
     def __repr__(self):
         return f"<Structure {self.name} (free: {self.free}, determined: {self.determined}, runtime_id: {self.runtime_id})>"
     
+    def __setattr__(self, name, value):
+        if name in ["name", "free", "hdl", "runtime_id", "runtime_deduction_effected"]:
+            if hasattr(self, "free") and not self.free:
+                raise StructureException(f"Locked structure is not allowed to be modified")
+        super().__setattr__(name, value)
+    
     @property
     def EEB(self) -> StructureBox:
         return self.boxes["_extern_equivalent_box"]
@@ -456,7 +501,7 @@ class Structure:
     def determined(self):
         port_dict = self.EEB.IO
     
-        def _search(d): # 自身所有 IO
+        def _search(d): # 自身 EEB 所有 IO [ITIO]
             if isinstance(d, ObjDict):
                 return all([_search(sub_val) for sub_val in d.values()])
             else: # StructureNode, determined 来自会自动处理 runtime 问题的 .signal_type 的判断
@@ -464,15 +509,22 @@ class Structure:
         
         return _search(port_dict) and all([box.determined for box in self.boxes.values()]) # 加上所有下辖 box 确定
     
+    @property
+    def is_operator(self):
+        return self.custom_deduction is not None or self.custom_generation is not None
+    
     def update_runtime_id(self):
         """
             递归更新当前以及所有子结构的 runtime_id.
             变化即可, 无需内外 id 一致. 这是基于 structure 独立性的考虑, 即 structure 并不清楚自己是否被装入 box 成为了子结构, 所以涉及外部结构变化的更新都需要外部结构主动实施.
         """
-        self.runtime_id = str(uuid.uuid4())
+        if not self.free:
+            raise StructureException(f"Locked structure is not allowed to be modified")
+        
+        self.set_runtime_id = str(uuid.uuid4())
         
         for box in self.boxes.values():
-            if box.structure is not None:
+            if box.structure is not None and box.structure.free: # 锁定结构的信息不可修改, 理论上也不需要更新
                 box.structure.update_runtime_id()
     
     def instantiate(self, in_situ: bool = True, reserve_safe_structure: bool = True):
@@ -575,6 +627,13 @@ class Structure:
             结构锁定后会检查 determined, 若为真则可以进行 HDL 生成, 结果保存在 self.hdl 中留待复用.
             锁定后的结构成为固定的模板, 结构乃至 runtime 信息不允许再更改, 如果 determined 则还将存有 HDL 文件对象.
             一旦需要修改, 例如 undetermined locked 结构参与推导时, 须例化.
+            
+            锁定的结构的节点关系, runtime 信息, 节点信息等都不允许更改.
+            [*] 顺便, 结构的更改只允许使用 StructureNode 的 merge, separte 和 delete,
+                以及节点信息的修改只允许使用 StructureNode 的 set_origin_signal_type 和 x_runtime_type 系列方法,
+                还有结构信息的修改只允许使用 Structure 的 update_runtime_id 等方法.
+                以上这些方法是安全的 (会检查是否是 locked structure).
+                TODO 重构 s[!] 所有涉及到结构的属性都应该用 setter, getter 进行操作, 然后在其中检查是否 locked.
         """
         if not self.free: # 已经锁定则无需操作
             return
@@ -587,10 +646,10 @@ class Structure:
         self.deduction() # 固定前进行一次推导, 自动补完与外界无关的省略信息
         self.apply_runtime() # 固定信号类型原始值为推导结果
         
-        self.free = False
-        
         if self.determined: # 若结构确定, 则生成 HDL 文件对象
             self.hdl = self.generation()
+        
+        self.free = False
     
     def register_deduction(self, func):
         self.custom_deduction = func
@@ -648,6 +707,7 @@ class Structure:
         return new_box
     
     def connect(self, port_1: StructureNode, port_2: StructureNode):
+        # TODO 考虑包含多个 IOWrapper 的 Bundle 之间的连接处理 (即 port_x 为 Bundle 的情况)
         port_1.merge(port_2)
     
     def connects(self, ports: list[StructureNode]):
@@ -655,7 +715,7 @@ class Structure:
             return
         for idx, port in enumerate(ports):
             if idx != 0:
-                ports[0].merge(port)
+                self.connect(ports[0], port)
     
     def apply_runtime(self):
         """
@@ -664,7 +724,7 @@ class Structure:
             TODO 是否需要考虑 nodes? 目前看没有影响, 暂时只考虑 ports. 考虑 nodes
             TODO [global] 用到的地方太多了, 什么时候把遍历 box.IO 的功能封装成迭代器之类的, 不要每次都写一遍递归.
         """
-        def _apply(d): # 遍历 .IO 操作每个 port
+        def _apply(d): # 遍历 .IO 操作每个 port [ITIO]
             if isinstance(d, ObjDict):
                 for sub_val in d.values():
                     _apply(sub_val)
@@ -674,7 +734,7 @@ class Structure:
         for box in self.boxes.values():
             _apply(box.IO) # EEB.IO 这次也要修改
             
-            if box.structure is not None:
+            if box.structure is not None and box.structure.free: # 自由结构才可修改
                 box.structure.apply_runtime()
     
     def deduction(self):
@@ -745,7 +805,6 @@ class Structure:
 
 """ Diagram Base """
 class Diagram(metaclass = DiagramType):
-    is_operator = False # 是否是基本算子 (见 @operator)
     structure_template: Structure = None # 结构模板
     
     def __init__(self):
@@ -780,20 +839,17 @@ def operator(cls):
             (1.) 关于在 setup 后运行 deduction, 这种情况下如果运行后 determined 了, 就没问题了. 例如用户省略 output 的类型.
             (2.) 若确确实实就是 undetermined, 那么就需要参与到推导中. 当然, 此时已经例化了.
         其实现:
-            (1.) 增加或修改类属性 is_operator 为 True, 作为标记.
-            (2.) 关于成员方法:
-                (2.1) 要求类中必须实现 deduction(s) 方法, 用于类型推导.
-                    (2.1.1) 自动包装 setup 方法, 取使其返回的 structure 对象用 register_deduction 注册 deduction 方法.
-                (2.2) 要求类中必须实现 generation(s) 方法, 用于生成 HDL 文件对象.
-                    (2.2.1) 自动包装 setup 方法, 取使其返回的 structure 对象用 register_generation 注册 generation 方法.
-            (3.) 返回类.
+            (1.) 关于成员方法:
+                (1.1) 要求类中必须实现 deduction(s) 方法, 用于类型推导.
+                    (1.1.1) 自动包装 setup 方法, 取使其返回的 structure 对象用 register_deduction 注册 deduction 方法.
+                (1.2) 要求类中必须实现 generation(s) 方法, 用于生成 HDL 文件对象.
+                    (1.2.1) 自动包装 setup 方法, 取使其返回的 structure 对象用 register_generation 注册 generation 方法.
+            (2.) 返回类.
     """
-    setattr(cls, "is_operator", True) # (1.)
-    
-    if not any(isfunction(method) and method.__name__ == 'deduction' for method in cls.__dict__.values()): # (2.1)
+    if not any(isfunction(method) and method.__name__ == 'deduction' for method in cls.__dict__.values()): # (1.1)
         raise DiagramTypeException(f"Diagram type \'{cls.__name__}\' must implement method \'deduction\'.")
     
-    if not any(isfunction(method) and method.__name__ == 'generation' for method in cls.__dict__.values()): # (2.2)
+    if not any(isfunction(method) and method.__name__ == 'generation' for method in cls.__dict__.values()): # (1.2)
         raise DiagramTypeException(f"Diagram type \'{cls.__name__}\' must implement method \'generation\'.")
     
     setup_func = cls.setup
@@ -801,12 +857,12 @@ def operator(cls):
     def setup_wrapper(args):
         res: Structure = setup_func(args)
         
-        res.register_deduction(cls.deduction) # (2.1.1)
-        res.register_generation(cls.generation) # (2.2.1)
+        res.register_deduction(cls.deduction) # (1.1.1)
+        res.register_generation(cls.generation) # (1.2.1)
         
         return res
     
     cls.setup = setup_wrapper
     
-    return cls # (3.)
+    return cls # (2.)
 

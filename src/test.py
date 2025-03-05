@@ -45,19 +45,20 @@ td = s.add_box("td", TestDiagram)
 add_ti = s.add_box("add_ti", Addition[Auto, Auto])
 add_o = s.add_box("add_o", Addition[UInt[8], UInt[4]])
 
-s.connect(n, td.IO.ab.a)
-s.connect(m, td.IO.ab.b)
-s.connect(add_ti.IO.res, td.IO.c)
+add_ti_out = s.add_node("add_ti_out", Auto)
 
 s.connect(t, add_ti.IO.op1)
 s.connect(bi.i, add_ti.IO.op2)
+s.connect(add_ti.IO.res, add_ti_out)
+
+s.connect(n, td.IO.ab.a)
+s.connect(m, td.IO.ab.b)
+s.connect(add_ti_out, td.IO.c)
 
 s.connect(td.IO.z, add_o.IO.op1)
-s.connect(add_ti.IO.res, add_o.IO.op2)
+s.connect(add_ti_out, add_o.IO.op2)
 
 s.connect(add_o.IO.res, bi.o)
-
-# TODO 测一下 node
 
 
 print('=======================================================')
@@ -80,6 +81,9 @@ print('=======================================================')
 
 print(add_ti.structure.name)
 print(td.structure.boxes['add_abc'].structure.name) # 这俩应该一致, 都是 Addition[Auto, Auto], 所以生成 hdl 时需要有 namespace 机制
+
+
+# TODO 推导后结构变更, runtime 信息过期, 这一点尚未测试!
 
 
 # print('=======================================================')

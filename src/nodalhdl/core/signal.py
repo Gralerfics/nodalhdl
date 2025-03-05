@@ -287,7 +287,7 @@ class IOWrapperType(SignalType):
             raise SignalTypeException(f"Invalid parameter(s) \'{item}\' for type {cls.__name__}[<signal_type (SignalType)>]")
 
 class BundleType(SignalType):
-    def __getitem__(cls, item):
+    def __getitem__(cls, item): # TODO refactor 用 ObjDict
         if isinstance(item, dict) and all([isinstance(x, SignalType) for x in item.values()]):
             new_cls = cls.instantiate_type(
                 f"{cls.__name__}_{hashlib.md5(str(item).encode('utf-8')).hexdigest()}",
@@ -332,12 +332,12 @@ class FloatingPoint(Bits, metaclass = FloatingPointType): pass
 Float = FloatingPoint[8, 23]
 Double = FloatingPoint[11, 52]
 
-class Bundle(Auto, metaclass = BundleType):
-    def __init__(self): # 递归式地实例化内部信号, TODO: IOWrapper 是否要去掉
-        super().__init__()
-        bundle_types = getattr(type(self), "_bundle_types")
-        for key, T in bundle_types.items():
-            setattr(self, key, T())
+class Bundle(Auto, metaclass = BundleType): pass
+    # def __init__(self): # 递归式地实例化内部信号, TODO: IOWrapper 是否要去掉
+    #     super().__init__()
+    #     bundle_types = getattr(type(self), "_bundle_types")
+    #     for key, T in bundle_types.items():
+    #         setattr(self, key, T())
 
 class IOWrapper(Signal, metaclass = IOWrapperType): pass
 class Input(IOWrapper): pass
