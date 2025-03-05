@@ -72,7 +72,7 @@ print('=======================================================')
 
 
 # s.apply_runtime() # 注释: update_runtime_id 后 s 的 推导需要重新进行; 不注释: s 上次推导已经 determined, 并被 apply_runtime 固定, 再次推导可直接结束
-s.update_runtime_id()
+s.reset_runtime()
 s.deduction()
 
 

@@ -157,7 +157,7 @@ class StructureNode:
         node 指向唯一的 box (如有), box 也存有所有的相关 node (port).
     """
     def __init__(self, name: str, signal_type: SignalType, located_net: StructureNet = None, located_box: 'StructureBox' = None):
-        self.located_net: StructureNet = located_net
+        self.located_net: StructureNet = located_net # TODO 这二者是否应该使用 weakref?
         self.located_box: StructureBox = located_box
         
         self.name = name
@@ -166,12 +166,15 @@ class StructureNode:
         if self.located_net is None: # 注意 add_node 中使用了 origin_signal_type, 要在赋值之后调用
             StructureNet().add_node(self)
         else:
-            if self.located_structure is not None and not self.located_structure.free: # 不允许修改 locked structure
-                raise StructureException(f"Locked structure is not allowed to be modified")
+            self._check_located_structure_free()
             self.located_net.add_node(self)
     
     def __repr__(self):
         return f"<Node {self.name} ({self.origin_signal_type.__name__} -> {self.signal_type.__name__}, id: {id(self)})>"
+    
+    def _check_located_structure_free(self): # 检查, 不允许修改 locked structure
+        if self.located_structure is not None and not self.located_structure.free:
+            raise StructureException(f"Locked structure is not allowed to be modified")
     
     @property
     def origin_signal_type(self):
@@ -206,7 +209,7 @@ class StructureNode:
         """
         s = self.located_structure
         if s is None:
-            raise AttributeError(f"The node is not connected to a structure")
+            return self.origin_signal_type
         
         n = self.located_net
         if n.runtime_id != s.runtime_id: # runtime_id 不一致, 更新 net 的 runtime_id, 重置 runtime_signal_type
@@ -221,10 +224,10 @@ class StructureNode:
     
     """
         以下方法可能修改 origin_signal_type, 这有可能影响其所在 net 的 runtime_signal_type (例如信息量减少), 注意要重置.
+        注意对结点信息的变更要检查是否 locked.
     """
     def set_origin_signal_type(self, signal_type: SignalType):
-        if self.located_structure is not None and not self.located_structure.free: # 不允许修改 locked structure 下的节点信息
-            raise StructureException(f"Node under a locked structure is not allowed to be modified")
+        self._check_located_structure_free()
         
         self._private_origin_signal_type = signal_type
         self.located_net.init_runtime_type() # 重置
@@ -241,21 +244,20 @@ class StructureNode:
                  runtime_signal_type 保存在 net 中, 可以遍历 structure 找到所有 ports 后修改.
                  但每次修改都遍历 structure 太冗余, 考虑延迟更新, 在 structure 中记录 runtime_id 作为运行时标识,
                  net 里面也存一个, 二者一致表示 net 当前版本与 structure 同步.
-                 当发生结构变化时, 更新 structure 的 runtime_id, 更新在 update_runtime_id() 中实现.
+                 当发生结构变化时, 更新 structure 的 runtime_id, 更新在 reset_runtime() 中实现.
                  注意, 这里需要递归更新所有子结构的 runtime_id, 这是由于外部推导结果的失效可能导致内部推导结果的失效, 但只更新外部 runtime_id 不会触发内部的延迟更新 (内部 net 的 located_structure 不涉外部).
+        注意对结构的变更要检查是否 locked.
     """
     def merge(self, other_node: 'StructureNode'):
-        if self.located_structure is not None and not self.located_structure.free: # 不允许修改 locked structure
-            raise StructureException(f"Locked structure is not allowed to be modified")
+        self._check_located_structure_free()
         
         self.located_net.merge_net(other_node.located_net)
         
         if self.located_structure is not None:
-            self.located_structure.update_runtime_id() # 更新 structure runtime_id
+            self.located_structure.reset_runtime() # 更新 structure runtime_id
     
     def separate(self):
-        if self.located_structure is not None and not self.located_structure.free: # 不允许修改 locked structure
-            raise StructureException(f"Locked structure is not allowed to be modified")
+        self._check_located_structure_free()
         
         if len(self.located_net) <= 1: # 本就单独成集
             return
@@ -265,13 +267,12 @@ class StructureNode:
         
         if self.located_box is not None: # port 断连, 一定影响了结构, 更新 structure runtime_id
             if self.located_structure is not None:
-                self.located_structure.update_runtime_id()
+                self.located_structure.reset_runtime()
         else: # node 断连, 只需要重置所在 net 的 runtime 信息
             self.located_net.init_runtime_type()
     
     def delete(self):
-        if self.located_structure is not None and not self.located_structure.free: # 不允许修改 locked structure
-            raise StructureException(f"Locked structure is not allowed to be modified")
+        self._check_located_structure_free()
         
         if self.located_box is not None: # port, 不允许删除
             raise DiagramTypeException(f"An active port (under a box) is not allowed to be deleted")
@@ -282,26 +283,21 @@ class StructureNode:
     
     """
         以下方法皆直接调用所在 net 的方法, 只是为了方便调用.
+        注意对 runtime 信息的变更要检查是否 locked.
     """
     def get_runtime_type(self):
         return self.located_net.get_runtime_type()
     
     def init_runtime_type(self):
-        if self.located_structure is not None and not self.located_structure.free: # 不允许修改 locked structure 的信息
-            raise StructureException(f"Locked structure is not allowed to be modified")
-        
+        self._check_located_structure_free()
         self.located_net.init_runtime_type()
     
     def set_runtime_type(self, signal_type: SignalType):
-        if self.located_structure is not None and not self.located_structure.free: # 不允许修改 locked structure 的信息
-            raise StructureException(f"Locked structure is not allowed to be modified")
-        
+        self._check_located_structure_free()
         self.located_net.set_runtime_type(signal_type)
     
     def merge_runtime_type(self, signal_type: SignalType) -> bool:
-        if self.located_structure is not None and not self.located_structure.free: # 不允许修改 locked structure 的信息
-            raise StructureException(f"Locked structure is not allowed to be modified")
-        
+        self._check_located_structure_free()
         return self.located_net.merge_runtime_type(signal_type)
 
 class StructureBox:
@@ -403,10 +399,14 @@ class StructureBox:
     def deduction(self):
         """
             对 box 下的 structure 进行类型推导.
-            由于 box.IO 与 structure.EEB.IO 对应,
+            注意 box.IO 和 box.structure.EEB.IO 的双向同步.
+            注意检查 box.structure 是否为 locked.
         """
         if self.structure is None:
-            return
+            raise StructureException(f"Box has no structure")
+        
+        if not self.structure.free:
+            raise StructureException(f"Locked structure is not allowed to be modified")
         
         def _update(from_d, to_d): # 遍历 .IO, 将 from_d 的 runtime 信息更新到 to_d [ITIO]
             if isinstance(from_d, ObjDict):
@@ -450,8 +450,7 @@ class Structure:
         structure 具有 free 属性, 用于判断是否为自由结构, 即不依赖于框图类型. 非自由结构是只读的, 要修改必须先拷贝.
         自由结构不代表内部所有部分都自由, 例如 box 可能是 locked 的, 但 structure 本身是 free 的. 此时可以修改 structure 的结构, 但不能修改 box 的内部结构.
     
-        [*] 所有属性设置必须使用 setter. 下面是各属性最低层次的获取和设置方法:
-            TODO
+        [*] 所有属性设置必须检查是否 locked.
     """
     def __init__(self, name: str = None):
         self.name = name # 此处为 primitive name, 首先肯定需要包含一些参数信息以和其他同名结构区分 (用户自定义, 或创建框图类型模板时自动设为类名), 其次该名称只有 locked structure 在生成 hdl 时才会直接使用, 否则应会在前加入 namespace 信息, 以确保具有 runtime 信息的同 name structure 不会冲突
@@ -481,11 +480,14 @@ class Structure:
     def __repr__(self):
         return f"<Structure {self.name} (free: {self.free}, determined: {self.determined}, runtime_id: {self.runtime_id})>"
     
-    def __setattr__(self, name, value):
+    def __setattr__(self, name, value): # TODO 无法监控对象内部属性的修改
         if name in ["name", "free", "hdl", "runtime_id", "runtime_deduction_effected"]:
-            if hasattr(self, "free") and not self.free:
-                raise StructureException(f"Locked structure is not allowed to be modified")
+            self._check_free()
         super().__setattr__(name, value)
+    
+    def _check_free(self):
+        if hasattr(self, "free") and not self.free:
+            raise StructureException(f"Locked structure is not allowed to be modified")
     
     @property
     def EEB(self) -> StructureBox:
@@ -513,19 +515,23 @@ class Structure:
     def is_operator(self):
         return self.custom_deduction is not None or self.custom_generation is not None
     
-    def update_runtime_id(self):
+    def reset_runtime(self):
         """
-            递归更新当前以及所有子结构的 runtime_id.
-            变化即可, 无需内外 id 一致. 这是基于 structure 独立性的考虑, 即 structure 并不清楚自己是否被装入 box 成为了子结构, 所以涉及外部结构变化的更新都需要外部结构主动实施.
+            递归重置当前及所有子结构的 runtime 依赖信息.
+            runtime_id 变化即可, 无需内外 id 一致. 这是基于 structure 独立性的考虑, 即 structure 并不清楚自己是否被装入 box 成为了子结构, 所以涉及外部结构变化的更新都需要外部结构主动实施.
+            runtime 依赖信息包括 (i.e. 结构变化会导致失效的信息):
+                (1.) runtime_id.
+                (2.) hdl.
+                (3.) StructureNet 的 runtime_signal_type (在 StructureNet 中延迟更新).
         """
-        if not self.free:
-            raise StructureException(f"Locked structure is not allowed to be modified")
+        self._check_free()
         
-        self.set_runtime_id = str(uuid.uuid4())
+        self.runtime_id = str(uuid.uuid4())
+        self.hdl = None
         
         for box in self.boxes.values():
             if box.structure is not None and box.structure.free: # 锁定结构的信息不可修改, 理论上也不需要更新
-                box.structure.update_runtime_id()
+                box.structure.reset_runtime()
     
     def instantiate(self, in_situ: bool = True, reserve_safe_structure: bool = True):
         """
@@ -631,9 +637,8 @@ class Structure:
             锁定的结构的节点关系, runtime 信息, 节点信息等都不允许更改.
             [*] 顺便, 结构的更改只允许使用 StructureNode 的 merge, separte 和 delete,
                 以及节点信息的修改只允许使用 StructureNode 的 set_origin_signal_type 和 x_runtime_type 系列方法,
-                还有结构信息的修改只允许使用 Structure 的 update_runtime_id 等方法.
+                还有结构信息的修改只允许使用 Structure 的 reset_runtime 等方法.
                 以上这些方法是安全的 (会检查是否是 locked structure).
-                TODO 重构 s[!] 所有涉及到结构的属性都应该用 setter, getter 进行操作, 然后在其中检查是否 locked.
         """
         if not self.free: # 已经锁定则无需操作
             return
@@ -707,7 +712,7 @@ class Structure:
         return new_box
     
     def connect(self, port_1: StructureNode, port_2: StructureNode):
-        # TODO 考虑包含多个 IOWrapper 的 Bundle 之间的连接处理 (即 port_x 为 Bundle 的情况)
+        # TODO 考虑包含多个 IOWrapper 的 Bundle 之间的连接处理 (即 port_x 为 ObjDict 的情况, 那就不是在这里了)
         port_1.merge(port_2)
     
     def connects(self, ports: list[StructureNode]):
@@ -724,6 +729,8 @@ class Structure:
             TODO 是否需要考虑 nodes? 目前看没有影响, 暂时只考虑 ports. 考虑 nodes
             TODO [global] 用到的地方太多了, 什么时候把遍历 box.IO 的功能封装成迭代器之类的, 不要每次都写一遍递归.
         """
+        self._check_free()
+        
         def _apply(d): # 遍历 .IO 操作每个 port [ITIO]
             if isinstance(d, ObjDict):
                 for sub_val in d.values():
@@ -756,8 +763,7 @@ class Structure:
             即该标记监测该 structure 下直辖的 net (located_structure = self) 的变化情况, 不包括 box 中 deduction 的结果,
             这样做是由于, 即便假设 box 内部推导产生了收益但未反映到 ports, 而其他 net 都没有改变, 这种情况也可认为已经收敛, 因为再对 box 进行一次推导也不会有变化, 外围 net 不变 deduction 在 box 的状态上就幂等.
         """
-        if not self.free:
-            raise StructureDeductionException(f"Only free structure can be deduced. You can call .instantiate() to get a free structure")
+        self._check_free()
         
         logger.info(f"Deduction on structure: {self}")
         
