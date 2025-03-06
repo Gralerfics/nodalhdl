@@ -5,3 +5,4 @@ vivado*.log
 **/__pycache__/
 
 doc/tmp/
+**.egg-info/

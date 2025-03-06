@@ -92,10 +92,7 @@
 +--------------------------------------------------------------------+
 """
 
-# from .utils import class_attribute_isolator
-
 import hashlib
-
 
 """ Exceptions """
 class SignalTypeException(Exception): pass

@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nodalhdl"
+version = "0.0.1a1"
+description = "A pipelined circuit development toolchain."
+readme = "README.md"
+authors = [{ name = "Gralerfics", email = "glverfer@outlook.com" }]
+license = { text = "GPL-3.0-or-later" }
+requires-python = ">=3.12"
+
+[tool.setuptools]
+packages = ["nodalhdl"]
