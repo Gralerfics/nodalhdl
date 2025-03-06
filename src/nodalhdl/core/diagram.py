@@ -4,6 +4,7 @@ from .utils import ObjDict
 
 import uuid
 from inspect import isfunction
+from typing import List, Dict, Set
 
 import logging # TODO 搞一个分频道调试输出工具
 logging.basicConfig(level = logging.INFO,format = '%(asctime)s - [%(levelname)s] - %(message)s')
@@ -82,7 +83,7 @@ class StructureNet:
         游离存储, 仅为下辖 node 所引用.
     """
     def __init__(self):
-        self.nodes: set[StructureNode] = set()
+        self.nodes: Set[StructureNode] = set()
         
         self.runtime_id = None
         self.runtime_signal_type = None # 运行时信号类型, 不要直接修改, 而是调用方法; 保证是去除 IO 的
@@ -458,7 +459,7 @@ class Structure:
         
         self.locked_hdl: HDLFileModel = None # lock (确保结构固定) 后若结构为 determined (确保可以生成), 则进行 HDL 生成并存储在此
         
-        self.boxes: dict[str, StructureBox] = {} # 包含的 boxes
+        self.boxes: Dict[str, StructureBox] = {} # 包含的 boxes
         
         self.runtime_id = str(uuid.uuid4()) # 用于表示结构变化的 id
         self.runtime_deduction_effected = False # 用于表示推导中是否产生收益的标识
@@ -713,7 +714,7 @@ class Structure:
         # TODO 考虑包含多个 IOWrapper 的 Bundle 之间的连接处理 (即 port_x 为 ObjDict 的情况, 那就不是在这里了)
         port_1.merge(port_2)
     
-    def connects(self, ports: list[StructureNode]):
+    def connects(self, ports: List[StructureNode]):
         if len(ports) <= 1:
             return
         for idx, port in enumerate(ports):
@@ -817,7 +818,7 @@ class Structure:
         res = HDLFileModel(prefix + "_" + self.name)
         _add_ports(self.EEB.IO, res)
         
-        nets: set[StructureNet] = set()
+        nets: Set[StructureNet] = set()
         
         for box in self.boxes.values(): # 遍历 box 添加例化组件, 若 box 下为安全结构且有 locked_hdl, 则直接使用 locked_hdl, 否则递归调用 generation() 后获得 HDLFileModel
             if box.structure is not None:

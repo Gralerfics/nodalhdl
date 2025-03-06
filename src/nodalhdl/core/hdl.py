@@ -1,5 +1,7 @@
 from .signal import SignalType, Bundle
 
+from typing import List, Dict, Set, Tuple
+
 
 class HDLFileModelException(Exception): pass
 
@@ -9,8 +11,8 @@ class HDLGlobalInfo:
         例如所用到的所有类型, 在 add_component 时会向上级传递, 最终顶层结构生成时会给出单独一个 types.vhd (以 VHDL 为例).
     """
     def __init__(self):
-        self.type_pool: set[SignalType] = set() # 类型池, 可用于查重
-        self.type_pool_ordered: list[SignalType] = [] # 有序的 type_pool, 以防 HDL 要求顺序声明类型
+        self.type_pool: Set[SignalType] = set() # 类型池, 可用于查重
+        self.type_pool_ordered: List[SignalType] = [] # 有序的 type_pool, 以防 HDL 要求顺序声明类型
     
     def merge(self, other: 'HDLGlobalInfo'):
         """
@@ -78,11 +80,11 @@ class HDLFileModel:
         
         self.global_info: HDLGlobalInfo = HDLGlobalInfo()
         
-        self.ports: dict[str, tuple[str, SignalType]] = {} # dict[端口名, (方向, 类型)]
-        self.components: set[HDLFileModel] = set()
-        self.inst_comps: dict[str, tuple[str, dict[str, str]]] = {} # dict[实例名, (组件名, dict[组件端口名, 实例端口名])]
-        self.signals: dict[str, SignalType] = {}
-        self.assignments: list[tuple[str, str]] = []
+        self.ports: Dict[str, Tuple[str, SignalType]] = {} # Dict[端口名, (方向, 类型)]
+        self.components: Set[HDLFileModel] = set()
+        self.inst_comps: Dict[str, Tuple[str, Dict[str, str]]] = {} # Dict[实例名, (组件名, Dict[组件端口名, 实例端口名])]
+        self.signals: Dict[str, SignalType] = {}
+        self.assignments: List[Tuple[str, str]] = []
         
         self.raw: bool = False # 是否直接使用 HDL 定义 (即使使用 HDL 定义也应当声明 entity_name; port 应与 box 相符) TODO
         self.raw_file_suffix: str = None
@@ -187,7 +189,7 @@ class HDLFileModel:
         self.global_info.merge(comp.global_info)
         self.components.add(comp)
     
-    def inst_component(self, inst_name: str, comp: 'HDLFileModel', mapping: dict[str, str]):
+    def inst_component(self, inst_name: str, comp: 'HDLFileModel', mapping: Dict[str, str]):
         if comp not in self.components: # 未添加到 components 中则添加
             self.add_component(comp)
         self.inst_comps[inst_name] = (comp.entity_name, mapping)
@@ -207,7 +209,7 @@ class HDLFileModel:
         self.raw_content = content
 
 
-def write_to_files(d: dict[str, str], path: str): # TODO Temprary
+def write_to_files(d: Dict[str, str], path: str): # TODO Temprary
     for filename, content in d.items():
         with open(path + "/" + filename, "w") as f:
             f.write(content)
