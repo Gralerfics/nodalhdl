@@ -7,7 +7,7 @@ from nodalhdl.core.hdl import HDLFileModel
 print('哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈')
 
 
-class TestDiagram(Diagram): # 带参 Diagram 示例
+class TestDiagram(Diagram): # 无参 Diagram 示例
     @staticmethod
     def setup(args):
         # 创建结构

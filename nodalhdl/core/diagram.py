@@ -617,10 +617,16 @@ class Structure:
                             map_dict[net] = new_net
                         else:
                             map_dict[net].merge_net(new_net)
+                        
+                        # 5. 遍历 net 所属 nodes (主要是为了非 port 结点, 不复制可能丢失信息影响推导), 复制信息, 建立映射 TODO to be tested
+                        for node in net.nodes:
+                            if node not in map_dict.keys():
+                                new_node = StructureNode(node.name, node.origin_signal_type, located_box = new_box)
+                                map_dict[node] = new_node
                 
                 _build(box.IO, new_box.IO)
                 
-                # 5. 暂时忽略非 IO 的 node, 它们不影响连接关系, 如需处理可遍历 net
+                # 5. 暂时忽略非 IO 的 node, 它们不影响连接关系, 如需处理可遍历 net 
         
         return res
     
