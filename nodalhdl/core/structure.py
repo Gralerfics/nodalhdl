@@ -335,11 +335,10 @@ class Structure:
         structure.located_structures_weak[self.id] = self # weak reference to the located structure in the substructure
         
         def _create(io):
-            for k, v in io.items():
-                if isinstance(v, Node):
-                    return Node(k, v.origin_signal_type.flip_io(), located_structure = self, port_of_structure = structure) # outside ports are located in the structure
-                elif isinstance(v, StructuralNodes):
-                    return StructuralNodes({sub_k: _create(sub_v) for sub_k, sub_v in v.items()})
+            if isinstance(io, Node):
+                return Node(io.name, io.origin_signal_type.flip_io(), located_structure = self, port_of_structure = structure)
+            elif isinstance(io, StructuralNodes):
+                return StructuralNodes({k: _create(v) for k, v in io.items()})
         
         structure.ports_outside[self.id] = _create(structure.ports_inside_flipped) # duplicate and flip internal ports to create external ports
         
