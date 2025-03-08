@@ -158,7 +158,7 @@ class StructureNode:
         node 指向唯一的 box (如有), box 也存有所有的相关 node (port).
     """
     def __init__(self, name: str, signal_type: SignalType, located_net: StructureNet = None, located_box: 'StructureBox' = None):
-        self.located_net: StructureNet = located_net # TODO 这二者是否应该使用 weakref?
+        self.located_net: StructureNet = located_net # TODO 这二者是否应该使用 weakref ?
         self.located_box: StructureBox = located_box
         
         self.name = name
