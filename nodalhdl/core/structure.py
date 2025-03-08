@@ -1,17 +1,18 @@
-from .signal import SignalType, IOWrapper, Input, Auto
+from .signal import SignalType, IOWrapper, Input, Auto, Bundle
 from .hdl import HDLFileModel
 from .utils import ObjDict
 
 import weakref
 import uuid
 from inspect import isfunction
-from typing import List, Dict, Set
+from typing import List, Dict, Set, Union
 
 import logging # TODO 搞一个分频道调试输出工具
 logging.basicConfig(level = logging.INFO,format = '%(asctime)s - [%(levelname)s] - %(message)s')
 logger = logging.getLogger(__name__)
 
 
+""" Structure """
 class StructureException(Exception): pass
 class StructureDeductionException(Exception): pass
 class StructureGenerationException(Exception): pass
@@ -112,7 +113,7 @@ class Node:
     """
         线路结点.
     """
-    def __init__(self, name: str, origin_signal_type: SignalType, located_structure: 'Structure', located_net: Net = None):
+    def __init__(self, name: str, origin_signal_type: SignalType, located_structure: 'Structure', port_of_structure: 'Structure' = None, located_net: Net = None):
         # properties
         self.name: str = name
         self.origin_signal_type: SignalType = origin_signal_type # must be set by set_origin_type()
@@ -123,7 +124,7 @@ class Node:
             self.located_net.add_node(self) # add_node() will set located_net to self
         else:
             Net(located_structure).add_node(self) # add_node() will update runtime signal type, so no need to be called after assigning origin_signal_type
-        self.port_of_structure_weak: weakref.ReferenceType = None # if the node is an external port of a structure, this will be the structure
+        self.port_of_structure_weak: weakref.ReferenceType = weakref.ref(port_of_structure) if port_of_structure is not None else None # if the node is an external port of a structure, this will be the structure
 
     @property
     def is_port(self):
@@ -138,6 +139,12 @@ class Node:
             # no record for this runtime, initialize one
             self.located_net.create_runtime(runtime_id)
         return self.located_net.runtimes[runtime_id].signal_type
+    
+    def update_type(self, runtime_id: RuntimeId, signal_type: SignalType):
+        if self.located_net.runtimes.get(runtime_id) is None:
+            # no record for this runtime, initialize one
+            self.located_net.create_runtime(runtime_id)
+        self.located_net.runtimes[runtime_id].merge_type(signal_type)
     
     def is_determined(self, runtime_id: RuntimeId):
         return self.get_type(runtime_id).determined
@@ -182,10 +189,17 @@ class Node:
         self.located_structure.runtimes.clear() # all runtime information is invalid, clear them
 
 class StructuralNodes(ObjDict):
-    def connect(self, other: 'StructuralNodes'):
-        pass # TODO 信号束连接
+    def __getattr__(self, name) -> Union[Node, 'StructuralNodes']: # for type hint
+        return super().__getitem__(name)
     
-    # TODO 遍历 Node 工具
+    def connect(self, other: 'StructuralNodes'):
+        for k, v in self.items():
+            if isinstance(v, Node):
+                v.merge(other[k])
+            elif isinstance(v, StructuralNodes):
+                v.connect(other[k])
+    
+    # TODO Node 迭代器
 
 class Structure:
     """
@@ -217,6 +231,8 @@ class Structure:
         # properties
         self.id = str(uuid.uuid4())
         self.name = name # TODO 允许同名? 问题关键在同层级同名结构或同名复用结构的生成过程
+        self.custom_deduction: callable = None
+        self.custom_generation: callable = None
         
         # references (internal structure)
         self.ports_inside_flipped: StructuralNodes = StructuralNodes() # to be connected to internal nodes, IO flipped (EEB)
@@ -229,6 +245,10 @@ class Structure:
         
         # runtime
         self.runtimes: weakref.WeakKeyDictionary[RuntimeId, Structure.Runtime] = {} # runtime_id -> runtime info
+    
+    @property
+    def is_operator(self):
+        return self.custom_deduction is not None and self.custom_generation is not None
     
     def is_determined(self, runtime_id: RuntimeId):
         pass # TODO
@@ -258,22 +278,80 @@ class Structure:
         """
             类型推导.
         """
+        if self.is_operator:
+            self.custom_deduction(self, runtime_id = runtime_id)
+            return
+        
         pass # TODO
     
-    def generation(self, runtime_id: RuntimeId):
+    def generation(self, runtime_id: RuntimeId, prefix: str = "hdl") -> HDLFileModel:
         """
             HDL 文件对象生成.
         """
+        if not self.is_determined(runtime_id):
+            raise StructureGenerationException("Only determined structure can be converted to HDL")
+        
+        def _add_ports(d, hdl: HDLFileModel):
+            pass # TODO
+        
+        res: HDLFileModel = None
+        
+        if self.is_operator:
+            res = self.custom_generation(self, runtime_id = runtime_id)
+            _add_ports(self.ports_inside_flipped, res)
+            return res
+        
         pass # TODO
     
     def add_port(self, name: str, signal_type: SignalType) -> Node:
-        pass
+        if not signal_type.perfectly_io_wrapped:
+            raise StructureException("Port signal type should be perfectly IO wrapped")
+        
+        def _extract(key: str, t: SignalType):
+            if t.belongs(IOWrapper):
+                return Node(key, t.flip_io(), located_structure = self) # (1.) io is flipped in ports_inside_flipped, (2.) ports inside are connected with internal nodes/nets, so located_structure is set to self
+            elif t.belongs(Bundle):
+                return StructuralNodes({k: _extract(k, v) for k, v in t._bundle_types.items()})
+
+        new_port = _extract(name, signal_type)
+        self.ports_inside_flipped[name] = new_port
+        
+        return new_port
     
     def add_node(self, name: str, signal_type: SignalType) -> Node:
-        pass
+        if signal_type.io_wrapper_included:
+            signal_type = signal_type.clear_io()
+        
+        new_node = Node(name, signal_type, located_structure = self)
+        self.nodes.add(new_node) # remember to add to nodes, or it may be garbage collected
+        
+        return new_node
     
     def add_substructure(self, inst_name: str, structure: 'Structure') -> 'StructureProxy':
-        pass
+        if inst_name in self.substructures.keys():
+            raise StructureException("Instance name already exists")
+        
+        self.substructures[inst_name] = structure # strong reference to the substructure
+        structure.located_structures_weak[self.id] = self # weak reference to the located structure in the substructure
+        
+        def _create(io):
+            for k, v in io.items():
+                if isinstance(v, Node):
+                    return Node(k, v.origin_signal_type.flip_io(), located_structure = self, port_of_structure = structure) # outside ports are located in the structure
+                elif isinstance(v, StructuralNodes):
+                    return StructuralNodes({sub_k: _create(sub_v) for sub_k, sub_v in v.items()})
+        
+        structure.ports_outside[self.id] = _create(structure.ports_inside_flipped) # duplicate and flip internal ports to create external ports
+        
+        return StructureProxy(structure, self.id)
+    
+    def connect(self, node_1: Node, node_2: Node):
+        node_1.merge(node_2)
+    
+    def connects(self, nodes: List[Node]):
+        for idx, node in enumerate(nodes):
+            if idx != 0:
+                self.connect(nodes[0], node)
 
 class StructureProxy:
     """
@@ -287,4 +365,72 @@ class StructureProxy:
     @property
     def IO(self):
         return self.proxy_structure.ports_outside[self.located_structure_id]
+
+
+""" Diagram """
+class DiagramTypeException(Exception): pass
+
+class DiagramType(type):
+    diagram_type_pool = {} # 框图类型池, 去重
+    
+    UUID_NAMESPACE = uuid.UUID('00000000-0000-0000-0000-000000000000')
+    
+    structure: Structure = None # 结构模板
+    
+    def __new__(mcs, name: str, bases: tuple, attr: dict): # `mcs` here is the metaclass itself
+        inst_args = attr.get("instantiation_arguments", ()) # 获取可能从 __getitem__ 传来的参数, 无则默认为空
+        
+        new_name = name
+        if inst_args: # 若参数不为空则依据参数构建新名
+            new_name = f"{name}_{str(uuid.uuid3(DiagramType.UUID_NAMESPACE, str(inst_args))).replace('-', '_')}"
+        
+        if not new_name in mcs.diagram_type_pool.keys(): # 若尚未创建过
+            new_cls = super().__new__(mcs, new_name, bases, attr) # 先创建类, setup() 可能未在子类中显式重写 (即未在 attr 中)
+            setup_func = new_cls.setup
+            
+            try:
+                new_structure: Structure = setup_func(inst_args) # 生成结构
+                if new_structure is not None:
+                    new_structure.name = new_name # 结构原始名与新类名一致 (包含类型和参数信息; 是编码后的, 或可将参数原始值写到 hdl 文件的注释里) TODO
+                    # TODO 推导固化
+                new_cls.structure = new_structure
+            except DiagramTypeException as e:
+                raise # [NOTICE] 异常处理, 这里直接全部抛出, 要求用户必须处理无参行为
+            
+            mcs.diagram_type_pool[new_name] = new_cls # 加入框图类型池
+
+        return mcs.diagram_type_pool[new_name] # 从框图类型池中获取
+    
+    def __getitem__(cls, args: tuple): # `cls` here is the generated class
+        return DiagramType(
+            cls.__name__, # 传入无参框图名, 在 __new__ 中构建新名
+            (cls, ), # 继承无参框图的属性和方法, 主要是 setup 和 deduction 等
+            {"instantiation_arguments": args} # 传递参数交给 __new__ 创建
+        )
+
+class Diagram(metaclass = DiagramType):
+    @staticmethod
+    def setup(args: tuple = ()) -> Structure:
+        return None
+
+def operator(cls):
+    if not any(isfunction(method) and method.__name__ == 'deduction' for method in cls.__dict__.values()): # (1.1)
+        raise DiagramTypeException(f"Diagram type \'{cls.__name__}\' must implement method \'deduction\'.")
+    
+    if not any(isfunction(method) and method.__name__ == 'generation' for method in cls.__dict__.values()): # (1.2)
+        raise DiagramTypeException(f"Diagram type \'{cls.__name__}\' must implement method \'generation\'.")
+    
+    setup_func = cls.setup
+    
+    def setup_wrapper(args):
+        res: Structure = setup_func(args)
+        
+        res.custom_deduction = cls.deduction # (1.1.1)
+        res.custom_generation = cls.generation # (1.2.1)
+        
+        return res
+    
+    cls.setup = setup_wrapper
+    
+    return cls # (2.)
 
