@@ -12,7 +12,6 @@ logging.basicConfig(level = logging.INFO,format = '%(asctime)s - [%(levelname)s]
 logger = logging.getLogger(__name__)
 
 
-""" Structure """
 class StructureException(Exception): pass
 class StructureDeductionException(Exception): pass
 class StructureGenerationException(Exception): pass
@@ -28,7 +27,6 @@ class RuntimeId:
 class Net:
     """
         结点集合.
-        TODO
     """
     class Runtime:
         def __init__(self, attach_net: 'Net', runtime_id: RuntimeId = None):
@@ -89,21 +87,30 @@ class Net:
         for runtime in self.runtimes.values(): # update all related net runtime
             runtime.merge_type(node.origin_signal_type)
     
+    def separate_node(self, node: 'Node'):
+        if node not in self.nodes_weak:
+            raise StructureException("Node not in net")
+        
+        if len(self.nodes_weak) == 1:
+            return # only one node, no need to separate
+        
+        self.nodes_weak.remove(node)
+        Net(self.located_structures_weak()).add_node(node)
+    
     def merge(self, other: 'Net'):
         if self is other:
             return
         
         if self.located_structures_weak() is not other.located_structures_weak():
-            raise StructureException("Cannot merge nets from different structures.")
+            raise StructureException("Cannot merge nets from different structures")
         
         net_h, net_l = (self, other) if len(self) > len(other) else (other, self)
-        for node in net_l.nodes_weak:
+        for node in net_l.nodes_weak: # TODO: 若某个 node 被删除但尚未被 GC 掉, 会不会导致问题?
             net_h.add_node(node) # all nodes' located_net will be set to net_h and net_l will be garbage collected
 
 class Node:
     """
         线路结点.
-        TODO
     """
     def __init__(self, name: str, origin_signal_type: SignalType, located_structure: 'Structure', located_net: Net = None):
         # properties
@@ -115,7 +122,7 @@ class Node:
         if located_net is not None:
             self.located_net.add_node(self) # add_node() will set located_net to self
         else:
-            Net(located_structure).add_node(self) # add_node() will update runtime ssignal type, so no need to be called after assigning origin_signal_type
+            Net(located_structure).add_node(self) # add_node() will update runtime signal type, so no need to be called after assigning origin_signal_type
         self.port_of_structure_weak: weakref.ReferenceType = None # if the node is an external port of a structure, this will be the structure
 
     @property
@@ -137,6 +144,7 @@ class Node:
     
     """
         以下操作可能变更框图结构/下属节点原始类型, 将导致 runtime 信息失效.
+        同样地, 若想变更框图结构也只允许使用如下方法.
         注意, 完全失效! 因为变更可能导致子结构/当前结构端口的类型推导发生变化, 从而影响到父/子结构的推导有效性.
         应当清空自己的所有 runtime 信息, 使得任何经过该结构的 runtime_id 失去完整性.
         TODO: 还有一个问题, runtime_id 是推导时从推导的顶层结构开始传递的, 理论上需要阻止用户在不涉及顶层结构的情况下使用该 runtime_id.
@@ -145,21 +153,43 @@ class Node:
                 ... 不过好像不被持有的 runtime_id 和对应的 runtime 可能直接被 GC 掉了.
     """
     def set_origin_type(self, signal_type: SignalType):
+        if self.origin_signal_type is signal_type: # no change
+            return
+
         self.origin_signal_type = signal_type
         self.located_structure.runtimes.clear() # all runtime information is invalid, clear them
 
     def merge(self, other: 'Node'):
+        if self.located_net is other.located_net: # same net, no change
+            return
+        
         self.located_net.merge(other.located_net)
+        self.located_structure.runtimes.clear() # all runtime information is invalid, clear them
+    
+    def separate(self):
+        if len(self.located_net) == 1: # only one node, no need to separate
+            return
+        
+        self.located_net.separate_node(self)
+        self.located_structure.runtimes.clear() # all runtime information is invalid, clear them
+    
+    def delete(self):
+        if self.is_port:
+            raise StructureException("Cannot delete a port node")
+        
+        self.located_net.nodes_weak.remove(self) # 理论上不需要, located_structure.nodes.remove() 后该 node 应该就会被 GC 掉
+        self.located_structure.nodes.remove(self)
         self.located_structure.runtimes.clear() # all runtime information is invalid, clear them
 
 class StructuralNodes(ObjDict):
     def connect(self, other: 'StructuralNodes'):
         pass # TODO 信号束连接
+    
+    # TODO 遍历 Node 工具
 
 class Structure:
     """
         结构.
-        TODO
     """
     class Runtime:
         def __init__(self, attach_structure: 'Structure', runtime_id: RuntimeId = None):
@@ -174,6 +204,14 @@ class Structure:
         new_runtime = Structure.Runtime(attach_structure = self, runtime_id = runtime_id)
         self.runtimes[new_runtime.id] = new_runtime
         return new_runtime
+
+    def check_runtime(self, runtime_id: RuntimeId):
+        """
+            TODO
+            递归检查该 runtime_id 是否存在于所有子结构中, 若是则说明该 runtime_id 对应的 runtime 信息有效.
+            因为结构/原始类型如果发生变化, 该结构的所有 runtime 信息会被删除.
+        """
+        pass
     
     def __init__(self, name: str = None):
         # properties
@@ -183,6 +221,7 @@ class Structure:
         # references (internal structure)
         self.ports_inside_flipped: StructuralNodes = StructuralNodes() # to be connected to internal nodes, IO flipped (EEB)
         self.substructures: Dict[str, 'Structure'] = {} # instance_name -> structure
+        self.nodes: Set[Node] = set() # non-IO nodes
         
         # references (external structure)
         self.ports_outside: Dict[str, StructuralNodes] = {} # located_structure_id -> IO in the located structure
@@ -190,23 +229,62 @@ class Structure:
         
         # runtime
         self.runtimes: weakref.WeakKeyDictionary[RuntimeId, Structure.Runtime] = {} # runtime_id -> runtime info
-
-    def check_runtime(self, runtime_id: RuntimeId):
+    
+    def is_determined(self, runtime_id: RuntimeId):
+        pass # TODO
+    
+    def substitute_substructure(self, inst_name: str, structure: 'Structure'):
         """
-            TODO
-            递归检查该 runtime_id 是否存在于所有子结构中, 若是则说明该 runtime_id 对应的 runtime 信息有效.
-            因为结构/原始类型如果发生变化, 该结构的所有 runtime 信息会被删除.
+            将 inst_name 对应的子结构移出该结构, 并替换为 structure.
+            要求 inst_name 对应的子结构和 structure 的端口类型完全一致.
+            用于深度复制: 递归浅复制配合此方法即可实现深复制.
         """
+        pass # TODO
+    
+    def duplicate(self, shallow: bool = False) -> 'Structure':
+        """
+            shallow: 是否浅复制, 即只复制一层结构, 子结构保留原引用.
+        """
+        pass # TODO
+    
+    def apply_runtime(self, runtime_id: RuntimeId):
+        """
+            将 runtime_id 对应的 runtime 信息应用到结构中.
+            该操作涉及 set_origin_type, 其中会清空所有 runtime 信息.
+        """
+        pass # TODO
+    
+    def deduction(self, runtime_id: RuntimeId):
+        """
+            类型推导.
+        """
+        pass # TODO
+    
+    def generation(self, runtime_id: RuntimeId):
+        """
+            HDL 文件对象生成.
+        """
+        pass # TODO
+    
+    def add_port(self, name: str, signal_type: SignalType) -> Node:
+        pass
+    
+    def add_node(self, name: str, signal_type: SignalType) -> Node:
+        pass
+    
+    def add_substructure(self, inst_name: str, structure: 'Structure') -> 'StructureProxy':
+        pass
 
 class StructureProxy:
     """
         结构代理.
         将由 add_substructure 返回, 方便用户进行获取端口等操作.
-        TODO
     """
     def __init__(self, structure: Structure, located_structure_id: str):
         self.proxy_structure = structure # the structure to be proxied
         self.located_structure_id = located_structure_id # proxy the structure in the structure with located_structure_id
         
-        self.IO = structure.ports_outside[located_structure_id]
+    @property
+    def IO(self):
+        return self.proxy_structure.ports_outside[self.located_structure_id]
 
