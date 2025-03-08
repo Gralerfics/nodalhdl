@@ -124,7 +124,8 @@ class SignalType(type):
         以下这些第一个参数为 signal_type 的方法被 Signal 类型和其子类继承后, 第一个参数相当于 self.
     """
     def equals(signal_type: 'SignalType', other: 'SignalType'):
-        return signal_type == other
+        # return signal_type == other
+        return signal_type is other
     
     def belongs(signal_type: 'SignalType', other: 'SignalType'): # 要求从属于 other, 即比 other 更具体 (子类型) 或等同
         return issubclass(signal_type, other)
@@ -143,6 +144,7 @@ class SignalType(type):
         """
             用在需要将无 IO 类型推导结果应用到 port 信号类型上的情况.
             但实际上用到这个方法的信号类型应该都只有最外层有 IO Wrapper, 写个通用的吧.
+            TODO !!!!!!!!!!!!!! Bundle 和 Auto 的合并未实现
         """
         if other.io_wrapper_included:
             other = other.clear_io()

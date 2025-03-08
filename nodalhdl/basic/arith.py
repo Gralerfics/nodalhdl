@@ -1,5 +1,5 @@
 from ..core.signal import SignalType, UInt, SInt, Input, Output, Auto, Bundle
-from ..core.diagram import Diagram, DiagramTypeException, Structure, StructureGenerationException, operator
+from ..core.structure import Diagram, DiagramTypeException, Structure, StructureGenerationException, operator
 from ..core.hdl import HDLFileModel
 
 

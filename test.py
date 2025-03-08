@@ -1,5 +1,5 @@
 from nodalhdl.core.signal import UInt, SInt, Bits, Bit, Float, Bundle, Input, Output, Auto
-from nodalhdl.core.diagram import Diagram, Structure, StructureBox
+from nodalhdl.core.structure import Diagram, Structure, Box
 from nodalhdl.basic.arith import Addition
 from nodalhdl.core.hdl import HDLFileModel
 
