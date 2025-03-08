@@ -146,10 +146,11 @@ class Node:
     """
     def set_origin_type(self, signal_type: SignalType):
         self.origin_signal_type = signal_type
-        self.runtimes.clear() # all runtime information is invalid, clear them
+        self.located_structure.runtimes.clear() # all runtime information is invalid, clear them
 
     def merge(self, other: 'Node'):
-        pass # TODO
+        self.located_net.merge(other.located_net)
+        self.located_structure.runtimes.clear() # all runtime information is invalid, clear them
 
 class StructuralNodes(ObjDict):
     def connect(self, other: 'StructuralNodes'):
