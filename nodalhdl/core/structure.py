@@ -47,8 +47,11 @@ class Net:
             changed = new_st is not self.signal_type
             self.signal_type = new_st
             
-            if changed: # TODO runtime signal type changed
-                pass # 对应 runtime_id 的 deduction_effected 要变 True
+            if changed: # the operation on this runtime changed the information
+                s = self.attach_net().located_structures_weak()
+                if s.runtimes.get(self.id) is None: # no record for this runtime_id in the structure, create one
+                    s.create_runtime(self.id)
+                s.runtimes[self.id].deduction_effective = True
             
             return changed
         
@@ -66,9 +69,10 @@ class Net:
         self.runtimes[new_runtime.id] = new_runtime
         return new_runtime
     
-    def __init__(self):
+    def __init__(self, located_structure: 'Structure'): # not allowed to create a Net/Node without a located structure
         # references
         self.nodes_weak: weakref.WeakSet[Node] = weakref.WeakSet()
+        self.located_structures_weak: weakref.ReferenceType[Structure] = weakref.ref(located_structure)
         
         # runtime
         self.runtimes: weakref.WeakKeyDictionary[RuntimeId, Net.Runtime] = {}
@@ -89,6 +93,9 @@ class Net:
         if self is other:
             return
         
+        if self.located_structures_weak() is not other.located_structures_weak():
+            raise StructureException("Cannot merge nets from different structures.")
+        
         net_h, net_l = (self, other) if len(self) > len(other) else (other, self)
         for node in net_l.nodes_weak:
             net_h.add_node(node) # all nodes' located_net will be set to net_h and net_l will be garbage collected
@@ -108,24 +115,41 @@ class Node:
         if located_net is not None:
             self.located_net.add_node(self) # add_node() will set located_net to self
         else:
-            Net().add_node(self) # add_node() will update runtime ssignal type, so no need to be called after assigning origin_signal_type
-        self.located_structure_weak: weakref.ReferenceType = weakref.ref(located_structure) # the ID of the structure whose internal nodes this node is connected to
+            Net(located_structure).add_node(self) # add_node() will update runtime ssignal type, so no need to be called after assigning origin_signal_type
         self.port_of_structure_weak: weakref.ReferenceType = None # if the node is an external port of a structure, this will be the structure
 
     @property
     def is_port(self):
         return self.port_of_structure_weak is not None
     
-    def set_origin_type(self, signal_type: SignalType):
-        self.origin_signal_type = signal_type
-        for runtime in self.located_net.runtimes.values(): # reset all related net runtime
-            runtime.reset_type(self.located_net)
+    @property
+    def located_structure(self):
+        return self.located_net.located_structures_weak()
     
     def get_type(self, runtime_id: RuntimeId):
         if self.located_net.runtimes.get(runtime_id) is None:
             # no record for this runtime, initialize one
             self.located_net.create_runtime(runtime_id)
         return self.located_net.runtimes[runtime_id].signal_type
+    
+    def is_determined(self, runtime_id: RuntimeId):
+        return self.get_type(runtime_id).determined
+    
+    """
+        以下操作可能变更框图结构/下属节点原始类型, 将导致 runtime 信息失效.
+        注意, 完全失效! 因为变更可能导致子结构/当前结构端口的类型推导发生变化, 从而影响到父/子结构的推导有效性.
+        应当清空自己的所有 runtime 信息, 使得任何经过该结构的 runtime_id 失去完整性.
+        TODO: 还有一个问题, runtime_id 是推导时从推导的顶层结构开始传递的, 理论上需要阻止用户在不涉及顶层结构的情况下使用该 runtime_id.
+                ... 例如, 检查父结构是否有该 id, 若有说明这不是顶层结构, 则不允许单独使用其 runtime 信息.
+                ... 开始推导后得到的 runtime_id 应该由推导者持有, 例如前端页面. 这里最多可能有一个 check_runtime() 方法, 用来校验完整性.
+                ... 不过好像不被持有的 runtime_id 和对应的 runtime 可能直接被 GC 掉了.
+    """
+    def set_origin_type(self, signal_type: SignalType):
+        self.origin_signal_type = signal_type
+        self.runtimes.clear() # all runtime information is invalid, clear them
+
+    def merge(self, other: 'Node'):
+        pass # TODO
 
 class StructuralNodes(ObjDict):
     def connect(self, other: 'StructuralNodes'):
@@ -165,6 +189,13 @@ class Structure:
         
         # runtime
         self.runtimes: weakref.WeakKeyDictionary[RuntimeId, Structure.Runtime] = {} # runtime_id -> runtime info
+
+    def check_runtime(self, runtime_id: RuntimeId):
+        """
+            TODO
+            递归检查该 runtime_id 是否存在于所有子结构中, 若是则说明该 runtime_id 对应的 runtime 信息有效.
+            因为结构/原始类型如果发生变化, 该结构的所有 runtime 信息会被删除.
+        """
 
 class StructureProxy:
     """
