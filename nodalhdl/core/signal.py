@@ -132,6 +132,7 @@ class SignalType(type):
     
     def merges(signal_type: 'SignalType', other: 'SignalType'): # 合并两个信号类型的信息, 去 IO Wrapper
         """
+            IO-ignored.
             applys 本质上是将二者类型信息合并, 并保留 signal_type 的 IO Wrapper 结构.
             merges 传入无 IO Wrapper 的 signal_type, 就使其成为单纯的信息合并.
         """

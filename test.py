@@ -45,11 +45,55 @@ class TestDiagram(Diagram): # 无参 Diagram 示例
         
         return res
 
+print(TestDiagram.structure.substructures["add_ab"].ports_inside_flipped.res.origin_signal_type)
+
 
 print('=======================================================')
 
 
 s = Structure("test")
 
-print(TestDiagram.structure.substructures["add_ab"].ports_inside_flipped.res.origin_signal_type)
+bi = s.add_port("bi", Bundle[{"i": Input[UInt[2]], "o": Output[Auto]}])
+t = s.add_port("t", Input[UInt[4]]) # 改成 undetermined 测试 Addition 的反向推导 (未实现)
+n = s.add_port("n", Input[UInt[8]])
+m = s.add_port("m", Input[UInt[8]])
+
+td = s.add_substructure("td", TestDiagram.structure)
+add_ti = s.add_substructure("add_ti", Addition[Auto, Auto].structure)
+add_o = s.add_substructure("add_o", Addition[UInt[8], UInt[4]].structure)
+
+add_ti_out = s.add_node("add_ti_out", Auto)
+
+s.connect(t, add_ti.IO.op1)
+s.connect(bi.i, add_ti.IO.op2)
+s.connect(add_ti.IO.res, add_ti_out)
+
+s.connect(n, td.IO.ab.a)
+s.connect(m, td.IO.ab.b)
+s.connect(add_ti_out, td.IO.c)
+
+s.connect(td.IO.z, add_o.IO.op1)
+s.connect(add_ti_out, add_o.IO.op2)
+
+s.connect(add_o.IO.res, bi.o)
+
+print(s.substructures["td"].ports_inside_flipped.z.origin_signal_type)
+
+
+print('=======================================================')
+
+
+rid = RuntimeId()
+s.deduction(rid)
+
+print(s.substructures["td"].ports_inside_flipped.z.get_type(rid))
+
+
+print('=======================================================')
+
+
+# from nodalhdl.core.hdl import write_to_files
+
+# h = s.generation(rid)
+# write_to_files(h.emit_vhdl(), "C:/Workspace/test_project/test_project.srcs/sources_1/new")
 

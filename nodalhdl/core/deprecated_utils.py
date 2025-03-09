@@ -3,6 +3,52 @@
     看似巧妙, 皆为弃物, 无用之也.
     不舍得删, 仅供参考.
 """
+class ObjDict(dict):
+    """
+        直接继承 dict, 为其赋予属性访问的能力.
+        示例:
+            obj = ObjDict({"a": 1, "b": 2, "c": {"d": 3}})
+
+            print(obj.a)        # 1
+            print(obj.c)        # {'d': 3}
+            print(obj.c.d)      # 3
+
+            obj.a = 100
+            print(obj.a)        # 100
+
+            obj.e = 5
+            print(obj.e)        # 5
+
+            del obj.e
+            print(obj.get('e', None))   # None
+
+            print(obj.items())          # dict_items([('a', 100), ('b', 2), ('c', {'d': 3})])
+    """
+    def __init__(self, d: dict = {}):
+        for key, value in d.items():
+            if isinstance(value, dict):
+                self[key] = ObjDict(value)
+            else:
+                self[key] = value
+    
+    def __getattr__(self, name):
+        if name in self:
+            return self[name]
+        else:
+            raise AttributeError(f"\'{self.__class__.__name__}\' object has no attribute \'{name}\'")
+
+    def __setattr__(self, name, value):
+        if name in self:
+            self[name] = value
+        else:
+            super().__setattr__(name, value)
+
+    def __delattr__(self, name):
+        if name in self:
+            del self[name]
+        else:
+            super().__delattr__(name)
+
 
 def use_dict_object(cls):
     """

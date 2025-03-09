@@ -1,6 +1,5 @@
 from .signal import SignalType, IOWrapper, Input, Auto, Bundle
 from .hdl import HDLFileModel
-from .utils import ObjDict
 
 import weakref
 import uuid
@@ -23,7 +22,10 @@ class RuntimeId:
         when all references to a RuntimeId object are lost, the corresponding runtime will be garbage collected.
     """
     def __init__(self):
-        self.id: str = str(uuid.uuid4())
+        self.id: str = str(uuid.uuid4()).replace('-', '_')
+    
+    def __repr__(self):
+        return f"<RuntimeId: {self.id}>"
 
 class Net:
     """
@@ -42,6 +44,9 @@ class Net:
             self.reset_type() # set signal type to the union of all nodes' signal type
         
         def set_type(self, signal_type: SignalType) -> bool:
+            """
+                IO-ignored.
+            """
             new_st = signal_type.clear_io() # io wrapper cleared
             changed = new_st is not self.signal_type
             self.signal_type = new_st
@@ -55,6 +60,9 @@ class Net:
             return changed
         
         def merge_type(self, signal_type: SignalType) -> bool:
+            """
+                IO-ignored.
+            """
             return self.set_type(self.signal_type.merges(signal_type))
         
         def reset_type(self) -> bool:
@@ -79,8 +87,8 @@ class Net:
     def __len__(self):
         return len(self.nodes_weak)
     
-    def __repr__(self):
-        return str({x for x in self.nodes_weak})
+    def to_str(self, runtime_id: RuntimeId):
+        return str({x.to_str(runtime_id) for x in self.nodes_weak})
     
     def add_node(self, node: 'Node'):
         self.nodes_weak.add(node)
@@ -126,6 +134,9 @@ class Node:
             Net(located_structure).add_node(self) # add_node() will update runtime signal type, so no need to be called after assigning origin_signal_type
         self.port_of_structure_weak: weakref.ReferenceType = weakref.ref(port_of_structure) if port_of_structure is not None else None # if the node is an external port of a structure, this will be the structure
 
+    def to_str(self, runtime_id: RuntimeId):
+        return f"<Node {self.name} {id(self)} ({self.origin_signal_type.__name__} -> {self.get_type(runtime_id).__name__})>"
+    
     @property
     def is_port(self):
         return self.port_of_structure_weak is not None
@@ -135,14 +146,18 @@ class Node:
         return self.located_net.located_structures_weak()
     
     def get_type(self, runtime_id: RuntimeId):
-        if self.located_net.runtimes.get(runtime_id) is None:
-            # no record for this runtime, initialize one
+        """
+            non-IO.
+        """
+        if self.located_net.runtimes.get(runtime_id) is None: # no record for this runtime, create one
             self.located_net.create_runtime(runtime_id)
-        return self.located_net.runtimes[runtime_id].signal_type
+        return self.located_net.runtimes[runtime_id].signal_type # .clear_io()
     
     def update_type(self, runtime_id: RuntimeId, signal_type: SignalType):
-        if self.located_net.runtimes.get(runtime_id) is None:
-            # no record for this runtime, initialize one
+        """
+            IO-ignored.
+        """
+        if self.located_net.runtimes.get(runtime_id) is None: # no record for this runtime, create one
             self.located_net.create_runtime(runtime_id)
         self.located_net.runtimes[runtime_id].merge_type(signal_type)
     
@@ -188,9 +203,37 @@ class Node:
         self.located_structure.nodes.remove(self)
         self.located_structure.runtimes.clear() # all runtime information is invalid, clear them
 
-class StructuralNodes(ObjDict):
-    def __getattr__(self, name) -> Union[Node, 'StructuralNodes']: # for type hint
-        return super().__getitem__(name)
+class StructuralNodes(dict):
+    def __init__(self, d: dict = {}):
+        for key, value in d.items():
+            if isinstance(value, dict):
+                self[key] = StructuralNodes(value)
+            else:
+                self[key] = value
+    
+    def __getitem__(self, key) -> Union[Node, 'StructuralNodes']: # for type hinting
+        return super().__getitem__(key)
+    
+    def __getattr__(self, name) -> Union[Node, 'StructuralNodes']: # for type hinting
+        if name in self:
+            return self[name]
+        else:
+            raise AttributeError(f"\'{self.__class__.__name__}\' object has no attribute \'{name}\'")
+
+    def __setattr__(self, name, value):
+        if name in self:
+            self[name] = value
+        else:
+            super().__setattr__(name, value)
+
+    def __delattr__(self, name):
+        if name in self:
+            del self[name]
+        else:
+            super().__delattr__(name)
+    
+    def to_str(self, runtime_id: RuntimeId):
+        return str({n.name: n.to_str(runtime_id) for n in self.nodes()})
     
     def connect(self, other: 'StructuralNodes'):
         for k, v in self.items():
@@ -199,7 +242,26 @@ class StructuralNodes(ObjDict):
             elif isinstance(v, StructuralNodes):
                 v.connect(other[k])
     
-    # TODO Node 迭代器
+    def nodes(self) -> List[Node]: # return all Node objects in a list
+        res = []
+        for v in self.values():
+            if isinstance(v, Node):
+                res.append(v)
+            elif isinstance(v, StructuralNodes):
+                res.extend(v.nodes())
+        return res
+    
+    def update_runtime(self, runtime_id: RuntimeId, other: 'StructuralNodes'): # use other's runtime info (under runtime_id) to update self
+        def _update(to_p, from_p):
+            if isinstance(to_p, Node) and isinstance(from_p, Node) and to_p.name == from_p.name:
+                to_p.update_type(runtime_id, from_p.get_type(runtime_id))
+            elif isinstance(to_p, StructuralNodes) and isinstance(from_p, StructuralNodes):
+                for k, v in to_p.items():
+                    _update(v, from_p[k])
+            else:
+                raise StructureException("Mismatched structural nodes")
+        
+        _update(self, other)
 
 class Structure:
     """
@@ -229,7 +291,7 @@ class Structure:
     
     def __init__(self, name: str = None):
         # properties
-        self.id = str(uuid.uuid4())
+        self.id = str(uuid.uuid4()).replace('-', '_')
         self.name = name # TODO 允许同名? 问题关键在同层级同名结构或同名复用结构的生成过程
         self.custom_deduction: callable = None
         self.custom_generation: callable = None
@@ -250,8 +312,10 @@ class Structure:
     def is_operator(self):
         return self.custom_deduction is not None and self.custom_generation is not None
     
-    def is_determined(self, runtime_id: RuntimeId):
-        pass # TODO
+    def is_determined(self, runtime_id: RuntimeId): # all ports and substructures are determined
+        ports_determined = all([p.is_determined(runtime_id) for p in self.ports_inside_flipped.nodes()])
+        substructures_determined = all([s.is_determined(runtime_id) for s in self.substructures.values()])
+        return ports_determined and substructures_determined
     
     def substitute_substructure(self, inst_name: str, structure: 'Structure'):
         """
@@ -278,9 +342,37 @@ class Structure:
         """
             类型推导.
         """
+        logger.info(f"Deduction on structure {self.name}, under {runtime_id}.")
+        
         if self.is_operator:
+            logger.info("Custom deduction:")
             self.custom_deduction(self, runtime_id = runtime_id)
             return
+        
+        if self.runtimes.get(runtime_id) is None: # no record for this runtime, create one
+            self.create_runtime(runtime_id)
+        
+        while not self.is_determined(runtime_id): # stop if already determined
+            self.runtimes[runtime_id].deduction_effective = False # reset flag before a new round of deduction
+            logger.info("New round.")
+            
+            for s in self.substructures.values():
+                logger.info(f"Deduction on substructure {s.name}.")
+                
+                if s.is_determined(runtime_id): # already determined, skip
+                    logger.info("Determined substructure, skip.")
+                    continue
+                
+                # s.ports_outside[self.id] is the IO of `s` connected in `self`
+                logger.info(f"Before ({s.name}): {s.ports_outside[self.id].to_str(runtime_id)}")
+                s.ports_inside_flipped.update_runtime(runtime_id, s.ports_outside[self.id]) # update substructure's ports with external ports
+                s.deduction(runtime_id) # recursive deduction
+                s.ports_outside[self.id].update_runtime(runtime_id, s.ports_inside_flipped) # update external ports with substructure's ports
+                logger.info(f"After ({s.name}): {s.ports_outside[self.id].to_str(runtime_id)}")
+            
+            if not self.runtimes[runtime_id].deduction_effective: # no change, stop
+                logger.info("Not changed, stop.")
+                break
         
         pass # TODO
     
@@ -311,7 +403,7 @@ class Structure:
             if t.belongs(IOWrapper):
                 return Node(key, t.flip_io(), located_structure = self) # (1.) io is flipped in ports_inside_flipped, (2.) ports inside are connected with internal nodes/nets, so located_structure is set to self
             elif t.belongs(Bundle):
-                return StructuralNodes({k: _extract(k, v) for k, v in t._bundle_types.items()})
+                return StructuralNodes({k: _extract(key + "_" + k, v) for k, v in t._bundle_types.items()}) # node_name should be layered
 
         new_port = _extract(name, signal_type)
         self.ports_inside_flipped[name] = new_port
