@@ -43,7 +43,7 @@ class RuntimeId:
 
 class Net:
     """
-        结点集合.
+        Set of Node objects.
     """
     class Runtime:
         def __init__(self, attach_net: 'Net', runtime_id: RuntimeId = None):
@@ -133,7 +133,7 @@ class Net:
 
 class Node:
     """
-        线路结点.
+        Circuit node.
     """
     def __init__(self, name: str, origin_signal_type: SignalType, located_structure: 'Structure', port_of_structure: 'Structure' = None, located_net: Net = None):
         # properties
@@ -288,7 +288,7 @@ class StructuralNodes(dict):
 
 class Structure:
     """
-        结构.
+        Diagram structure.
     """
     class Runtime:
         def __init__(self, attach_structure: 'Structure', runtime_id: RuntimeId = None):
@@ -322,7 +322,7 @@ class Structure:
     def __init__(self, name: str = None):
         # properties
         self.id = uid_generator.create()
-        self.name = name # same name allowed, reusable structure will add a id suffix
+        self.name = name # same name allowed, reusable structure will add a id suffix TODO 要不不允许? 每次 id 不同重新导入 Vivado 很麻烦, 希望用 name 映射到固定 id
         self.custom_deduction: callable = None
         self.custom_generation: callable = None
         
@@ -341,6 +341,17 @@ class Structure:
     @property
     def is_operator(self):
         return self.custom_deduction is not None and self.custom_generation is not None
+    
+    @property
+    def is_singleton(self):
+        """
+            Check if the structure and all its substructures are singletons, i.e. do not have multiple located structures.
+            # theoretically, a substructure with len(located_structures_weak) == 1 must locate in the structure.
+        """
+        return len(self.located_structures_weak) <= 1 and all([s.is_singleton for s in self.substructures.values()])
+        # keys = self.located_structures_weak.keys()
+        # flag = (len(keys) == 0 and s_id is None) or (len(keys) == 1 and s_id in keys)
+        # return flag and all([s.is_singleton(self.id) for s in self.substructures.values()])
     
     def is_determined(self, runtime_id: RuntimeId): # all ports and substructures are determined
         ports_determined = all([p.is_determined(runtime_id) for _, p in self.ports_inside_flipped.nodes()])
@@ -369,13 +380,28 @@ class Structure:
     def apply_runtime(self, runtime_id: RuntimeId):
         """
             将 runtime_id 对应的 runtime 信息应用到结构中.
+            只有单例结构可以应用 runtime, 否则可能影响使用该结构或某个子结构的其他结构.
             该操作涉及 set_origin_type, 其中会清空所有 runtime 信息.
         """
-        pass # TODO
+        if not self.is_singleton:
+            raise StructureException("Only singleton structure can apply runtime")
+        
+        for _, port in self.ports_inside_flipped.nodes(): # apply runtime info to internal nodes
+            port.set_origin_type(port.origin_signal_type.applys(port.get_type(runtime_id)))
+        
+        for ports in self.ports_outside.values(): # apply runtime info to all outside ports
+            for _, port in ports.nodes():
+                port.set_origin_type(port.origin_signal_type.applys(port.get_type(runtime_id)))
+        
+        for node in self.nodes: # apply runtime info to all nodes (may be not necessary)
+            node.set_origin_type(node.origin_signal_type.applys(node.get_type(runtime_id)))
+        
+        for subs in self.substructures.values(): # apply runtime info to all substructures, recursively
+            subs.apply_runtime(runtime_id)
     
     def deduction(self, runtime_id: RuntimeId):
         """
-            类型推导.
+            Automatic type deduction.
         """
         logger.info(f"Deduction on structure `{self.name}` ({self.id}), under {runtime_id}.")
         
@@ -393,9 +419,6 @@ class Structure:
             
             for sub_inst_name, subs in self.substructures.items():
                 logger.info(f"Deduction on substructure `{sub_inst_name}` (`{subs.name}`, {subs.id}).")
-                
-                if sub_inst_name == 'add_ti':
-                    print(subs.ports_inside_flipped.op1.located_net.runtimes.keys(), runtime_id)
                 
                 # s.ports_outside[self.id] is the IO of `s` connected in `self`
                 if not subs.is_determined(runtime_id):
@@ -421,13 +444,16 @@ class Structure:
     
     def generation(self, runtime_id: RuntimeId, prefix: str = "") -> HDLFileModel:
         """
-            HDL 文件对象生成.
-            prefix: layer_inst_name_, e.g. this structure is instanced in somewhere as "bar" under "layer_xxx_foo_", then the prefix should be "layer_xxx_foo_bar_".
+            Generate HDL file model.
+            prefix: e.g. this structure is instanced in somewhere as "bar" under "layer_xxx_foo_", then the prefix should be "layer_xxx_foo_bar_".
         """
         if not self.is_determined(runtime_id):
             raise StructureGenerationException("Only determined structure can be converted to HDL")
         
+        logger.info(f"Generation on structure `{self.name}` ({self.id}), under {runtime_id}.")
+        
         if self.is_originally_determined(): # clear previous prefix if reusable
+            logger.info("Originally determined structure.")
             prefix = ""
         
         res = HDLFileModel(f"hdl_{prefix}{self.name}_{self.id[:8]}") # create file model and set entity name
@@ -457,22 +483,23 @@ class Structure:
         
         if self.is_operator: # custom generation for operator
             self.custom_generation(res, self.ports_inside_flipped, runtime_id)
-            return res
-        
-        for sub_inst_name, subs in self.substructures.items(): # instantiate components
-            mapping = {}
-            for port_full_name, port in subs.ports_outside[self.id].nodes(): # must use subs.ports_outside, which locates in self
-                port_wire_name = f"{sub_inst_name}_io_{port_full_name}" # inst_name_io_node_full_name
-                mapping[port_full_name] = port_wire_name
-                res.add_signal(port_wire_name, port.get_type(runtime_id)) # add signal for port wire
+        else: # universal generation for non-operators
+            for sub_inst_name, subs in self.substructures.items(): # instantiate components
+                mapping = {}
+                for port_full_name, port in subs.ports_outside[self.id].nodes(): # must use subs.ports_outside, which locates in self
+                    port_wire_name = f"{sub_inst_name}_io_{port_full_name}" # inst_name_io_node_full_name
+                    mapping[port_full_name] = port_wire_name
+                    res.add_signal(port_wire_name, port.get_type(runtime_id)) # add signal for port wire
+                    
+                    _connect_port_to_net(port, port_wire_name) # connect port to net
                 
-                _connect_port_to_net(port, port_wire_name) # connect port to net
-            
-            odhdl = self.runtimes[runtime_id].originally_determined_hdl_file_model # reuse HDL file model
-            if odhdl is not None:
-                res.inst_component(sub_inst_name, odhdl, mapping)
-            else:
-                res.inst_component(sub_inst_name, subs.generation(runtime_id, prefix + sub_inst_name + "_"), mapping)
+                odhdl = subs.runtimes[runtime_id].originally_determined_hdl_file_model # reuse HDL file model for the substructure
+                if odhdl is not None:
+                    logger.info(f"Reuse HDL file model for substructure `{sub_inst_name}` (`{subs.name}`, {subs.id}).")
+                    res.inst_component(sub_inst_name, odhdl, mapping)
+                else:
+                    logger.info(f"Generation on substructure `{sub_inst_name}` (`{subs.name}`, {subs.id}).")
+                    res.inst_component(sub_inst_name, subs.generation(runtime_id, prefix + sub_inst_name + "_"), mapping)
         
         if self.is_originally_determined(): # save HDL file model for originally determined structure
             self.runtimes[runtime_id].set_originally_determined_hdl_file_model(res) # self.runtimes[runtime_id] must exist because of self.is_determined(runtime_id)

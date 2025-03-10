@@ -84,12 +84,8 @@ print('=======================================================')
 rid = RuntimeId()
 s.deduction(rid)
 
-print(s.substructures["add_ti"].ports_inside_flipped.op1.located_net.runtimes.keys(), rid)
-
-print(s.ports_inside_flipped.bi.i.get_type(rid))
-
 print(s.substructures["add_ti"].ports_outside[s.id].op1.get_type(rid))
-print(s.substructures["add_ti"].ports_outside[s.id].op2.get_type(rid)) # TODO 和下面的不一样, 按理应该一样
+print(s.substructures["add_ti"].ports_outside[s.id].op2.get_type(rid))
 
 print(s.substructures["add_ti"].ports_inside_flipped.op1.get_type(rid))
 print(s.substructures["add_ti"].ports_inside_flipped.op2.get_type(rid))
@@ -101,6 +97,8 @@ print('=======================================================')
 from nodalhdl.core.hdl import write_to_files
 import shutil
 
+h = s.generation(rid)
+print("2")
 h = s.generation(rid)
 
 shutil.rmtree("C:/Workspace/test_project/test_project.srcs/sources_1/new")

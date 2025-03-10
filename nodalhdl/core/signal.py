@@ -145,7 +145,7 @@ class SignalType(type):
         """
             用在需要将无 IO 类型推导结果应用到 port 信号类型上的情况.
             但实际上用到这个方法的信号类型应该都只有最外层有 IO Wrapper, 写个通用的吧.
-            TODO !!!!!!!!!!!!!! Bundle 和 Auto 的合并未实现
+            TODO TODO TODO TODO TODO TODO TODO TODO !!!!!!!!!!!!!! Bundle 和 Auto 的合并未实现
         """
         if other.io_wrapper_included:
             other = other.clear_io()

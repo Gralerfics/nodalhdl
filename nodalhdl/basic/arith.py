@@ -62,10 +62,15 @@ architecture Behavioral of {h.entity_name} is
 begin
     res <= std_logic_vector(signed(op1) + signed(op2));
 end architecture;
-""")
+"""
+        )
     
     res.custom_deduction = deduction
     res.custom_generation = generation
+    
+    rid = RuntimeId()
+    res.deduction(rid)
+    res.apply_runtime(rid)
     
     return res
 
