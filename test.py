@@ -1,5 +1,5 @@
 from nodalhdl.core.signal import UInt, SInt, Bits, Bit, Float, Bundle, Input, Output, Auto
-from nodalhdl.core.structure import DiagramType, Diagram, Structure, RuntimeId
+from nodalhdl.core.structure import Structure, RuntimeId
 from nodalhdl.basic.arith import Addition
 from nodalhdl.core.hdl import HDLFileModel
 
@@ -21,31 +21,29 @@ print('哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈�
 # print('=======================================================')
 
 
-class TestDiagram(Diagram): # 无参 Diagram 示例
-    @staticmethod
-    def setup(args):
-        # 创建结构
-        res = Structure("test_diagram")
-        
-        # 声明 IO Ports, 必须 perfectly IO-wrapped, 类型不确定可使用 Auto 或其他 undetermined 类型待推导
-        ab = res.add_port("ab", Bundle[{"a": Input[UInt[8]], "b": Input[UInt[8]]}])
-        c = res.add_port("c", Input[UInt[4]])
-        z = res.add_port("z", Output[Auto])
-        
-        # 添加 Box
-        add_ab = res.add_substructure("add_ab", Addition[UInt[8], UInt[8]].structure)
-        add_abc = res.add_substructure("add_abc", Addition[Auto, Auto].structure)
-        
-        # 添加连接关系 / 非 IO 节点
-        res.connect(ab.a, add_ab.IO.op1)
-        res.connect(ab.b, add_ab.IO.op2)
-        res.connect(add_ab.IO.res, add_abc.IO.op1)
-        res.connect(c, add_abc.IO.op2)
-        res.connect(add_abc.IO.res, z)
-        
-        return res
+def TestDiagram() -> Structure:
+    # 创建结构
+    res = Structure("test_diagram")
+    
+    # 声明 IO Ports, 必须 perfectly IO-wrapped, 类型不确定可使用 Auto 或其他 undetermined 类型待推导
+    ab = res.add_port("ab", Bundle[{"a": Input[UInt[8]], "b": Input[UInt[8]]}])
+    c = res.add_port("c", Input[UInt[4]])
+    z = res.add_port("z", Output[Auto])
+    
+    # 添加 Box
+    add_ab = res.add_substructure("add_ab", Addition(UInt[8], UInt[8]))
+    add_abc = res.add_substructure("add_abc", Addition(Auto, Auto))
+    
+    # 添加连接关系 / 非 IO 节点
+    res.connect(ab.a, add_ab.IO.op1)
+    res.connect(ab.b, add_ab.IO.op2)
+    res.connect(add_ab.IO.res, add_abc.IO.op1)
+    res.connect(c, add_abc.IO.op2)
+    res.connect(add_abc.IO.res, z)
+    
+    return res
 
-print(TestDiagram.structure.substructures["add_ab"].ports_inside_flipped.res.origin_signal_type)
+print(TestDiagram().substructures["add_ab"].ports_inside_flipped.res.origin_signal_type)
 
 
 print('=======================================================')
@@ -58,9 +56,9 @@ t = s.add_port("t", Input[UInt[4]]) # 改成 undetermined 测试 Addition 的反
 n = s.add_port("n", Input[UInt[8]])
 m = s.add_port("m", Input[UInt[8]])
 
-td = s.add_substructure("td", TestDiagram.structure)
-add_ti = s.add_substructure("add_ti", Addition[Auto, Auto].structure)
-add_o = s.add_substructure("add_o", Addition[UInt[8], UInt[4]].structure)
+td = s.add_substructure("td", TestDiagram())
+add_ti = s.add_substructure("add_ti", Addition(Auto, Auto))
+add_o = s.add_substructure("add_o", Addition(UInt[8], UInt[4]))
 
 add_ti_out = s.add_node("add_ti_out", Auto)
 
@@ -86,14 +84,25 @@ print('=======================================================')
 rid = RuntimeId()
 s.deduction(rid)
 
-print(s.substructures["td"].ports_inside_flipped.z.get_type(rid))
+print(s.substructures["add_ti"].ports_inside_flipped.op1.located_net.runtimes.keys(), rid)
+
+print(s.ports_inside_flipped.bi.i.get_type(rid))
+
+print(s.substructures["add_ti"].ports_outside[s.id].op1.get_type(rid))
+print(s.substructures["add_ti"].ports_outside[s.id].op2.get_type(rid)) # TODO 和下面的不一样, 按理应该一样
+
+print(s.substructures["add_ti"].ports_inside_flipped.op1.get_type(rid))
+print(s.substructures["add_ti"].ports_inside_flipped.op2.get_type(rid))
 
 
 print('=======================================================')
 
 
-# from nodalhdl.core.hdl import write_to_files
+from nodalhdl.core.hdl import write_to_files
+import shutil
 
-# h = s.generation(rid)
-# write_to_files(h.emit_vhdl(), "C:/Workspace/test_project/test_project.srcs/sources_1/new")
+h = s.generation(rid)
+
+shutil.rmtree("C:/Workspace/test_project/test_project.srcs/sources_1/new")
+write_to_files(h.emit_vhdl(), "C:/Workspace/test_project/test_project.srcs/sources_1/new")
 

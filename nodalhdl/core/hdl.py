@@ -209,7 +209,11 @@ class HDLFileModel:
         self.raw_content = content
 
 
+import os
 def write_to_files(d: Dict[str, str], path: str): # TODO Temprary
+    if not os.path.exists(path):
+        os.makedirs(path)
+    
     for filename, content in d.items():
         with open(path + "/" + filename, "w") as f:
             f.write(content)
