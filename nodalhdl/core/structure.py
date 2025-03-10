@@ -128,7 +128,7 @@ class Net:
             raise StructureException("Cannot merge nets from different structures")
         
         net_h, net_l = (self, other) if len(self) > len(other) else (other, self)
-        for node in net_l.nodes_weak: # TODO: 若某个 node 被删除但尚未被 GC 掉, 会不会导致问题?
+        for node in net_l.nodes_weak: # [NOTICE] 会不会出现某个 node 被删除但尚未被 GC 掉的问题
             net_h.add_node(node) # all nodes' located_net will be set to net_h and net_l will be garbage collected
 
 class Node:
@@ -418,8 +418,6 @@ class Structure:
             if not self.runtimes[runtime_id].deduction_effective: # no change, stop
                 logger.info("Not changed, stop.")
                 break
-        
-        pass # TODO
     
     def generation(self, runtime_id: RuntimeId, prefix: str = "") -> HDLFileModel:
         """
