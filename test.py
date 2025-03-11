@@ -41,12 +41,18 @@ def TestDiagram() -> Structure:
     res.connect(c, add_abc.IO.op2)
     res.connect(add_abc.IO.res, z)
     
+    rid = RuntimeId()
+    res.deduction(rid)
+    res.apply_runtime(rid)
+    
     return res
 
-print(TestDiagram().substructures["add_ab"].ports_inside_flipped.res.origin_signal_type)
+testDiagram = TestDiagram()
+print(testDiagram.substructures["add_ab"].ports_inside_flipped.res.origin_signal_type)
+print(testDiagram.is_originally_determined())
 
 
-print('=======================================================')
+print('A =======================================================')
 
 
 s = Structure("test")
@@ -78,11 +84,13 @@ s.connect(add_o.IO.res, bi.o)
 print(s.substructures["td"].ports_inside_flipped.z.origin_signal_type)
 
 
-print('=======================================================')
+print('B =======================================================')
 
 
 rid = RuntimeId()
+
 s.deduction(rid)
+s.apply_runtime(rid) # TODO
 
 print(s.substructures["add_ti"].ports_outside[s.id].op1.get_type(rid))
 print(s.substructures["add_ti"].ports_outside[s.id].op2.get_type(rid))
@@ -90,16 +98,18 @@ print(s.substructures["add_ti"].ports_outside[s.id].op2.get_type(rid))
 print(s.substructures["add_ti"].ports_inside_flipped.op1.get_type(rid))
 print(s.substructures["add_ti"].ports_inside_flipped.op2.get_type(rid))
 
+print(s.substructures["td"].substructures["add_ab"].runtimes.keys(), rid)
 
-print('=======================================================')
+
+print('C =======================================================')
 
 
 from nodalhdl.core.hdl import write_to_files
 import shutil
 
 h = s.generation(rid)
-print("2")
-h = s.generation(rid)
+# print("2")
+# h = s.generation(rid)
 
 shutil.rmtree("C:/Workspace/test_project/test_project.srcs/sources_1/new")
 write_to_files(h.emit_vhdl(), "C:/Workspace/test_project/test_project.srcs/sources_1/new")

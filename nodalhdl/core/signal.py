@@ -100,11 +100,14 @@ class SignalTypeException(Exception): pass
 
 """ Metatypes """
 class SignalType(type):
-    def __call__(self, *args, **kwds):
-        if not self.determined:
+    def __call__(cls, *args, **kwds):
+        if not cls.determined:
             raise TypeError("Undetermined types cannot be instantiated.")
         else:
             return super().__call__(*args, **kwds)
+    
+    def __repr__(cls):
+        return cls.__name__
     
     determined = False # i.e. width-determined w.r.t. signals
     io_wrapper_included = False # i.e. whether IO Wrapper is included
@@ -144,14 +147,16 @@ class SignalType(type):
     def applys(signal_type: 'SignalType', other: 'SignalType'): # 将 other 的信息应用到 signal_type 上, other 是忽略 IO 的
         """
             用在需要将无 IO 类型推导结果应用到 port 信号类型上的情况.
-            但实际上用到这个方法的信号类型应该都只有最外层有 IO Wrapper, 写个通用的吧.
-            TODO TODO TODO TODO TODO TODO TODO TODO !!!!!!!!!!!!!! Bundle 和 Auto 的合并未实现
         """
         if other.io_wrapper_included:
             other = other.clear_io()
         
-        def _apply(d_port, d_rtst):
-            if d_port.belongs(Input):
+        def _apply(d_port: SignalType, d_rtst: SignalType):
+            if d_port.equals(Auto):
+                return d_rtst
+            elif d_rtst.equals(Auto):
+                return d_port
+            elif d_port.belongs(Input):
                 return Input[_apply(d_port.T, d_rtst)]
             elif d_port.belongs(Output):
                 return Output[_apply(d_port.T, d_rtst)]
@@ -286,8 +291,12 @@ class IOWrapperType(SignalType):
         else:
             raise SignalTypeException(f"Invalid parameter(s) \'{item}\' for type {cls.__name__}[<signal_type (SignalType)>]")
 
+    def __repr__(cls):
+        io_tag = "Input" if cls.belongs(Input) else "Output"
+        return f"{io_tag}[{cls.T}]"
+
 class BundleType(SignalType):
-    def __getitem__(cls, item): # TODO refactor 用 ObjDict
+    def __getitem__(cls, item):
         if isinstance(item, dict) and all([isinstance(x, SignalType) for x in item.values()]):
             new_cls = cls.instantiate_type(
                 f"{cls.__name__}_{hashlib.md5(str(item).encode('utf-8')).hexdigest()}",
@@ -304,9 +313,12 @@ class BundleType(SignalType):
         else:
             raise SignalTypeException(f"Invalid parameter(s) \'{item}\' for type {cls.__name__}[<members (dict[str, SignalType])>]")
 
+    def __repr__(cls):
+        return str({k: v for k, v in cls._bundle_types.items()})
+
 
 """ Types """
-class Signal(metaclass = SignalType): pass # TODO 叫 Signal 似乎不太合适, IO Wrapper 应该有 port 的意味
+class Signal(metaclass = SignalType): pass
 
 class Auto(Signal): pass
 
@@ -333,11 +345,6 @@ Float = FloatingPoint[8, 23]
 Double = FloatingPoint[11, 52]
 
 class Bundle(Auto, metaclass = BundleType): pass
-    # def __init__(self): # 递归式地实例化内部信号, TODO: IOWrapper 是否要去掉
-    #     super().__init__()
-    #     bundle_types = getattr(type(self), "_bundle_types")
-    #     for key, T in bundle_types.items():
-    #         setattr(self, key, T())
 
 class IOWrapper(Signal, metaclass = IOWrapperType): pass
 class Input(IOWrapper): pass
@@ -347,10 +354,7 @@ class Output(IOWrapper): pass
 # S = Bundle[{
 #     "a": Input[Auto],
 #     "b": Output[UInt[8]],
-#     "c": Bundle[{
-#         "x": Input[Auto],
-#         "y": Output[SInt[5]]
-#     }],
+#     "c": Auto,
 #     "d": Output[Bundle[{
 #         "t": Float
 #     }]]
@@ -375,11 +379,14 @@ class Output(IOWrapper): pass
 #         "x": SInt[3],
 #         "y": SInt
 #     }],
-#     "d": Input[Bundle[{
-#         "t": Auto
-#     }]]
+#     "d": Auto
 # }]
 
-# print(S.merges(T)._bundle_types)
-# print(S.applys(P).d)
+# print(S)
+# print(T)
+# print(S.merges(T))
+# print('---')
+# print(S)
+# print(P)
+# print(S.applys(P))
 

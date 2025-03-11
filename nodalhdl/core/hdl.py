@@ -67,7 +67,6 @@ class HDLGlobalInfo:
         
         _add(t)
 
-
 class HDLFileModel:
     """
         HDL 文件模型.
@@ -170,9 +169,18 @@ class HDLFileModel:
             if model.raw:
                 if model.raw_file_suffix is None or model.raw_content is None:
                     raise HDLFileModelException(f"Raw HDL file model should be defined by .set_raw(filename, content)")
-                res[model.entity_name + model.raw_file_suffix] = model.raw_content
+                
+                file_name = model.entity_name + model.raw_file_suffix
+                if file_name in res.keys():
+                    raise HDLFileModelException(f"File model names conflicting")
+                
+                res[file_name] = model.raw_content
             else:
-                res[model.entity_name + ".vhd"] = _gen_vhdl(model)
+                file_name = model.entity_name + ".vhd"
+                if file_name in res.keys():
+                    raise HDLFileModelException(f"File model names conflicting")
+                
+                res[file_name] = _gen_vhdl(model)
         
         return res
     

@@ -59,7 +59,7 @@ class Net:
         
         def set_type(self, signal_type: SignalType) -> bool:
             """
-                IO-ignored.
+                Set runtime type. (IO-ignored)
             """
             new_st = signal_type.clear_io() # io wrapper cleared
             changed = new_st is not self.signal_type
@@ -75,11 +75,14 @@ class Net:
         
         def merge_type(self, signal_type: SignalType) -> bool:
             """
-                IO-ignored.
+                Update runtime type by merging. (IO-ignored)
             """
             return self.set_type(self.signal_type.merges(signal_type))
         
         def reset_type(self) -> bool:
+            """
+                Reinitialize runtime type from nodes contained.
+            """
             changed = False
             for node in self.attach_net().nodes_weak: # node is the object, not the weakref
                 changed |= self.merge_type(node.origin_signal_type)
@@ -167,7 +170,7 @@ class Node:
     
     def get_type(self, runtime_id: RuntimeId):
         """
-            non-IO.
+            Get the runtime type of the located net by runtime_id. (non-IO)
         """
         if self.located_net.runtimes.get(runtime_id) is None: # no record for this runtime, create one
             self.located_net.create_runtime(runtime_id)
@@ -175,30 +178,24 @@ class Node:
     
     def update_type(self, runtime_id: RuntimeId, signal_type: SignalType):
         """
-            IO-ignored.
+            Update the runtime type of the located net by merging. (IO-ignored)
         """
         if self.located_net.runtimes.get(runtime_id) is None: # no record for this runtime, create one
             self.located_net.create_runtime(runtime_id)
         self.located_net.runtimes[runtime_id].merge_type(signal_type)
     
     """
-        以下操作可能变更框图结构/下属节点原始类型, 将导致 runtime 信息失效.
-        同样地, 若想变更框图结构也只允许使用如下方法.
-        注意, 完全失效! 因为变更可能导致子结构/当前结构端口的类型推导发生变化, 从而影响到父/子结构的推导有效性.
-        应当清空自己的所有 runtime 信息, 使得任何经过该结构的 runtime_id 失去完整性.
-        TODO: 还有一个问题, runtime_id 是推导时从推导的顶层结构开始传递的, 理论上需要阻止用户在不涉及顶层结构的情况下使用该 runtime_id.
-                ... 例如, 检查父结构是否有该 id, 若有说明这不是顶层结构, 则不允许单独使用其 runtime 信息.
-                ... 开始推导后得到的 runtime_id 应该由推导者持有, 例如前端页面. 这里最多可能有一个 check_runtime() 方法, 用来校验完整性.
-                ... 不过好像不被持有的 runtime_id 和对应的 runtime 可能直接被 GC 掉了.
-        TODO: 是否可以在结构变化后运行一次 deduction 判断是否 determined?
-                ... 可以提醒用户直接固化推导结果.
+        The following actions may change the structure/origin_signal_type, which will invalidate the runtime information (completely invalidated!).
+        Likewise, only the following methods are allowed if you want to change the structural information.
+        All runtime information should be cleared, so that any runtime_id that passes through the structure loses its integrity.
     """
-    def set_origin_type(self, signal_type: SignalType):
+    def set_origin_type(self, signal_type: SignalType, do_not_clear_structure_runtime: bool = False):
         if self.origin_signal_type is signal_type: # no change
             return
 
         self.origin_signal_type = signal_type
-        self.located_structure.runtimes.clear() # all runtime information is invalid, clear them
+        if not do_not_clear_structure_runtime:
+            self.located_structure.runtimes.clear() # all runtime information is invalid, clear them
 
     def merge(self, other: 'Node'):
         if self.located_net is other.located_net: # same net, no change
@@ -218,7 +215,7 @@ class Node:
         if self.is_port:
             raise StructureException("Cannot delete a port node")
         
-        self.located_net.nodes_weak.remove(self) # 理论上不需要, located_structure.nodes.remove() 后该 node 应该就会被 GC 掉
+        self.located_net.nodes_weak.remove(self) # theoretically not necessary. this node should have been GCed after located_structure.nodes.remove()
         self.located_structure.nodes.remove(self)
         self.located_structure.runtimes.clear() # all runtime information is invalid, clear them
 
@@ -310,19 +307,11 @@ class Structure:
         new_runtime = Structure.Runtime(attach_structure = self, runtime_id = runtime_id)
         self.runtimes[new_runtime.id] = new_runtime
         return new_runtime
-
-    def check_runtime(self, runtime_id: RuntimeId):
-        """
-            TODO
-            递归检查该 runtime_id 是否存在于所有子结构中, 若是则说明该 runtime_id 对应的 runtime 信息有效.
-            因为结构/原始类型如果发生变化, 该结构的所有 runtime 信息会被删除.
-        """
-        pass
     
     def __init__(self, name: str = None):
         # properties
         self.id = uid_generator.create()
-        self.name = name # same name allowed, reusable structure will add a id suffix TODO 要不不允许? 每次 id 不同重新导入 Vivado 很麻烦, 希望用 name 映射到固定 id
+        self.name = name # same name allowed, reusable structure will add a id suffix
         self.custom_deduction: callable = None
         self.custom_generation: callable = None
         
@@ -348,10 +337,18 @@ class Structure:
             Check if the structure and all its substructures are singletons, i.e. do not have multiple located structures.
             # theoretically, a substructure with len(located_structures_weak) == 1 must locate in the structure.
         """
-        return len(self.located_structures_weak) <= 1 and all([s.is_singleton for s in self.substructures.values()])
+        return len(self.located_structures_weak) <= 1 and all([subs.is_singleton for subs in self.substructures.values()])
         # keys = self.located_structures_weak.keys()
         # flag = (len(keys) == 0 and s_id is None) or (len(keys) == 1 and s_id in keys)
         # return flag and all([s.is_singleton(self.id) for s in self.substructures.values()])
+
+    def is_runtime_integrate(self, runtime_id: RuntimeId):
+        """
+            Check if the structure and all its substructures have runtime information with runtime_id.
+            Runtime information in structures will be cleared when there are structural modifications.
+            No need to check all nodes and ports, their runtime information should be called by the structures.
+        """
+        return runtime_id in self.runtimes.keys() and all([subs.is_runtime_integrate(runtime_id) for subs in self.substructures.values()])
     
     def is_determined(self, runtime_id: RuntimeId): # all ports and substructures are determined
         ports_determined = all([p.is_determined(runtime_id) for _, p in self.ports_inside_flipped.nodes()])
@@ -379,22 +376,29 @@ class Structure:
     
     def apply_runtime(self, runtime_id: RuntimeId):
         """
-            将 runtime_id 对应的 runtime 信息应用到结构中.
-            只有单例结构可以应用 runtime, 否则可能影响使用该结构或某个子结构的其他结构.
-            该操作涉及 set_origin_type, 其中会清空所有 runtime 信息.
+            Fix the runtime information under runtime_id into the structure.
+            The structure should be singleton and runtime-integrate.
+            (*) note:
+                set_origin_type() will be called, which clears the runtime information in the structure (not in the net so do not worry that node.get_type(runtime_id) will fail after calling set_origin_type).
+                but if the runtime information is applied, the change must be safe, the runtime_id should be kept valid.
+                e.g. the user wants to apply an RID to a structure and then use its generation, if the RID information is destroyed as mentioned above, there will be a problem;
+                this behavior is reasonable, so the RID information should be retained, by asserting `do_not_clear_structure_runtime = True` in set_origin_type().
         """
         if not self.is_singleton:
             raise StructureException("Only singleton structure can apply runtime")
         
+        if not self.is_runtime_integrate(runtime_id):
+            raise StructureException("Invalid (not integrate) runtime ID")
+        
         for _, port in self.ports_inside_flipped.nodes(): # apply runtime info to internal nodes
-            port.set_origin_type(port.origin_signal_type.applys(port.get_type(runtime_id)))
+            port.set_origin_type(port.origin_signal_type.applys(port.get_type(runtime_id)), do_not_clear_structure_runtime = True) # (*)
         
         for ports in self.ports_outside.values(): # apply runtime info to all outside ports
             for _, port in ports.nodes():
-                port.set_origin_type(port.origin_signal_type.applys(port.get_type(runtime_id)))
+                port.set_origin_type(port.origin_signal_type.applys(port.get_type(runtime_id)), do_not_clear_structure_runtime = True) # (*)
         
         for node in self.nodes: # apply runtime info to all nodes (may be not necessary)
-            node.set_origin_type(node.origin_signal_type.applys(node.get_type(runtime_id)))
+            node.set_origin_type(node.origin_signal_type.applys(node.get_type(runtime_id)), do_not_clear_structure_runtime = True) # (*)
         
         for subs in self.substructures.values(): # apply runtime info to all substructures, recursively
             subs.apply_runtime(runtime_id)
@@ -405,32 +409,42 @@ class Structure:
         """
         logger.info(f"Deduction on structure `{self.name}` ({self.id}), under {runtime_id}.")
         
-        if self.is_operator:
-            logger.info(f"Custom deduction for structure `{self.name}`.")
-            self.custom_deduction(self.ports_inside_flipped, runtime_id)
-            return
-        
-        if self.runtimes.get(runtime_id) is None: # no record for this runtime, create one
+        if self.runtimes.get(runtime_id) is None: # runtime must be created for all structures, including operators, so this should be executed before custom deduction
             self.create_runtime(runtime_id)
         
-        while not self.is_determined(runtime_id): # stop if already determined
+        if self.is_operator:
+            logger.info(f"Custom deduction for structure `{self.name}`.")
+            logger.info(f"> Before: {self.ports_inside_flipped.to_str(runtime_id)}")
+            self.custom_deduction(self.ports_inside_flipped, runtime_id)
+            logger.info(f"> After: {self.ports_inside_flipped.to_str(runtime_id)}")
+            return
+        
+        while True: # stop if already determined
             self.runtimes[runtime_id].deduction_effective = False # reset flag before a new round of deduction
             logger.info(f"New round for structure `{self.name}`.")
             
             for sub_inst_name, subs in self.substructures.items():
                 logger.info(f"Deduction on substructure `{sub_inst_name}` (`{subs.name}`, {subs.id}).")
                 
-                # s.ports_outside[self.id] is the IO of `s` connected in `self`
                 if not subs.is_determined(runtime_id):
                     logger.info(f"Before (`{subs.name}`): {subs.ports_outside[self.id].to_str(runtime_id)}")
                 
                 # update substructure's ports with external ports (should be synchronized even though determined, the same below)
-                subs.ports_inside_flipped.update_runtime(runtime_id, subs.ports_outside[self.id])
+                subs.ports_inside_flipped.update_runtime(runtime_id, subs.ports_outside[self.id]) # s.ports_outside[self.id] is the IO of `s` connected in `self`
                 
-                if not subs.is_determined(runtime_id): # not determined, recursive deduction
-                    subs.deduction(runtime_id)
-                else:
-                    logger.info("Determined substructure, skip.")
+                """
+                    TODO
+                    如果 is_determined(rid) 为 True, 不进入下一层推导, 下一层如何拥有 runtime_id 信息, 从而能通过 check_runtime_integrate(rid) 的检查？
+                    因为 is_determined(rid) 中会检查 ports 的类型是否确定, 会用到 get_type(rid);
+                    子结构的 ports 对这个新的 rid 也没有 runtime 信息, 会导致其创建, 创建时会 reset_type -> merge_type -> set_type;
+                    set_type 如果导致了 runtime 信息的变化, 会修改其所在 structure 的 runtime 信息中的 deduction_effective, 顺便导致了 rid 对应 runtime 的创建;
+                    所以这只能管到当前层和下一层.
+                    但如果确定结构内部层数超过两层, 就会导致 runtime 信息的不完整, 无法通过 check_runtime_integrate(rid) 的检查.
+                    TODO 所以 deduction 结束前要遍历全结构创建对应的 runtime 信息, 即使是空的.
+                    不建议对 check_runtime_integrate 加 determined 的判断, 这样的话例如 generation 中有些 .runtimes[runtime_id] 就会 KeyError, 如果再检查并创建就乱七八糟的.
+                    建议落实完整性的字面含义.
+                """
+                subs.deduction(runtime_id) # recursive deduction
                 
                 # update external ports with substructure's ports
                 subs.ports_outside[self.id].update_runtime(runtime_id, subs.ports_inside_flipped)
@@ -440,7 +454,9 @@ class Structure:
             
             if not self.runtimes[runtime_id].deduction_effective: # no change, stop
                 logger.info("Not changed, stop.")
-                break
+                return
+        else:
+            logger.info(f"Determined.")
     
     def generation(self, runtime_id: RuntimeId, prefix: str = "") -> HDLFileModel:
         """
@@ -449,6 +465,9 @@ class Structure:
         """
         if not self.is_determined(runtime_id):
             raise StructureGenerationException("Only determined structure can be converted to HDL")
+        
+        if not self.is_runtime_integrate(runtime_id):
+            raise StructureGenerationException("Invalid (not integrate) runtime ID")
         
         logger.info(f"Generation on structure `{self.name}` ({self.id}), under {runtime_id}.")
         
@@ -557,13 +576,13 @@ class Structure:
 
 class StructureProxy:
     """
-        结构代理.
-        将由 add_substructure 返回, 方便用户进行获取端口等操作.
+        Structure proxy.
+        Make convenient for user on getting structural ports. As a return value of add_substructure.
     """
     def __init__(self, structure: Structure, located_structure_id: str):
         self.proxy_structure = structure # the structure to be proxied
         self.located_structure_id = located_structure_id # proxy the structure in the structure with located_structure_id
-        
+    
     @property
     def IO(self):
         return self.proxy_structure.ports_outside[self.located_structure_id]
