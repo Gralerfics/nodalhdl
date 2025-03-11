@@ -419,7 +419,7 @@ class Structure:
             logger.info(f"> After: {self.ports_inside_flipped.to_str(runtime_id)}")
             return
         
-        while True: # stop if already determined
+        while not self.is_determined(runtime_id): # stop if already determined
             self.runtimes[runtime_id].deduction_effective = False # reset flag before a new round of deduction
             logger.info(f"New round for structure `{self.name}`.")
             
@@ -433,16 +433,11 @@ class Structure:
                 subs.ports_inside_flipped.update_runtime(runtime_id, subs.ports_outside[self.id]) # s.ports_outside[self.id] is the IO of `s` connected in `self`
                 
                 """
-                    TODO
-                    如果 is_determined(rid) 为 True, 不进入下一层推导, 下一层如何拥有 runtime_id 信息, 从而能通过 check_runtime_integrate(rid) 的检查？
-                    因为 is_determined(rid) 中会检查 ports 的类型是否确定, 会用到 get_type(rid);
-                    子结构的 ports 对这个新的 rid 也没有 runtime 信息, 会导致其创建, 创建时会 reset_type -> merge_type -> set_type;
-                    set_type 如果导致了 runtime 信息的变化, 会修改其所在 structure 的 runtime 信息中的 deduction_effective, 顺便导致了 rid 对应 runtime 的创建;
-                    所以这只能管到当前层和下一层.
-                    但如果确定结构内部层数超过两层, 就会导致 runtime 信息的不完整, 无法通过 check_runtime_integrate(rid) 的检查.
-                    TODO 所以 deduction 结束前要遍历全结构创建对应的 runtime 信息, 即使是空的.
-                    不建议对 check_runtime_integrate 加 determined 的判断, 这样的话例如 generation 中有些 .runtimes[runtime_id] 就会 KeyError, 如果再检查并创建就乱七八糟的.
-                    建议落实完整性的字面含义.
+                    deduction() should be recursively executed on all substructures, so that the runtime information can be passed down,
+                    in order to maintain the integrity of the runtime information.
+                    (*) why some time the runtime information is passed down without deduction?
+                        because is_deetermined(rid) called get_type(rid) in ports, which will create runtime information for the net,
+                        when initialized, reset_type will be called, and then merge_type, then set_type, which will fetch runtime information for the structure (if type changed).
                 """
                 subs.deduction(runtime_id) # recursive deduction
                 
