@@ -497,34 +497,24 @@ class Structure:
         
         res = HDLFileModel(f"hdl_{prefix}{self.name}_{self.id[:8]}") # create file model and set entity name
         
-        nets: Dict[Net, str] = {} # net -> net_wire_name
-        
-        def _get_net_wire_name(net: Net):
-            if not net in nets.keys():
-                net_wire_name = f"net_{len(nets.keys())}"
-                res.add_signal(net_wire_name, net.runtimes[runtime_id].signal_type)
-                nets[net] = net_wire_name
-            return nets[net]
-        
-        def _connect_port_to_net(port: Node, port_wire_name: str):
-            net_wire_name = _get_net_wire_name(port.located_net)
-            if port.origin_signal_type.belongs(Input):
-                res.add_assignment(port_wire_name, net_wire_name)
-            else:
-                res.add_assignment(net_wire_name, port_wire_name)
-        
         """
-            TODO 1. net_xxx 取消, 全部直接由 driver 连到 loads. (?)
-            TODO 2. 时序逻辑.
-            TODO 3. 时序逻辑的 enable.
+            TODO 时序逻辑.
+            TODO 时序 enable.
         """
+        
+        net_wires: Dict[Net, List[str, List[str]]] = {} # net -> (driver_wire_name, load_wire_names[])
         
         for port_full_name, port in self.ports_inside_flipped.nodes(): # add ports
             direction = "out" if port.origin_signal_type.belongs(Input) else "in" # ports_inside_flipped is IO flipped
             res.add_port(f"{port_full_name}", direction, port.get_type(runtime_id)) # use full name
             
-            if not self.is_operator: # connect ports to net for non-operators
-                _connect_port_to_net(port, port_full_name)
+            if net_wires.get(port.located_net) is None:
+                net_wires[port.located_net] = [None, []]
+            
+            if port.origin_signal_type.belongs(Output):
+                net_wires[port.located_net][0] = port_full_name
+            else:
+                net_wires[port.located_net][1].append(port_full_name)
         
         if self.is_operator: # custom generation for operator
             self.custom_generation(res, self.ports_inside_flipped, runtime_id)
@@ -535,8 +525,14 @@ class Structure:
                     port_wire_name = f"{sub_inst_name}_io_{port_full_name}" # inst_name_io_node_full_name
                     mapping[port_full_name] = port_wire_name
                     res.add_signal(port_wire_name, port.get_type(runtime_id)) # add signal for port wire
+            
+                    if net_wires.get(port.located_net) is None:
+                        net_wires[port.located_net] = [None, []]
                     
-                    _connect_port_to_net(port, port_wire_name) # connect port to net
+                    if port.origin_signal_type.belongs(Output):
+                        net_wires[port.located_net][0] = port_wire_name
+                    else:
+                        net_wires[port.located_net][1].append(port_wire_name)
                 
                 odhdl = subs.runtimes[runtime_id].originally_determined_hdl_file_model # reuse HDL file model for the substructure
                 if odhdl is not None:
@@ -545,6 +541,13 @@ class Structure:
                 else:
                     logger.info(f"Generation on substructure `{sub_inst_name}` (`{subs.name}`, {subs.id}).")
                     res.inst_component(sub_inst_name, subs.generation(runtime_id, prefix + sub_inst_name + "_"), mapping)
+        
+        for net, (driver_wire_name, load_wire_names) in net_wires.items():
+            if driver_wire_name is not None:
+                for load_wire_name in load_wire_names:
+                    res.add_assignment(load_wire_name, driver_wire_name)
+
+            # TODO net.latency
         
         if self.is_originally_determined(): # save HDL file model for originally determined structure
             self.runtimes[runtime_id].set_originally_determined_hdl_file_model(res) # self.runtimes[runtime_id] must exist because of self.is_determined(runtime_id)
