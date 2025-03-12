@@ -1,4 +1,4 @@
-from .signal import SignalType, IOWrapper, Input, Auto, Bundle
+from .signal import SignalType, IOWrapper, Input, Output, Auto, Bundle
 from .hdl import HDLFileModel
 
 import weakref
@@ -98,6 +98,9 @@ class Net:
         self.nodes_weak: weakref.WeakSet[Node] = weakref.WeakSet()
         self.located_structures_weak: weakref.ReferenceType[Structure] = weakref.ref(located_structure)
         
+        self.driver: weakref.ReferenceType[Node] = None # driver node (also in nodes_weak) or None, should be only one, originlly Output; others are loads
+        self.latency: int = 0 # latency of the net, i.e. registers between driver and loads
+        
         # runtime
         self.runtimes: weakref.WeakKeyDictionary[RuntimeId, Net.Runtime] = {}
     
@@ -107,7 +110,16 @@ class Net:
     def to_str(self, runtime_id: RuntimeId):
         return str({x.to_str(runtime_id) for x in self.nodes_weak})
     
+    """
+        The following actions (add_node, separate_node and merge) may change the structural information.
+        They should not be called by the user directly, but by the Node object.
+    """
     def add_node(self, node: 'Node'):
+        if node.origin_signal_type.belongs(Output): # driver
+            if self.driver is not None:
+                raise StructureException("Net cannot have multiple drivers")
+            self.driver = weakref.ref(node)
+        
         self.nodes_weak.add(node)
         node.located_net = self
         for runtime in self.runtimes.values(): # update all related net runtime
@@ -120,6 +132,9 @@ class Net:
         if len(self.nodes_weak) == 1:
             return # only one node, no need to separate
         
+        if self.driver is not None and self.driver() is node: # driver is removed
+            self.driver = None
+        
         self.nodes_weak.remove(node)
         Net(self.located_structures_weak()).add_node(node)
     
@@ -129,6 +144,9 @@ class Net:
         
         if self.located_structures_weak() is not other.located_structures_weak():
             raise StructureException("Cannot merge nets from different structures")
+        
+        if self.driver is not None and other.driver is not None:
+            raise StructureException("Merged net cannot have multiple drivers")
         
         net_h, net_l = (self, other) if len(self) > len(other) else (other, self)
         for node in net_l.nodes_weak: # [NOTICE] 会不会出现某个 node 被删除但尚未被 GC 掉的问题
@@ -185,7 +203,8 @@ class Node:
         self.located_net.runtimes[runtime_id].merge_type(signal_type)
     
     """
-        The following actions may change the structure/origin_signal_type, which will invalidate the runtime information (completely invalidated!).
+        The following actions (set_origin_type, merge, separate and delete) may change the structural information,
+        which will invalidate the runtime information (completely invalidated!).
         Likewise, only the following methods are allowed if you want to change the structural information.
         All runtime information should be cleared, so that any runtime_id that passes through the structure loses its integrity.
     """
@@ -218,6 +237,12 @@ class Node:
         self.located_net.nodes_weak.remove(self) # theoretically not necessary. this node should have been GCed after located_structure.nodes.remove()
         self.located_structure.nodes.remove(self)
         self.located_structure.runtimes.clear() # all runtime information is invalid, clear them
+
+    """
+        Latency setting will not change the structural information. Types are passed through the registers.
+    """
+    def set_latency(self, latency: int):
+        self.located_net.latency = latency
 
 class StructuralNodes(dict):
     def __init__(self, d: dict = {}):
@@ -260,8 +285,8 @@ class StructuralNodes(dict):
     
     def nodes(self, prefix: str = "") -> List[Tuple[str, Node]]:
         """
-            return all Node objects in a list with their full names.
-            the full name contains the layer information, e.g. "foo_bar_baz".
+            Return all Node objects in a list with their full names.
+            The full name contains the layer information, e.g. "foo_bar_baz".
         """
         res = []
         for k, v in self.items():
@@ -435,9 +460,9 @@ class Structure:
                 """
                     deduction() should be recursively executed on all substructures, so that the runtime information can be passed down,
                     in order to maintain the integrity of the runtime information.
-                    (*) why some time the runtime information is passed down without deduction?
-                        because is_deetermined(rid) called get_type(rid) in ports, which will create runtime information for the net,
-                        when initialized, reset_type will be called, and then merge_type, then set_type, which will fetch runtime information for the structure (if type changed).
+                    (*) Why some time the runtime information is passed down without deduction?
+                        Because is_determined(rid) called get_type(rid) in ports, which will create runtime information for the net.
+                        When initialized, reset_type will be called, and then merge_type, then set_type, which will fetch runtime information for the structure (if type changed).
                 """
                 subs.deduction(runtime_id) # recursive deduction
                 
@@ -488,6 +513,12 @@ class Structure:
             else:
                 res.add_assignment(net_wire_name, port_wire_name)
         
+        """
+            TODO 1. net_xxx 取消, 全部直接由 driver 连到 loads. (?)
+            TODO 2. 时序逻辑.
+            TODO 3. 时序逻辑的 enable.
+        """
+        
         for port_full_name, port in self.ports_inside_flipped.nodes(): # add ports
             direction = "out" if port.origin_signal_type.belongs(Input) else "in" # ports_inside_flipped is IO flipped
             res.add_port(f"{port_full_name}", direction, port.get_type(runtime_id)) # use full name
@@ -535,11 +566,12 @@ class Structure:
         
         return new_port
     
-    def add_node(self, name: str, signal_type: SignalType) -> Node:
+    def add_node(self, name: str, signal_type: SignalType, latency: int = 0) -> Node:
         if signal_type.io_wrapper_included:
             signal_type = signal_type.clear_io()
         
         new_node = Node(name, signal_type, located_structure = self)
+        new_node.set_latency(latency)
         self.nodes.add(new_node) # remember to add to nodes, or it may be garbage collected
         
         return new_node

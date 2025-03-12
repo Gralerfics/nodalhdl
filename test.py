@@ -81,6 +81,8 @@ s.connect(add_ti_out, add_o.IO.op2)
 
 s.connect(add_o.IO.res, bi.o)
 
+# s.connect(t, td.c) # test multi-driven signal exception
+
 print(s.substructures["td"].ports_inside_flipped.z.origin_signal_type)
 
 
