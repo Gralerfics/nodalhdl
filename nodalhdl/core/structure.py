@@ -544,10 +544,28 @@ class Structure:
         
         for net, (driver_wire_name, load_wire_names) in net_wires.items():
             if driver_wire_name is not None:
-                for load_wire_name in load_wire_names:
-                    res.add_assignment(load_wire_name, driver_wire_name)
-
-            # TODO net.latency
+                if net.latency == 0: # comb
+                    """
+                            +------> load_0
+                            |
+                        driver ----> load_i
+                            |
+                            +------> load_n
+                    """
+                    for load_wire_name in load_wire_names:
+                        res.add_assignment(load_wire_name, driver_wire_name)
+                else: # seq
+                    """
+                                                       +------- load_0
+                                                       |
+                        driver ----> reg_next | ... | reg ----> load_i
+                                                       |
+                                                       +------- load_n
+                    """
+                    reg_next_name, reg_name = res.add_register(driver_wire_name, net.runtimes[runtime_id].signal_type, latency = net.latency)
+                    res.add_assignment(reg_next_name, driver_wire_name)
+                    for load_wire_name in load_wire_names:
+                        res.add_assignment(load_wire_name, reg_name)
         
         if self.is_originally_determined(): # save HDL file model for originally determined structure
             self.runtimes[runtime_id].set_originally_determined_hdl_file_model(res) # self.runtimes[runtime_id] must exist because of self.is_determined(runtime_id)

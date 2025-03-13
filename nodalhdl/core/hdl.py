@@ -1,6 +1,6 @@
 from .signal import SignalType, Bundle
 
-from typing import List, Dict, Set, Tuple
+from typing import List, Dict, Set, Tuple, Union
 
 
 class HDLFileModelException(Exception): pass
@@ -84,10 +84,15 @@ class HDLFileModel:
         self.inst_comps: Dict[str, Tuple[str, Dict[str, str]]] = {} # Dict[实例名, (组件名, Dict[组件端口名, 实例端口名])]
         self.signals: Dict[str, SignalType] = {}
         self.assignments: List[Tuple[str, str]] = []
+        self.registers: Set[Tuple[str, str, str]] = set() # Set[<reg_next_name>, <reg_name>, <initial_value>]
         
         self.raw: bool = False # 是否直接使用 HDL 定义 (即使使用 HDL 定义也应当声明 entity_name; port 应与 box 相符) TODO
         self.raw_file_suffix: str = None
         self.raw_content: str = None
+    
+    @property
+    def is_sequential(self):
+        return len(self.registers) > 0 or any([comp.is_sequential for comp in self.components]) # 存在时序逻辑或任意子模块存在时序逻辑
     
     def emit_vhdl(self):
         """
@@ -114,9 +119,14 @@ class HDLFileModel:
         models = _collect(self) # 递归收集所有 HDLFileModel (去重)
         
         def _gen_vhdl(model: HDLFileModel):
-            # 实体声明
+            # 实体端口声明
             def _gen_ports(hdl: HDLFileModel, part: str = "entity", indent: str = ""):
                 port_content = ""
+                
+                if hdl.is_sequential: # clock, reset
+                    port_content += f"{indent}        clock: in std_logic;\n"
+                    port_content += f"{indent}        reset: in std_logic;\n"
+                
                 for name, (direction, t) in hdl.ports.items():
                     if t.belongs(Bundle):
                         port_content += f"{indent}        {name}: {direction} {t.__name__};\n"
@@ -124,15 +134,16 @@ class HDLFileModel:
                         port_content += f"{indent}        {name}: {direction} std_logic_vector({t.W - 1} downto 0);\n"
                 if port_content:
                     port_content = port_content[:-2] # 去掉最后的分号和换行
+                
                 return f"{indent}{part} {hdl.entity_name} is\n{indent}    port (\n{port_content}\n{indent}    );\n{indent}end {part};"
-        
+            
             # 组件声明
             comp_declaration = ""
             for comp in model.components:
                 comp_declaration += _gen_ports(comp, "component", "    ") + "\n"
             if comp_declaration:
                 comp_declaration = comp_declaration[:-1]
-        
+
             # 信号声明
             signal_declaration = ""
             for name, t in model.signals.items():
@@ -142,6 +153,16 @@ class HDLFileModel:
                     signal_declaration += f"    signal {name}: std_logic_vector({t.W - 1} downto 0);\n"
             if signal_declaration:
                 signal_declaration = signal_declaration[:-1]
+            
+            # 寄存器时序
+            if len(model.registers) > 0:
+                seq_process = "    process (clock, reset) is\n    begin\n        if (reset = '1') then\n"
+                for _, reg_name, initial_value in model.registers:
+                    seq_process += f"            {reg_name} <= {initial_value};\n"
+                seq_process += "        elsif rising_edge(clock) then\n"
+                for reg_next_name, reg_name, _ in model.registers:
+                    seq_process += f"            {reg_name} <= {reg_next_name};\n"
+                seq_process += "        end if;\n    end process;"
             
             # 模块例化
             comp_content = ""
@@ -163,7 +184,7 @@ class HDLFileModel:
                 assignment_content = assignment_content[:-1]
             
             # 拼接文件内容
-            return f"{model.global_info.header_vhdl()}\n\n{_gen_ports(model, "entity")}\n\narchitecture Structural of {model.entity_name} is\n{comp_declaration}\n{signal_declaration}\nbegin\n{comp_content}\n{assignment_content}\nend architecture;"
+            return f"{model.global_info.header_vhdl()}\n\n{_gen_ports(model, "entity")}\n\narchitecture Structural of {model.entity_name} is\n{comp_declaration}\n{signal_declaration}\nbegin\n{seq_process + "\n" if len(model.registers) > 0 else ""}{comp_content}\n{assignment_content}\nend architecture;"
         
         for model in models:
             if model.raw:
@@ -200,13 +221,36 @@ class HDLFileModel:
     def inst_component(self, inst_name: str, comp: 'HDLFileModel', mapping: Dict[str, str]):
         if comp not in self.components: # 未添加到 components 中则添加
             self.add_component(comp)
-        self.inst_comps[inst_name] = (comp.entity_name, mapping)
+        
+        self.inst_comps[inst_name] = (comp.entity_name, mapping if not comp.is_sequential else {
+            "clock": "clock",
+            "reset": "reset",
+            **mapping
+        })
     
     def add_signal(self, name: str, t: SignalType):
         if t.belongs(Bundle):
             self.global_info.add_type(t) # 添加类型到全局信息
         
         self.signals[name] = t
+    
+    def add_register(self, name: str, t: SignalType, latency: int = 1) -> Tuple[str, str]: # , initial_values: Union[str, List[str]] = None)
+        """
+            Return next_signal_name and reg_signal_name.
+        """
+        initial_value = "(others => \'0\')" # TODO 根据 t, 不可行的话需要改成子属性逐个赋值 TODO TODO TODO TODO TODO
+        
+        for level in range(latency):
+            reg_next_name, reg_name = f"reg_next_{level}_{name}", f"reg_{level}_{name}"
+            self.registers.add((reg_next_name, reg_name, initial_value))
+            
+            self.add_signal(reg_next_name, t)
+            self.add_signal(reg_name, t)
+            
+            if level >= 1:
+                self.add_assignment(f"reg_next_{level}_{name}", f"reg_{level - 1}_{name}")
+        
+        return (f"reg_next_0_{name}", f"reg_{latency - 1}_{name}")
     
     def add_assignment(self, target: str, value: str):
         self.assignments.append((target, value))

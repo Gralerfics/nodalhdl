@@ -40,6 +40,8 @@ def TestDiagram() -> Structure:
     res.connect(add_ab.IO.res, add_abc.IO.op1)
     res.connect(c, add_abc.IO.op2)
     res.connect(add_abc.IO.res, z)
+    add_ab.IO.res.set_latency(2)
+    add_abc.IO.res.set_latency(1)
     
     rid = RuntimeId()
     res.deduction(rid)
