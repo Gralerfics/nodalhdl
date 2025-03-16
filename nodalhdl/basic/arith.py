@@ -20,21 +20,14 @@ def Addition(op1_type: SignalType, op2_type: SignalType, fixed_id: str = None) -
     res.add_port("res", Output[Auto])
     
     def deduction(io: IOProxy):
-        """
-            TODO 除了从确定输入推得确定输出, 还可以:
-                (1.) 从某个确定类型但不确定长度的信号, 推得其他信号类型. # 反之, 确定参数不确定类型的情况就还是不要存在了
-                (2.) 输出长度大于某个输入信号的长度, 则另一个输入信号的长度必等于输出信号的长度.
-            TODO 传个 IOProxy 之类的玩意, 以省去 runtime_id 的传递.
-        """
-        op1_type, op2_type = io.op1.type, io.op2.type
+        t1, t2, tr = io.op1.type, io.op2.type, io.res.type
         
-        if not op1_type.determined or not op2_type.determined:
-            io.res.update(Auto)
-        else:
-            if op1_type.belongs(SInt):
-                io.res.update(SInt[max(op1_type.W, op2_type.W)])
-            else:
-                io.res.update(UInt[max(op1_type.W, op2_type.W)])
+        if t1.determined and t2.determined:
+            io.res.update(t1.base[max(t1.W, t2.W)])
+        elif tr.determined and t1.determined and t1.W < tr.W:
+            io.op2.update(tr.base[tr.W])
+        elif tr.determined and t2.determined and t2.W < tr.W:
+            io.op1.update(tr.base[tr.W])
     
     def generation(h: HDLFileModel, io: IOProxy):
         op1_type, op2_type, res_type = io.op1.type, io.op2.type, io.res.type

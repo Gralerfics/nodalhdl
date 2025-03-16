@@ -92,6 +92,7 @@
 +--------------------------------------------------------------------+
 """
 
+from typing import Dict, List, Union
 import hashlib
 
 """ Exceptions """
@@ -117,7 +118,10 @@ class SignalType(type):
     
     def instantiate_type(cls, new_cls_name, properties = {}) -> 'SignalType': # `cls` here is the generated class, type(cls) is SignalType or its subclasses
         if not new_cls_name in cls.type_pool.keys():
-            new_cls = SignalType(f"{new_cls_name}", (cls, ), properties)
+            new_cls = SignalType(f"{new_cls_name}", (cls, ), {
+                **properties,
+                "base": cls
+            })
             cls.type_pool[new_cls_name] = new_cls
         
         return cls.type_pool.get(new_cls_name)
@@ -130,8 +134,11 @@ class SignalType(type):
         # return signal_type == other
         return signal_type is other
     
-    def belongs(signal_type: 'SignalType', other: 'SignalType'): # 要求从属于 other, 即比 other 更具体 (子类型) 或等同
-        return issubclass(signal_type, other)
+    def belongs(signal_type: 'SignalType', other: Union['SignalType', List['SignalType']]): # 要求从属于 other, 即比 other 更具体 (子类型) 或等同 TODO to be tested
+        if isinstance(other, list):
+            return any([issubclass(signal_type, o) for o in other])
+        else: # SignalType
+            return issubclass(signal_type, other)
     
     def merges(signal_type: 'SignalType', other: 'SignalType'): # 合并两个信号类型的信息, 去 IO Wrapper
         """
