@@ -193,7 +193,7 @@ class HDLFileModel:
                 
                 file_name = model.entity_name + model.raw_file_suffix
                 if file_name in res.keys():
-                    raise HDLFileModelException(f"File model names conflicting")
+                    raise HDLFileModelException(f"File model names conflicting: \'{file_name}\'")
                 
                 res[file_name] = model.raw_content
             else:

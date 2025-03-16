@@ -21,18 +21,19 @@ print('哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈�
 # print('=======================================================')
 
 
-def TestDiagram() -> Structure:
+def TestDiagram(fixed_id: str = None) -> Structure:
     # 创建结构
-    res = Structure("test_diagram")
+    res = Structure("test_diagram", fixed_id = fixed_id)
     
     # 声明 IO Ports, 必须 perfectly IO-wrapped, 类型不确定可使用 Auto 或其他 undetermined 类型待推导
     ab = res.add_port("ab", Bundle[{"a": Input[UInt[8]], "b": Input[UInt[8]]}])
     c = res.add_port("c", Input[UInt[4]])
     z = res.add_port("z", Output[Auto])
     
-    # 添加 Box
-    add_ab = res.add_substructure("add_ab", Addition(UInt[8], UInt[8]))
-    add_abc = res.add_substructure("add_abc", Addition(Auto, Auto))
+    # 添加 Substructure
+    add_ab = res.add_substructure("add_ab", Addition(UInt[8], UInt[8], fixed_id = fixed_id + "ab"))
+    print(add_ab.proxy_structure.id)
+    add_abc = res.add_substructure("add_abc", Addition(Auto, Auto, fixed_id = fixed_id + "abc"))
     
     # 添加连接关系 / 非 IO 节点
     res.connect(ab.a, add_ab.IO.op1)
@@ -49,7 +50,7 @@ def TestDiagram() -> Structure:
     
     return res
 
-testDiagram = TestDiagram()
+testDiagram = TestDiagram(fixed_id = "td001")
 print(testDiagram.substructures["add_ab"].ports_inside_flipped.res.origin_signal_type)
 print(testDiagram.is_originally_determined())
 
@@ -57,16 +58,16 @@ print(testDiagram.is_originally_determined())
 print('A =======================================================')
 
 
-s = Structure("test")
+s = Structure("test", fixed_id = "test001")
 
 bi = s.add_port("bi", Bundle[{"i": Input[UInt[2]], "o": Output[Auto]}])
 t = s.add_port("t", Input[UInt[4]]) # 改成 undetermined 测试 Addition 的反向推导 (未实现)
 n = s.add_port("n", Input[UInt[8]])
 m = s.add_port("m", Input[UInt[8]])
 
-td = s.add_substructure("td", TestDiagram())
-add_ti = s.add_substructure("add_ti", Addition(Auto, Auto))
-add_o = s.add_substructure("add_o", Addition(UInt[8], UInt[4]))
+td = s.add_substructure("td", TestDiagram(fixed_id = "td002"))
+add_ti = s.add_substructure("add_ti", Addition(Auto, Auto, fixed_id = s.id + "ti"))
+add_o = s.add_substructure("add_o", Addition(UInt[8], UInt[4], fixed_id = s.id + "o"))
 
 add_ti_out = s.add_node("add_ti_out", Auto)
 

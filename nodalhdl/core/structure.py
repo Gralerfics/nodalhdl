@@ -297,7 +297,7 @@ class StructuralNodes(dict):
         return res
     
     def update_runtime(self, runtime_id: RuntimeId, other: 'StructuralNodes'): # use other's runtime info (under runtime_id) to update self
-        def _update(to_p, from_p):
+        def _update(to_p: Union[Node, StructuralNodes], from_p: Union[Node, StructuralNodes]):
             if isinstance(to_p, Node) and isinstance(from_p, Node) and to_p.name == from_p.name:
                 to_p.update_type(runtime_id, from_p.get_type(runtime_id))
             elif isinstance(to_p, StructuralNodes) and isinstance(from_p, StructuralNodes):
@@ -333,9 +333,9 @@ class Structure:
         self.runtimes[new_runtime.id] = new_runtime
         return new_runtime
     
-    def __init__(self, name: str = None):
+    def __init__(self, name: str = None, fixed_id: str = None):
         # properties
-        self.id = uid_generator.create()
+        self.id = uid_generator.create() if fixed_id is None else fixed_id
         self.name = name # same name allowed, reusable structure will add a id suffix
         self.custom_deduction: callable = None
         self.custom_generation: callable = None
@@ -440,7 +440,7 @@ class Structure:
         if self.is_operator:
             logger.info(f"Custom deduction for structure `{self.name}`.")
             logger.info(f"> Before: {self.ports_inside_flipped.to_str(runtime_id)}")
-            self.custom_deduction(self.ports_inside_flipped, runtime_id)
+            self.custom_deduction(IOProxy(self.ports_inside_flipped, runtime_id, flipped = True))
             logger.info(f"> After: {self.ports_inside_flipped.to_str(runtime_id)}")
             return
         
@@ -495,7 +495,7 @@ class Structure:
             logger.info("Originally determined structure.")
             prefix = ""
         
-        res = HDLFileModel(f"hdl_{prefix}{self.name}_{self.id[:8]}") # create file model and set entity name
+        res = HDLFileModel(f"hdl_{prefix}{self.name}_{self.id[:8]}") # create file model and set entity name, TODO 8 chars?
         
         """
             TODO 时序逻辑.
@@ -517,7 +517,7 @@ class Structure:
                 net_wires[port.located_net][1].append(port_full_name)
         
         if self.is_operator: # custom generation for operator
-            self.custom_generation(res, self.ports_inside_flipped, runtime_id)
+            self.custom_generation(res, IOProxy(self.ports_inside_flipped, runtime_id, flipped = True))
         else: # universal generation for non-operators
             for sub_inst_name, subs in self.substructures.items(): # instantiate components
                 mapping = {}
@@ -546,21 +546,21 @@ class Structure:
             if driver_wire_name is not None:
                 if net.latency == 0: # comb
                     """
-                            +------> load_0
-                            |
-                        driver ----> load_i
-                            |
-                            +------> load_n
+                                 +--> load_0
+                                 |
+                        driver --+--> load_i
+                                 |
+                                 +--> load_n
                     """
                     for load_wire_name in load_wire_names:
                         res.add_assignment(load_wire_name, driver_wire_name)
                 else: # seq
                     """
-                                                       +------- load_0
-                                                       |
-                        driver ----> reg_next | ... | reg ----> load_i
-                                                       |
-                                                       +------- load_n
+                                                            +--> load_0
+                                                            |
+                        driver ----> reg_next | ... | reg --+--> load_i
+                                                            |
+                                                            +--> load_n
                     """
                     reg_next_name, reg_name = res.add_register(driver_wire_name, net.runtimes[runtime_id].signal_type, latency = net.latency)
                     res.add_assignment(reg_next_name, driver_wire_name)
@@ -604,10 +604,10 @@ class Structure:
         self.substructures[inst_name] = structure # strong reference to the substructure
         structure.located_structures_weak[self.id] = self # weak reference to the located structure in the substructure
         
-        def _create(io):
+        def _create(io: Union[Node, StructuralNodes]):
             if isinstance(io, Node):
                 return Node(io.name, io.origin_signal_type.flip_io(), located_structure = self, port_of_structure = structure)
-            elif isinstance(io, StructuralNodes):
+            else: # StructuralNodes
                 return StructuralNodes({k: _create(v) for k, v in io.items()})
         
         structure.ports_outside[self.id] = _create(structure.ports_inside_flipped) # duplicate and flip internal ports to create external ports
@@ -621,6 +621,41 @@ class Structure:
         for idx, node in enumerate(nodes):
             if idx != 0:
                 self.connect(nodes[0], node)
+
+class NodeProxy:
+    def __init__(self, node: Node, runtime_id: str, flipped: bool = False):
+        self.proxy_node = node
+        self.runtime_id = runtime_id
+        self.flipped = flipped
+    
+    @property
+    def dir(self):
+        is_in = self.proxy_node.origin_signal_type.belongs(Input)
+        return Input if is_in ^ self.flipped else Output
+    
+    @property
+    def type(self):
+        return self.proxy_node.get_type(self.runtime_id)
+    
+    def update(self, signal_type: SignalType):
+        self.proxy_node.update_type(self.runtime_id, signal_type)
+
+class IOProxy:
+    def __init__(self, io: StructuralNodes, runtime_id: str, flipped: bool = True):
+        self.proxy: Dict[str, Union[NodeProxy, IOProxy]] = {}
+        
+        for k, v in io.items():
+            v: Union[Node, StructuralNodes]
+            if isinstance(v, Node):
+                self.proxy[k] = NodeProxy(v, runtime_id, flipped)
+            else: # StructuralNodes
+                self.proxy[k] = IOProxy(v, runtime_id, flipped)
+    
+    def __getattr__(self, name):
+        if name in self.proxy.keys():
+            return self.proxy[name]
+        else:
+            super().__getattr__(name)
 
 class StructureProxy:
     """

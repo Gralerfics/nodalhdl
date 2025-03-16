@@ -293,7 +293,7 @@ class IOWrapperType(SignalType):
 
     def __repr__(cls):
         io_tag = "Input" if cls.belongs(Input) else "Output"
-        return f"{io_tag}[{cls.T}]"
+        return f"{io_tag}{'[' + str(cls.T) + ']' if hasattr(cls, 'T') else ''}"
 
 class BundleType(SignalType):
     def __getitem__(cls, item):
