@@ -333,10 +333,10 @@ class Structure:
         self.runtimes[new_runtime.id] = new_runtime
         return new_runtime
     
-    def __init__(self, name: str = None, fixed_id: str = None):
+    def __init__(self):
         # properties
-        self.id = uid_generator.create() if fixed_id is None else fixed_id
-        self.name = name # same name allowed, reusable structure will add a id suffix
+        self.id = uid_generator.create()
+        
         self.custom_deduction: callable = None
         self.custom_generation: callable = None
         
@@ -495,12 +495,7 @@ class Structure:
             logger.info("Originally determined structure.")
             prefix = ""
         
-        res = HDLFileModel(f"hdl_{prefix}{self.name}_{self.id[:8]}") # create file model and set entity name, TODO 8 chars?
-        
-        """
-            TODO 时序逻辑.
-            TODO 时序 enable.
-        """
+        res = HDLFileModel(f"hdl_{prefix}{self.name}") # create file model and set entity name
         
         net_wires: Dict[Net, List[str, List[str]]] = {} # net -> (driver_wire_name, load_wire_names[])
         
@@ -517,7 +512,8 @@ class Structure:
                 net_wires[port.located_net][1].append(port_full_name)
         
         if self.is_operator: # custom generation for operator
-            self.custom_generation(res, IOProxy(self.ports_inside_flipped, runtime_id, flipped = True))
+            io_proxy = IOProxy(self.ports_inside_flipped, runtime_id, flipped = True)
+            self.custom_generation(res, io_proxy)
         else: # universal generation for non-operators
             for sub_inst_name, subs in self.substructures.items(): # instantiate components
                 mapping = {}

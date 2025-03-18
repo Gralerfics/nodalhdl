@@ -40,9 +40,6 @@ class HDLGlobalInfo:
 
         return {"types.vhd": f"library IEEE;\nuse IEEE.std_logic_1164.all;\nuse IEEE.numeric_std.all;\n\npackage types is\n{content}end package types;"}
     
-    def header_vhdl(self):
-        return "library IEEE;\nuse IEEE.std_logic_1164.all;\nuse IEEE.numeric_std.all;\nuse work.types.all;"
-    
     def add_type(self, t: SignalType):
         """
             添加类型.
@@ -71,39 +68,35 @@ class HDLFileModel:
     """
         HDL 文件模型.
         完全对应 HDL 文件内容, 不包含任何判断和校验等措施.
-        TODO 时序电路.
     """
-    def __init__(self, entity_name: str, inline: bool = False):
-        self.entity_name: str = entity_name
-        self.inline: bool = inline # TODO operator 无法在 box 层面 expand, 像切片这种操作单独文件又太繁琐, 或许可以在文件模型中标记, 在 HDL 层面展开
+    def __init__(self, entity_name: str):
+        self.entity_name: str = entity_name # also the file name
         
         self.global_info: HDLGlobalInfo = HDLGlobalInfo()
         
+        self.libs: Dict[str, List[str]] = {} # Dict[语言类型, List[包引用行]]
         self.ports: Dict[str, Tuple[str, SignalType]] = {} # Dict[端口名, (方向, 类型)]
-        self.components: Set[HDLFileModel] = set()
+        self.components: Set[HDLFileModel] = set() # Set[组件对应文件模型]
         self.inst_comps: Dict[str, Tuple[str, Dict[str, str]]] = {} # Dict[实例名, (组件名, Dict[组件端口名, 实例端口名])]
-        self.signals: Dict[str, SignalType] = {}
-        self.assignments: List[Tuple[str, str]] = []
+        self.signals: Dict[str, SignalType] = {} # Dict[信号名, 信号类型]
+        self.assignments: List[Tuple[str, str]] = [] # List[Tuple[目标信号, 源信号]] TODO 不带有表达式
         self.registers: Set[Tuple[str, str, str]] = set() # Set[<reg_next_name>, <reg_name>, <initial_value>]
         
-        self.raw: bool = False # 是否直接使用 HDL 定义 (即使使用 HDL 定义也应当声明 entity_name; port 应与 box 相符) TODO
-        self.raw_file_suffix: str = None
+        self.raw: bool = False # 是否直接使用 HDL 定义 (即使使用 HDL 定义也应当声明 entity_name; port 应与 substructure 相符) TODO
+        self.raw_suffix: str = None
         self.raw_content: str = None
+        
+        # TODO
+        self.add_lib("vhdl", "library IEEE;")
+        self.add_lib("vhdl", "use IEEE.std_logic_1164.all;")
+        self.add_lib("vhdl", "use IEEE.numeric_std.all;")
+        self.add_lib("vhdl", "use work.types.all;")
     
     @property
-    def is_sequential(self):
-        return len(self.registers) > 0 or any([comp.is_sequential for comp in self.components]) # 存在时序逻辑或任意子模块存在时序逻辑
+    def is_sequential(self): # 存在时序逻辑或任意子模块存在时序逻辑
+        return len(self.registers) > 0 or any([comp.is_sequential for comp in self.components])
     
     def emit_vhdl(self):
-        """
-            递归生成 VHDL.
-            非 locked 结构对应的文件名需要带有 namespace 信息, 如为 None 则为最外层模块, 需要处理全局信息.
-                    ... TODO 最外层或许并非顶层, 之后可能还要添加单独的 top, 并允许在其中实现三态门等结构.
-            所有文件名前 (包括顶层模块) 添加标识 (例如 "vhdl_"), 以免和 types.vhd 等冲突.
-            
-            文件名就应该是 entity_name.
-            namespace 信息应该在 generation 时创建 HDLFileModel 时就写入, 也在那是控制是否 reusable.
-        """
         res = {}
         
         res.update(self.global_info.emit_vhdl()) # 全局信息
@@ -111,14 +104,18 @@ class HDLFileModel:
         def _collect(model: 'HDLFileModel'):
             models = set({model}) # 加入自身
             for comp in model.components:
-                if not comp.inline: # inline 的结构不需要单独生成文件
-                    sub_models = _collect(comp)
-                    models.update(sub_models)
+                sub_models = _collect(comp)
+                models.update(sub_models)
             return models
         
         models = _collect(self) # 递归收集所有 HDLFileModel (去重)
         
         def _gen_vhdl(model: HDLFileModel):
+            # 包引用声明
+            libs_declaration = ""
+            for line in self.libs["vhdl"]:
+                libs_declaration += line + "\n"
+            
             # 实体端口声明
             def _gen_ports(hdl: HDLFileModel, part: str = "entity", indent: str = ""):
                 port_content = ""
@@ -141,8 +138,6 @@ class HDLFileModel:
             comp_declaration = ""
             for comp in model.components:
                 comp_declaration += _gen_ports(comp, "component", "    ") + "\n"
-            if comp_declaration:
-                comp_declaration = comp_declaration[:-1]
 
             # 信号声明
             signal_declaration = ""
@@ -184,30 +179,37 @@ class HDLFileModel:
                 assignment_content = assignment_content[:-1]
             
             # 拼接文件内容
-            return f"{model.global_info.header_vhdl()}\n\n{_gen_ports(model, "entity")}\n\narchitecture Structural of {model.entity_name} is\n{comp_declaration}\n{signal_declaration}\nbegin\n{seq_process + "\n" if len(model.registers) > 0 else ""}{comp_content}\n{assignment_content}\nend architecture;"
+            return f"{libs_declaration}\n{_gen_ports(model, "entity")}\narchitecture Structural of {model.entity_name} is\n{comp_declaration}\n{signal_declaration}\nbegin\n{seq_process + "\n" if len(model.registers) > 0 else ""}{comp_content}\n{assignment_content}\nend architecture;"
         
         for model in models:
             if model.raw:
-                if model.raw_file_suffix is None or model.raw_content is None:
-                    raise HDLFileModelException(f"Raw HDL file model should be defined by .set_raw(filename, content)")
+                if model.raw_suffix is None or model.raw_content is None:
+                    raise HDLFileModelException(f"Raw HDL file model should be defined by .set_raw(file_suffix, content)")
                 
-                file_name = model.entity_name + model.raw_file_suffix
+                file_name = model.entity_name + model.raw_suffix
                 if file_name in res.keys():
-                    raise HDLFileModelException(f"File model names conflicting: \'{file_name}\'")
+                    # raise HDLFileModelException(f"File model names conflicting: \'{file_name}\'")
+                    continue # TODO warning. 可能有 runtime determined 结构经过 unique name 计算后和复用结构冲突, 但实际上是一致的. 但是不报错, 下同.
                 
                 res[file_name] = model.raw_content
             else:
                 file_name = model.entity_name + ".vhd"
                 if file_name in res.keys():
-                    raise HDLFileModelException(f"File model names conflicting")
+                    # raise HDLFileModelException(f"File model names conflicting")
+                    continue # TODO
                 
                 res[file_name] = _gen_vhdl(model)
         
         return res
     
+    def add_lib(self, hdl_type: str, line: str):
+        if not self.libs.get(hdl_type):
+            self.libs[hdl_type] = []
+        self.libs[hdl_type].append(line)
+    
     def add_port(self, name: str, direction: str, t: SignalType):
         """
-            不应该在 custom_generation 中使用, generation 时会根据结构自动调用.
+            不需要在 custom_generation 中使用, generation 时会根据结构自动调用.
         """
         if t.belongs(Bundle):
             self.global_info.add_type(t) # 添加类型到全局信息
@@ -257,7 +259,7 @@ class HDLFileModel:
     
     def set_raw(self, file_suffix: str, content: str):
         self.raw = True
-        self.raw_file_suffix = file_suffix
+        self.raw_suffix = file_suffix
         self.raw_content = content
 
 

@@ -1,13 +1,12 @@
 from ..core.signal import SignalType, UInt, SInt, Input, Output, Auto, Bundle
 from ..core.structure import Structure, RuntimeId, StructureGenerationException, IOProxy
 from ..core.hdl import HDLFileModel
+from ..core.util import static
 
 
-def Addition(op1_type: SignalType, op2_type: SignalType, fixed_id: str = None) -> Structure:
-    # 创建结构
-    res = Structure("addition", fixed_id = fixed_id)
+def Addition(op1_type: SignalType, op2_type: SignalType) -> Structure:
+    res = Structure()
     
-    # 声明 IO Ports
     res.add_port("op1", Input[op1_type])
     res.add_port("op2", Input[op2_type])
     res.add_port("res", Output[Auto])
@@ -32,9 +31,30 @@ def Addition(op1_type: SignalType, op2_type: SignalType, fixed_id: str = None) -
             raise StructureGenerationException(f"Result width should be the maximum of the two operands")
         
         if tr.belongs(UInt):
-            h.add_assignment("res", "std_logic_vector(unsigned(op1) + unsigned(op2))")
+            ag = "std_logic_vector(unsigned(op1) + unsigned(op2))"
         else:
-            h.add_assignment("res", "std_logic_vector(signed(op1) + signed(op2))")
+            ag = "std_logic_vector(signed(op1) + signed(op2))"
+        
+        h.set_raw(".vhd",
+f"""\
+library IEEE;
+use IEEE.std_logic_1164.all;
+use IEEE.numeric_std.all;
+
+entity {h.entity_name} is
+    port (
+        op1: in std_logic_vector({t1.W - 1} downto 0);
+        op2: in std_logic_vector({t2.W - 1} downto 0);
+        res: out std_logic_vector({tr.W - 1} downto 0)
+    );
+end entity;
+
+architecture Behavioral of {h.entity_name} is
+begin
+    res <= {ag};
+end architecture;
+"""
+        )
     
     res.custom_deduction = deduction
     res.custom_generation = generation
