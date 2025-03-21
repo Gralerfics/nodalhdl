@@ -34,7 +34,7 @@ def TestDiagram() -> Structure:
     
     # 声明 IO Ports, 必须 perfectly IO-wrapped, 类型不确定可使用 Auto 或其他 undetermined 类型待推导
     ab = res.add_port("ab", Bundle[{"a": Input[UInt[8]], "b": Input[UInt[8]]}])
-    c = res.add_port("c", Input[UInt[4]])
+    c = res.add_port("c", Input[UInt[8]])
     z = res.add_port("z", Output[Auto])
     
     # 添加 Substructure
@@ -60,58 +60,62 @@ def TestDiagram() -> Structure:
 testDiagram = TestDiagram()
 print(testDiagram.ports_inside_flipped.z.origin_signal_type)
 print(testDiagram.substructures["add_ab"].ports_inside_flipped.res.origin_signal_type)
-print(testDiagram.is_originally_determined())
+print(testDiagram.is_reusable)
 
 
-# print('A =======================================================')
+print('A =======================================================')
 
 
-# s = Structure()
+s = Structure()
 
-# bi = s.add_port("bi", Bundle[{"i": Input[UInt[2]], "o": Output[Auto]}])
-# t = s.add_port("t", Input[UInt]) # 改成 undetermined 测试 Addition 的反向推导
-# n = s.add_port("n", Input[UInt[8]])
-# m = s.add_port("m", Input[UInt[8]])
+bi = s.add_port("bi", Bundle[{"i": Input[UInt[2]], "o": Output[Auto]}])
+t = s.add_port("t", Input[UInt]) # 改成 undetermined 测试 Addition 的反向推导
+n = s.add_port("n", Input[UInt[8]])
+m = s.add_port("m", Input[UInt[8]])
 
-# td = s.add_substructure("td", TestDiagram())
-# add_ti = s.add_substructure("add_ti", Addition(Auto, Auto))
-# add_o = s.add_substructure("add_o", Addition(UInt[8], UInt[4]))
+td = s.add_substructure("td", TestDiagram())
+add_ti = s.add_substructure("add_ti", Addition(Auto, Auto))
+add_o = s.add_substructure("add_o", Addition(UInt[8], UInt))
 
-# add_ti_out = s.add_node("add_ti_out", Auto)
+add_ti_out = s.add_node("add_ti_out", Auto)
 
-# s.connect(t, add_ti.IO.op1)
-# s.connect(bi.i, add_ti.IO.op2)
-# s.connect(add_ti.IO.res, add_ti_out)
+s.connect(t, add_ti.IO.op1)
+s.connect(bi.i, add_ti.IO.op2)
+s.connect(add_ti.IO.res, add_ti_out)
 
-# s.connect(n, td.IO.ab.a)
-# s.connect(m, td.IO.ab.b)
-# s.connect(add_ti_out, td.IO.c)
+s.connect(n, td.IO.ab.a)
+s.connect(m, td.IO.ab.b)
+s.connect(add_ti_out, td.IO.c)
 
-# s.connect(td.IO.z, add_o.IO.op1)
-# s.connect(add_ti_out, add_o.IO.op2)
+s.connect(td.IO.z, add_o.IO.op1)
+s.connect(add_ti_out, add_o.IO.op2)
 
-# # s.connect(add_o.IO.res, bi.o)
+s.connect(add_o.IO.res, bi.o)
 
-# # s.connect(t, td.c) # test multi-driven signal exception
+# s.connect(t, td.c) # test multi-driven signal exception
 
-# print(s.substructures["td"].ports_inside_flipped.z.origin_signal_type)
-
-
-# print('B =======================================================')
+print(s.substructures["td"].ports_inside_flipped.z.origin_signal_type)
 
 
-# rid = RuntimeId.create()
+print('B =======================================================')
 
-# s.deduction(rid)
-# s.apply_runtime(rid) # TODO
 
-# print(s.substructures["add_ti"].ports_outside[s.id].op1.get_type(rid))
-# print(s.substructures["add_ti"].ports_outside[s.id].op2.get_type(rid))
+rid = RuntimeId.create()
+print(rid)
 
-# print(s.substructures["add_ti"].ports_inside_flipped.op1.get_type(rid))
-# print(s.substructures["add_ti"].ports_inside_flipped.op2.get_type(rid))
+s.deduction(rid)
 
-# print(s.substructures["td"].substructures["add_ab"].runtimes.keys(), rid)
+print(s.substructures["add_ti"].ports_outside[(s.id, "add_ti")].op1.get_type(rid))
+print(s.substructures["add_ti"].ports_outside[(s.id, "add_ti")].op2.get_type(rid))
+
+print(s.substructures["add_ti"].ports_inside_flipped.op1.get_type(rid))
+print(s.substructures["add_ti"].ports_inside_flipped.op2.get_type(rid))
+
+print([x for x in s.substructures["td"].substructures["add_ab"].runtimes.keys()])
+
+print(s.is_reusable)
+s.apply_runtime(rid)
+print(s.is_reusable)
 
 
 # print('C =======================================================')

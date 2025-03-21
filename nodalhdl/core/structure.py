@@ -28,13 +28,13 @@ class RuntimeId:
         return f"<RuntimeId: {self.id_str} (next: {self.next_id.id_str if self.next_id is not None else None})>"
     
     def _next(self):
-        next_id_str = str(uuid.uuid5(RuntimeId.NULL_NAMESPACE, self.id_str)).replace('-', '') # TODO 其他生成方式
+        next_id_str = str(uuid.uuid5(RuntimeId.NULL_NAMESPACE, self.id_str)).replace('-', '') # TODO 命名空间下生成的 next_id 和 uuid4 生成 id 的潜在冲突
         next_id = RuntimeId.get(next_id_str)
         return next_id
     
     @staticmethod
     def create(): # TODO 重复
-        new_id_str = str(uuid.uuid4()).replace('-', '') # TODO 其他生成方式
+        new_id_str = str(uuid.uuid4()).replace('-', '')
         new_id = RuntimeId(new_id_str)
         RuntimeId.id_pool[new_id_str] = new_id
         return new_id
@@ -345,7 +345,7 @@ class Structure:
             self.attach_structure: weakref.ReferenceType[Structure] = weakref.ref(attach_structure) # the structure this runtime is attached to
 
         def set_originally_determined_hdl_file_model(self, hdl_file_model: HDLFileModel):
-            if not self.attach_structure().is_originally_determined():
+            if not self.attach_structure().is_reusable:
                 raise StructureException("Cannot set originally determined HDL file model for a originally undetermined structure")
             
             self.originally_determined_hdl_file_model = hdl_file_model
@@ -365,7 +365,7 @@ class Structure:
     
     def __init__(self):
         # properties
-        self.id = str(uuid.uuid4()).replace('-', '') # TODO
+        self.id = str(uuid.uuid4()).replace('-', '')
         
         self.custom_deduction: callable = None
         self.custom_generation: callable = None
@@ -376,8 +376,7 @@ class Structure:
         self.nodes: Set[Node] = set() # non-IO nodes
         
         # references (external structure)
-        self.ports_outside: Dict[str, StructuralNodes] = {} # located_structure_id -> IO in the located structure
-        
+        self.ports_outside: Dict[Tuple[str, str], StructuralNodes] = {} # Tuple[located_structure_id, inst_name_in_that_structure] -> IO in the located structure
         self.instance_number: int = 0 # number of instances
         # self.located_structures_weak: weakref.WeakValueDictionary = weakref.WeakValueDictionary() # located_structure_id -> located_structure
         
@@ -389,17 +388,19 @@ class Structure:
         return self.custom_deduction is not None and self.custom_generation is not None
     
     @property
-    def is_singleton(self):
+    def is_runtime_applicable(self):
         """
-            Check if the structure and all its substructures are singletons, i.e. do not have multiple located structures.
+            Check if the structure and all its originally undetermined substructures are singletons, i.e. do not have multiple located structures.
+            Only these structures can apply runtime information.
+            Originally determined structures have same information that they will not conflict.
         """
         # return len(self.located_structures_weak) <= 1 and all([subs.is_singleton for subs in self.substructures.values()])
-        return self.instance_number <= 1 and all([subs.is_singleton for subs in self.substructures.values()])
-        # keys = self.located_structures_weak.keys()
-        # flag = (len(keys) == 0 and s_id is None) or (len(keys) == 1 and s_id in keys)
-        # return flag and all([s.is_singleton(self.id) for s in self.substructures.values()])
+        return self.is_reusable or (self.instance_number <= 1 and all([subs.is_runtime_applicable for subs in self.substructures.values()]))
+    
+    @property
+    def is_reusable(self):
+        return self.is_originally_determined()
 
-    # TODO TODO TODO TODO TODO
     def is_runtime_integrate(self, runtime_id: RuntimeId):
         """
             Check if the structure and all its substructures have runtime information with runtime_id.
@@ -408,7 +409,6 @@ class Structure:
         """
         return runtime_id in self.runtimes.keys() and all([subs.is_runtime_integrate(runtime_id.next()) for subs in self.substructures.values()])
     
-    # TODO TODO TODO TODO TODO
     def is_determined(self, runtime_id: RuntimeId): # all ports and substructures are determined
         ports_determined = all([p.is_determined(runtime_id) for _, p in self.ports_inside_flipped.nodes()])
         substructures_determined = all([s.is_determined(runtime_id.next()) for s in self.substructures.values()])
@@ -433,7 +433,6 @@ class Structure:
         """
         pass # TODO
     
-    # TODO TODO TODO TODO TODO
     def apply_runtime(self, runtime_id: RuntimeId):
         """
             Fix the runtime information under runtime_id into the structure.
@@ -444,7 +443,10 @@ class Structure:
                 e.g. the user wants to apply an RID to a structure and then use its generation, if the RID information is destroyed as mentioned above, there will be a problem;
                 this behavior is reasonable, so the RID information should be retained, by asserting `do_not_clear_structure_runtime = True` in set_origin_type().
         """
-        if not self.is_singleton:
+        if self.is_reusable: # no need to apply runtime for reusable structure
+            return
+        
+        if not self.is_runtime_applicable:
             raise StructureException("Only singleton structure can apply runtime")
         
         if not self.is_runtime_integrate(runtime_id):
@@ -482,7 +484,7 @@ class Structure:
             """
             for sub_inst_name, subs in self.substructures.items():
                 # update substructure's ports with external ports (should be synchronized even though determined, the same below)
-                subs.ports_inside_flipped.update_runtime(runtime_id.next(), subs.ports_outside[self.id], runtime_id) # s.ports_outside[self.id] is the IO of `s` connected in `self`
+                subs.ports_inside_flipped.update_runtime(runtime_id.next(), subs.ports_outside[(self.id, sub_inst_name)], runtime_id) # s.ports_outside[(self.id, sub_inst_name)] is the IO of `s` connected in `self`
                 
                 """
                     deduction() should be recursively executed on all substructures, so that the runtime information can be passed down,
@@ -494,7 +496,7 @@ class Structure:
                 subs.deduction(runtime_id.next()) # recursive deduction
                 
                 # update external ports with substructure's ports
-                subs.ports_outside[self.id].update_runtime(runtime_id, subs.ports_inside_flipped, runtime_id.next())
+                subs.ports_outside[(self.id, sub_inst_name)].update_runtime(runtime_id, subs.ports_inside_flipped, runtime_id.next())
             
             if not structure_runtime.deduction_effective: # no change, stop
                 break
@@ -511,7 +513,7 @@ class Structure:
         if not self.is_runtime_integrate(runtime_id):
             raise StructureGenerationException("Invalid (not integrate) runtime ID")
         
-        if self.is_originally_determined(): # clear previous prefix if reusable
+        if self.is_reusable: # clear previous prefix if reusable
             prefix = ""
         
         res = HDLFileModel(f"hdl_{prefix}{self.id[:8]}") # create file model and set entity name
@@ -531,12 +533,11 @@ class Structure:
                 net_wires[port.located_net][1].append(port_full_name)
         
         if self.is_operator: # custom generation for operator
-            io_proxy = IOProxy(self.ports_inside_flipped, runtime_id.next(), flipped = True)
-            self.custom_generation(res, io_proxy)
+            self.custom_generation(res, IOProxy(self.ports_inside_flipped, runtime_id.next(), flipped = True))
         else: # universal generation for non-operators
             for sub_inst_name, subs in self.substructures.items(): # instantiate components
                 mapping = {}
-                for port_full_name, port in subs.ports_outside[self.id].nodes(): # must use subs.ports_outside, which locates in self
+                for port_full_name, port in subs.ports_outside[(self.id, sub_inst_name)].nodes(): # must use subs.ports_outside, which locates in self
                     port_wire_name = f"{sub_inst_name}_io_{port_full_name}" # inst_name_io_node_full_name
                     mapping[port_full_name] = port_wire_name
                     res.add_signal(port_wire_name, port.get_type(runtime_id)) # add signal for port wire
@@ -580,7 +581,7 @@ class Structure:
                     for load_wire_name in load_wire_names:
                         res.add_assignment(load_wire_name, reg_name)
         
-        if self.is_originally_determined(): # save HDL file model for originally determined structure
+        if self.is_reusable: # save HDL file model for originally determined structure
             self.get_runtime(runtime_id).set_originally_determined_hdl_file_model(res)
         
         return res
@@ -624,9 +625,9 @@ class Structure:
             else: # StructuralNodes
                 return StructuralNodes({k: _create(v) for k, v in io.items()})
         
-        structure.ports_outside[self.id] = _create(structure.ports_inside_flipped) # duplicate and flip internal ports to create external ports
+        structure.ports_outside[(self.id, inst_name)] = _create(structure.ports_inside_flipped) # duplicate and flip internal ports to create external ports
         
-        return StructureProxy(structure, self.id)
+        return StructureProxy(structure, self.id, inst_name)
     
     def connect(self, node_1: Node, node_2: Node):
         node_1.merge(node_2)
@@ -676,11 +677,12 @@ class StructureProxy:
         Structure proxy.
         Make convenient for user on getting structural ports. As a return value of add_substructure.
     """
-    def __init__(self, structure: Structure, located_structure_id: str):
+    def __init__(self, structure: Structure, located_structure_id: str, inst_name: str = None):
         self.proxy_structure = structure # the structure to be proxied
         self.located_structure_id = located_structure_id # proxy the structure in the structure with located_structure_id
+        self.inst_name: str = inst_name
     
     @property
     def IO(self):
-        return self.proxy_structure.ports_outside[self.located_structure_id]
+        return self.proxy_structure.ports_outside[(self.located_structure_id, self.inst_name)]
 
