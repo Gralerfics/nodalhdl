@@ -38,8 +38,9 @@ def TestDiagram() -> Structure:
     z = res.add_port("z", Output[Auto])
     
     # 添加 Substructure
-    add_ab = res.add_substructure("add_ab", Addition(UInt[8], UInt[8]))
-    add_abc = res.add_substructure("add_abc", Addition(Auto, Auto))
+    add_u8_u8 = Addition(UInt[8], UInt[8])
+    add_ab = res.add_substructure("add_ab", add_u8_u8)
+    add_abc = res.add_substructure("add_abc", add_u8_u8)
     
     # 添加连接关系 / 非 IO 节点
     res.connect(ab.a, add_ab.IO.op1)
@@ -51,36 +52,7 @@ def TestDiagram() -> Structure:
     add_abc.IO.res.set_latency(1)
     
     rid = RuntimeId.create()
-    print(rid)
-    print(rid.next())
-    
-    import sys
-    print(sys.getrefcount(rid))
-    print(sys.getrefcount(rid.next()))
-    
-    # print([x for x in res.runtimes.keys()])
-    # print([x for x in res.substructures["add_ab"].runtimes.keys()])
-    
-    # print([x for x in res.ports_inside_flipped.c.located_net.runtimes.keys()])
-    # print([x for x in res.substructures["add_ab"].ports_inside_flipped.op2.located_net.runtimes.keys()])
-    
     res.deduction(rid)
-    
-    # print([x for x in gc.get_referrers(rid)]) # TODO 为什么有这么多 -> 好像是没来得及回收, 如果在这里 import inspect 或者 gc.collect() 一下就全没了
-    gc.collect() # TODO 手动调用才回收; 不调用的话出了这个函数也没自动回收; 不确定是不是真能自动回收, 亟待检查
-    # print([x for x in gc.get_referrers(rid)]) # 不对, 又有了
-    
-    print([x for x in RuntimeId.id_pool.values()])
-    
-    print(sys.getrefcount(rid))
-    print(sys.getrefcount(rid.next()))
-    
-    print([x for x in res.runtimes.keys()])
-    print([x for x in res.substructures["add_ab"].runtimes.keys()])
-    
-    print([x for x in res.ports_inside_flipped.c.located_net.runtimes.keys()])
-    print([x for x in res.substructures["add_ab"].ports_inside_flipped.op2.located_net.runtimes.keys()])
-    
     res.apply_runtime(rid)
     
     return res
@@ -90,8 +62,6 @@ print(testDiagram.ports_inside_flipped.z.origin_signal_type)
 print(testDiagram.substructures["add_ab"].ports_inside_flipped.res.origin_signal_type)
 print(testDiagram.is_originally_determined())
 
-# !!!!!!!!!!!!!!! TODO .next() 的 id 会被 GC 吗?
-
 
 # print('A =======================================================')
 
@@ -99,7 +69,7 @@ print(testDiagram.is_originally_determined())
 # s = Structure()
 
 # bi = s.add_port("bi", Bundle[{"i": Input[UInt[2]], "o": Output[Auto]}])
-# t = s.add_port("t", Input[UInt]) # 改成 undetermined 测试 Addition 的反向推导 (未实现)
+# t = s.add_port("t", Input[UInt]) # 改成 undetermined 测试 Addition 的反向推导
 # n = s.add_port("n", Input[UInt[8]])
 # m = s.add_port("m", Input[UInt[8]])
 
@@ -120,7 +90,7 @@ print(testDiagram.is_originally_determined())
 # s.connect(td.IO.z, add_o.IO.op1)
 # s.connect(add_ti_out, add_o.IO.op2)
 
-# s.connect(add_o.IO.res, bi.o)
+# # s.connect(add_o.IO.res, bi.o)
 
 # # s.connect(t, td.c) # test multi-driven signal exception
 

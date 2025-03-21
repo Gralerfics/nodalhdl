@@ -83,7 +83,7 @@ class Net:
             self.signal_type = new_st
             
             if changed: # the operation on this runtime changed the information
-                s = self.attach_net().located_structures_weak()
+                s = self.attach_net().located_structure_weak()
                 s.get_runtime(self.id_weak()).deduction_effective = True
             
             return changed
@@ -116,7 +116,7 @@ class Net:
     def __init__(self, located_structure: 'Structure'): # not allowed to create a Net/Node without a located structure
         # references
         self.nodes_weak: weakref.WeakSet[Node] = weakref.WeakSet()
-        self.located_structures_weak: weakref.ReferenceType[Structure] = weakref.ref(located_structure)
+        self.located_structure_weak: weakref.ReferenceType[Structure] = weakref.ref(located_structure)
         
         self.driver: weakref.ReferenceType[Node] = None # driver node (also in nodes_weak) or None, should be only one, originlly Output; others are loads
         self.latency: int = 0 # latency of the net, i.e. registers between driver and loads
@@ -156,13 +156,13 @@ class Net:
             self.driver = None
         
         self.nodes_weak.remove(node)
-        Net(self.located_structures_weak()).add_node(node)
+        Net(self.located_structure_weak()).add_node(node)
     
     def merge(self, other: 'Net'):
         if self is other:
             return
         
-        if self.located_structures_weak() is not other.located_structures_weak():
+        if self.located_structure_weak() is not other.located_structure_weak():
             raise StructureException("Cannot merge nets from different structures")
         
         if self.driver is not None and other.driver is not None:
@@ -198,7 +198,7 @@ class Node:
     
     @property
     def located_structure(self):
-        return self.located_net.located_structures_weak()
+        return self.located_net.located_structure_weak()
     
     def is_determined(self, runtime_id: RuntimeId):
         return self.get_type(runtime_id).determined
@@ -377,7 +377,9 @@ class Structure:
         
         # references (external structure)
         self.ports_outside: Dict[str, StructuralNodes] = {} # located_structure_id -> IO in the located structure
-        self.located_structures_weak: weakref.WeakValueDictionary = weakref.WeakValueDictionary() # located_structure_id -> located_structure
+        
+        self.instance_number: int = 0 # number of instances
+        # self.located_structures_weak: weakref.WeakValueDictionary = weakref.WeakValueDictionary() # located_structure_id -> located_structure
         
         # runtime
         self.runtimes: weakref.WeakKeyDictionary[RuntimeId, Structure.Runtime] = weakref.WeakKeyDictionary() # runtime_id -> runtime info
@@ -390,9 +392,9 @@ class Structure:
     def is_singleton(self):
         """
             Check if the structure and all its substructures are singletons, i.e. do not have multiple located structures.
-            # theoretically, a substructure with len(located_structures_weak) == 1 must locate in the structure.
         """
-        return len(self.located_structures_weak) <= 1 and all([subs.is_singleton for subs in self.substructures.values()])
+        # return len(self.located_structures_weak) <= 1 and all([subs.is_singleton for subs in self.substructures.values()])
+        return self.instance_number <= 1 and all([subs.is_singleton for subs in self.substructures.values()])
         # keys = self.located_structures_weak.keys()
         # flag = (len(keys) == 0 and s_id is None) or (len(keys) == 1 and s_id in keys)
         # return flag and all([s.is_singleton(self.id) for s in self.substructures.values()])
@@ -404,8 +406,7 @@ class Structure:
             Runtime information in structures will be cleared when there are structural modifications.
             No need to check all nodes and ports, their runtime information should be called by the structures.
         """
-        return True
-        # return runtime_id in self.runtimes.keys() and all([subs.is_runtime_integrate(runtime_id.next()) for subs in self.substructures.values()])
+        return runtime_id in self.runtimes.keys() and all([subs.is_runtime_integrate(runtime_id.next()) for subs in self.substructures.values()])
     
     # TODO TODO TODO TODO TODO
     def is_determined(self, runtime_id: RuntimeId): # all ports and substructures are determined
@@ -466,14 +467,14 @@ class Structure:
         """
             Automatic type deduction.
         """
+        structure_runtime = self.get_runtime(runtime_id) # ensure runtime information is created, for integrity consideration
+        
         if self.is_operator:
             self.custom_deduction(IOProxy(self.ports_inside_flipped, runtime_id, flipped = True))
             return
         
-        runtime = self.get_runtime(runtime_id)
-        
         while not self.is_determined(runtime_id): # stop if already determined
-            runtime.deduction_effective = False # reset flag before a new round of deduction
+            structure_runtime.deduction_effective = False # reset flag before a new round of deduction
             
             """
                 subs.ports_outside[] are under the structure `self` (with runtime_id);
@@ -495,7 +496,7 @@ class Structure:
                 # update external ports with substructure's ports
                 subs.ports_outside[self.id].update_runtime(runtime_id, subs.ports_inside_flipped, runtime_id.next())
             
-            if not runtime.deduction_effective: # no change, stop
+            if not structure_runtime.deduction_effective: # no change, stop
                 break
     
     # TODO TODO TODO TODO TODO
@@ -614,7 +615,8 @@ class Structure:
             raise StructureException("Instance name already exists")
         
         self.substructures[inst_name] = structure # strong reference to the substructure
-        structure.located_structures_weak[self.id] = self # weak reference to the located structure in the substructure
+        structure.instance_number += 1
+        # structure.located_structures_weak[self.id] = self # weak reference to the located structure in the substructure
         
         def _create(io: Union[Node, StructuralNodes]):
             if isinstance(io, Node):
