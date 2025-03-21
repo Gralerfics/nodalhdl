@@ -432,27 +432,27 @@ class Structure:
         """
             Automatic type deduction.
         """
-        logger.info(f"Deduction on structure `{self.name}` ({self.id}), under {runtime_id}.")
+        # logger.info(f"Deduction on structure `{self.name}` ({self.id}), under {runtime_id}.")
         
         if self.runtimes.get(runtime_id) is None: # runtime must be created for all structures, including operators, so this should be executed before custom deduction
             self.create_runtime(runtime_id)
         
         if self.is_operator:
-            logger.info(f"Custom deduction for structure `{self.name}`.")
-            logger.info(f"> Before: {self.ports_inside_flipped.to_str(runtime_id)}")
+            # logger.info(f"Custom deduction for structure `{self.name}`.")
+            # logger.info(f"> Before: {self.ports_inside_flipped.to_str(runtime_id)}")
             self.custom_deduction(IOProxy(self.ports_inside_flipped, runtime_id, flipped = True))
-            logger.info(f"> After: {self.ports_inside_flipped.to_str(runtime_id)}")
+            # logger.info(f"> After: {self.ports_inside_flipped.to_str(runtime_id)}")
             return
         
         while not self.is_determined(runtime_id): # stop if already determined
             self.runtimes[runtime_id].deduction_effective = False # reset flag before a new round of deduction
-            logger.info(f"New round for structure `{self.name}`.")
+            # logger.info(f"New round for structure `{self.name}`.")
             
             for sub_inst_name, subs in self.substructures.items():
-                logger.info(f"Deduction on substructure `{sub_inst_name}` (`{subs.name}`, {subs.id}).")
+                # logger.info(f"Deduction on substructure `{sub_inst_name}` (`{subs.name}`, {subs.id}).")
                 
-                if not subs.is_determined(runtime_id):
-                    logger.info(f"Before (`{subs.name}`): {subs.ports_outside[self.id].to_str(runtime_id)}")
+                # if not subs.is_determined(runtime_id):
+                #     logger.info(f"Before (`{subs.name}`): {subs.ports_outside[self.id].to_str(runtime_id)}")
                 
                 # update substructure's ports with external ports (should be synchronized even though determined, the same below)
                 subs.ports_inside_flipped.update_runtime(runtime_id, subs.ports_outside[self.id]) # s.ports_outside[self.id] is the IO of `s` connected in `self`
@@ -469,14 +469,15 @@ class Structure:
                 # update external ports with substructure's ports
                 subs.ports_outside[self.id].update_runtime(runtime_id, subs.ports_inside_flipped)
                 
-                if not subs.is_determined(runtime_id):
-                    logger.info(f"After (`{subs.name}`): {subs.ports_outside[self.id].to_str(runtime_id)}")
+                # if not subs.is_determined(runtime_id):
+                #     logger.info(f"After (`{subs.name}`): {subs.ports_outside[self.id].to_str(runtime_id)}")
             
             if not self.runtimes[runtime_id].deduction_effective: # no change, stop
-                logger.info("Not changed, stop.")
-                return
-        else:
-            logger.info(f"Determined.")
+                # logger.info("Not changed, stop.")
+                # return
+                break
+        # else:
+        #     logger.info(f"Determined.")
     
     def generation(self, runtime_id: RuntimeId, prefix: str = "") -> HDLFileModel:
         """
@@ -489,13 +490,13 @@ class Structure:
         if not self.is_runtime_integrate(runtime_id):
             raise StructureGenerationException("Invalid (not integrate) runtime ID")
         
-        logger.info(f"Generation on structure `{self.name}` ({self.id}), under {runtime_id}.")
+        # logger.info(f"Generation on structure `{self.name}` ({self.id}), under {runtime_id}.")
         
         if self.is_originally_determined(): # clear previous prefix if reusable
-            logger.info("Originally determined structure.")
+            # logger.info("Originally determined structure.")
             prefix = ""
         
-        res = HDLFileModel(f"hdl_{prefix}{self.name}") # create file model and set entity name
+        res = HDLFileModel(f"hdl_{prefix}{self.id[:8]}") # create file model and set entity name
         
         net_wires: Dict[Net, List[str, List[str]]] = {} # net -> (driver_wire_name, load_wire_names[])
         
@@ -532,10 +533,10 @@ class Structure:
                 
                 odhdl = subs.runtimes[runtime_id].originally_determined_hdl_file_model # reuse HDL file model for the substructure
                 if odhdl is not None:
-                    logger.info(f"Reuse HDL file model for substructure `{sub_inst_name}` (`{subs.name}`, {subs.id}).")
+                    # logger.info(f"Reuse HDL file model for substructure `{sub_inst_name}` (`{subs.name}`, {subs.id}).")
                     res.inst_component(sub_inst_name, odhdl, mapping)
                 else:
-                    logger.info(f"Generation on substructure `{sub_inst_name}` (`{subs.name}`, {subs.id}).")
+                    # logger.info(f"Generation on substructure `{sub_inst_name}` (`{subs.name}`, {subs.id}).")
                     res.inst_component(sub_inst_name, subs.generation(runtime_id, prefix + sub_inst_name + "_"), mapping)
         
         for net, (driver_wire_name, load_wire_names) in net_wires.items():
