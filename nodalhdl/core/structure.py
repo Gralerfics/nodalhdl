@@ -1,6 +1,7 @@
 from .signal import SignalType, IOWrapper, Input, Output, Auto, Bundle
 from .hdl import HDLFileModel
 
+import sys
 import weakref
 import uuid
 from typing import List, Dict, Set, Tuple, Union
@@ -11,18 +12,45 @@ logger = logging.getLogger(__name__)
 
 
 """ Id """
-class UniqueId:
-    def __init__(self):
-        self.id_pool: Set[str] = set()
+class RuntimeId:
+    """
+        TODO
+    """
+    NULL_NAMESPACE = uuid.UUID('00000000-0000-0000-0000-000000000000')
     
-    def create(self):
-        new_id = str(uuid.uuid4()).replace('-', '')
-        while new_id in self.id_pool:
-            new_id = str(uuid.uuid4()).replace('-', '')
-        self.id_pool.add(new_id)
+    id_pool: weakref.WeakValueDictionary[str, 'RuntimeId'] = weakref.WeakValueDictionary()
+    
+    def __init__(self, id_str: str):
+        self.id_str: str = id_str
+        self.next_id: RuntimeId = None # ensure the next_id is referenced by its previous id
+    
+    def __repr__(self):
+        return f"<RuntimeId: {self.id_str} (next: {self.next_id.id_str if self.next_id is not None else None})>"
+    
+    def _next(self):
+        next_id_str = str(uuid.uuid5(RuntimeId.NULL_NAMESPACE, self.id_str)).replace('-', '') # TODO 其他生成方式
+        next_id = RuntimeId.get(next_id_str)
+        return next_id
+    
+    @staticmethod
+    def create(): # TODO 重复
+        new_id_str = str(uuid.uuid4()).replace('-', '') # TODO 其他生成方式
+        new_id = RuntimeId(new_id_str)
+        RuntimeId.id_pool[new_id_str] = new_id
         return new_id
-
-uid_generator = UniqueId()
+    
+    @staticmethod
+    def get(id_str: str):
+        if not id_str in RuntimeId.id_pool.keys(): # not in pool, add it
+            new_id = RuntimeId(id_str)
+            RuntimeId.id_pool[id_str] = new_id
+            return new_id
+        return RuntimeId.id_pool[id_str]
+    
+    def next(self):
+        if self.next_id is None:
+            self.next_id = self._next()
+        return self.next_id
 
 
 """ Structure """
@@ -30,25 +58,14 @@ class StructureException(Exception): pass
 class StructureDeductionException(Exception): pass
 class StructureGenerationException(Exception): pass
 
-class RuntimeId:
-    """
-        Used as keys for runtimes (weakref.WeakKeyDictionary),
-        when all references to a RuntimeId object are lost, the corresponding runtime will be garbage collected.
-    """
-    def __init__(self):
-        self.id: str = uid_generator.create()
-    
-    def __repr__(self):
-        return f"<RuntimeId: {self.id}>"
-
 class Net:
     """
         Set of Node objects.
     """
     class Runtime:
-        def __init__(self, attach_net: 'Net', runtime_id: RuntimeId = None):
+        def __init__(self, attach_net: 'Net', runtime_id: RuntimeId):
             # properties
-            self.id: RuntimeId = runtime_id if runtime_id is not None else RuntimeId()
+            self.id_weak: weakref.ReferenceType[RuntimeId] = weakref.ref(runtime_id)
             self.signal_type: SignalType = Auto # must be set by set_signal_type()
             
             # references
@@ -67,9 +84,7 @@ class Net:
             
             if changed: # the operation on this runtime changed the information
                 s = self.attach_net().located_structures_weak()
-                if s.runtimes.get(self.id) is None: # no record for this runtime_id in the structure, create one
-                    s.create_runtime(self.id)
-                s.runtimes[self.id].deduction_effective = True
+                s.get_runtime(self.id_weak()).deduction_effective = True
             
             return changed
         
@@ -88,10 +103,15 @@ class Net:
                 changed |= self.merge_type(node.origin_signal_type)
             return changed
     
-    def create_runtime(self, runtime_id: RuntimeId = None) -> 'Net.Runtime':
+    def create_runtime(self, runtime_id: RuntimeId) -> 'Net.Runtime':
         new_runtime = Net.Runtime(attach_net = self, runtime_id = runtime_id)
-        self.runtimes[new_runtime.id] = new_runtime
+        self.runtimes[runtime_id] = new_runtime
         return new_runtime
+    
+    def get_runtime(self, runtime_id: RuntimeId) -> 'Net.Runtime':
+        if self.runtimes.get(runtime_id) is None:
+            return self.create_runtime(runtime_id)
+        return self.runtimes[runtime_id]
     
     def __init__(self, located_structure: 'Structure'): # not allowed to create a Net/Node without a located structure
         # references
@@ -102,7 +122,7 @@ class Net:
         self.latency: int = 0 # latency of the net, i.e. registers between driver and loads
         
         # runtime
-        self.runtimes: weakref.WeakKeyDictionary[RuntimeId, Net.Runtime] = {}
+        self.runtimes: weakref.WeakKeyDictionary[RuntimeId, Net.Runtime] = weakref.WeakKeyDictionary()
     
     def __len__(self):
         return len(self.nodes_weak)
@@ -190,17 +210,13 @@ class Node:
         """
             Get the runtime type of the located net by runtime_id. (non-IO)
         """
-        if self.located_net.runtimes.get(runtime_id) is None: # no record for this runtime, create one
-            self.located_net.create_runtime(runtime_id)
-        return self.located_net.runtimes[runtime_id].signal_type # .clear_io()
+        return self.located_net.get_runtime(runtime_id).signal_type # .clear_io()
     
     def update_type(self, runtime_id: RuntimeId, signal_type: SignalType):
         """
             Update the runtime type of the located net by merging. (IO-ignored)
         """
-        if self.located_net.runtimes.get(runtime_id) is None: # no record for this runtime, create one
-            self.located_net.create_runtime(runtime_id)
-        self.located_net.runtimes[runtime_id].merge_type(signal_type)
+        self.located_net.get_runtime(runtime_id).merge_type(signal_type)
     
     """
         The following actions (set_origin_type, merge, separate and delete) may change the structural information,
@@ -214,21 +230,21 @@ class Node:
 
         self.origin_signal_type = signal_type
         if not do_not_clear_structure_runtime:
-            self.located_structure.runtimes.clear() # all runtime information is invalid, clear them
+            self.located_structure.clear_runtimes() # all runtime information is invalid, clear them
 
     def merge(self, other: 'Node'):
         if self.located_net is other.located_net: # same net, no change
             return
         
         self.located_net.merge(other.located_net)
-        self.located_structure.runtimes.clear() # all runtime information is invalid, clear them
+        self.located_structure.clear_runtimes() # all runtime information is invalid, clear them
     
     def separate(self):
         if len(self.located_net) == 1: # only one node, no need to separate
             return
         
         self.located_net.separate_node(self)
-        self.located_structure.runtimes.clear() # all runtime information is invalid, clear them
+        self.located_structure.clear_runtimes() # all runtime information is invalid, clear them
     
     def delete(self):
         if self.is_port:
@@ -236,7 +252,7 @@ class Node:
         
         self.located_net.nodes_weak.remove(self) # theoretically not necessary. this node should have been GCed after located_structure.nodes.remove()
         self.located_structure.nodes.remove(self)
-        self.located_structure.runtimes.clear() # all runtime information is invalid, clear them
+        self.located_structure.clear_runtimes() # all runtime information is invalid, clear them
 
     """
         Latency setting will not change the structural information. Types are passed through the registers.
@@ -296,10 +312,16 @@ class StructuralNodes(dict):
                 res.extend(v.nodes(prefix + k + "_"))
         return res
     
-    def update_runtime(self, runtime_id: RuntimeId, other: 'StructuralNodes'): # use other's runtime info (under runtime_id) to update self
+    def update_runtime(self, self_runtime_id: RuntimeId, other: 'StructuralNodes', other_runtime_id: RuntimeId = None):
+        """
+            Use other's runtime info (under other_runtime_id) to update self (under self_runtime_id).
+        """
+        if other_runtime_id is None:
+            other_runtime_id = self_runtime_id
+        
         def _update(to_p: Union[Node, StructuralNodes], from_p: Union[Node, StructuralNodes]):
             if isinstance(to_p, Node) and isinstance(from_p, Node) and to_p.name == from_p.name:
-                to_p.update_type(runtime_id, from_p.get_type(runtime_id))
+                to_p.update_type(self_runtime_id, from_p.get_type(other_runtime_id))
             elif isinstance(to_p, StructuralNodes) and isinstance(from_p, StructuralNodes):
                 for k, v in to_p.items():
                     _update(v, from_p[k])
@@ -313,9 +335,9 @@ class Structure:
         Diagram structure.
     """
     class Runtime:
-        def __init__(self, attach_structure: 'Structure', runtime_id: RuntimeId = None):
+        def __init__(self, attach_structure: 'Structure', runtime_id: RuntimeId):
             # properties
-            self.id: RuntimeId = runtime_id if runtime_id is not None else RuntimeId()
+            self.id_weak: weakref.ReferenceType[RuntimeId] = weakref.ref(runtime_id)
             self.deduction_effective: bool = False
             self.originally_determined_hdl_file_model: HDLFileModel = None # only originally determined structure can reuse HDL file model; and runtimes will be cleared if the structure is changed
             
@@ -328,14 +350,22 @@ class Structure:
             
             self.originally_determined_hdl_file_model = hdl_file_model
     
-    def create_runtime(self, runtime_id: RuntimeId = None) -> 'Structure.Runtime':
+    def create_runtime(self, runtime_id: RuntimeId) -> 'Structure.Runtime':
         new_runtime = Structure.Runtime(attach_structure = self, runtime_id = runtime_id)
-        self.runtimes[new_runtime.id] = new_runtime
+        self.runtimes[runtime_id] = new_runtime
         return new_runtime
+
+    def get_runtime(self, runtime_id: RuntimeId) -> 'Structure.Runtime':
+        if self.runtimes.get(runtime_id) is None:
+            return self.create_runtime(runtime_id)
+        return self.runtimes[runtime_id]
+    
+    def clear_runtimes(self):
+        self.runtimes.clear()
     
     def __init__(self):
         # properties
-        self.id = uid_generator.create()
+        self.id = str(uuid.uuid4()).replace('-', '') # TODO
         
         self.custom_deduction: callable = None
         self.custom_generation: callable = None
@@ -350,7 +380,7 @@ class Structure:
         self.located_structures_weak: weakref.WeakValueDictionary = weakref.WeakValueDictionary() # located_structure_id -> located_structure
         
         # runtime
-        self.runtimes: weakref.WeakKeyDictionary[RuntimeId, Structure.Runtime] = {} # runtime_id -> runtime info
+        self.runtimes: weakref.WeakKeyDictionary[RuntimeId, Structure.Runtime] = weakref.WeakKeyDictionary() # runtime_id -> runtime info
     
     @property
     def is_operator(self):
@@ -367,17 +397,20 @@ class Structure:
         # flag = (len(keys) == 0 and s_id is None) or (len(keys) == 1 and s_id in keys)
         # return flag and all([s.is_singleton(self.id) for s in self.substructures.values()])
 
+    # TODO TODO TODO TODO TODO
     def is_runtime_integrate(self, runtime_id: RuntimeId):
         """
             Check if the structure and all its substructures have runtime information with runtime_id.
             Runtime information in structures will be cleared when there are structural modifications.
             No need to check all nodes and ports, their runtime information should be called by the structures.
         """
-        return runtime_id in self.runtimes.keys() and all([subs.is_runtime_integrate(runtime_id) for subs in self.substructures.values()])
+        return True
+        # return runtime_id in self.runtimes.keys() and all([subs.is_runtime_integrate(runtime_id.next()) for subs in self.substructures.values()])
     
+    # TODO TODO TODO TODO TODO
     def is_determined(self, runtime_id: RuntimeId): # all ports and substructures are determined
         ports_determined = all([p.is_determined(runtime_id) for _, p in self.ports_inside_flipped.nodes()])
-        substructures_determined = all([s.is_determined(runtime_id) for s in self.substructures.values()])
+        substructures_determined = all([s.is_determined(runtime_id.next()) for s in self.substructures.values()])
         return ports_determined and substructures_determined
     
     def is_originally_determined(self): # i.e. reusable structure
@@ -399,6 +432,7 @@ class Structure:
         """
         pass # TODO
     
+    # TODO TODO TODO TODO TODO
     def apply_runtime(self, runtime_id: RuntimeId):
         """
             Fix the runtime information under runtime_id into the structure.
@@ -426,36 +460,28 @@ class Structure:
             node.set_origin_type(node.origin_signal_type.applys(node.get_type(runtime_id)), do_not_clear_structure_runtime = True) # (*)
         
         for subs in self.substructures.values(): # apply runtime info to all substructures, recursively
-            subs.apply_runtime(runtime_id)
+            subs.apply_runtime(runtime_id.next())
     
     def deduction(self, runtime_id: RuntimeId):
         """
             Automatic type deduction.
         """
-        # logger.info(f"Deduction on structure `{self.name}` ({self.id}), under {runtime_id}.")
-        
-        if self.runtimes.get(runtime_id) is None: # runtime must be created for all structures, including operators, so this should be executed before custom deduction
-            self.create_runtime(runtime_id)
-        
         if self.is_operator:
-            # logger.info(f"Custom deduction for structure `{self.name}`.")
-            # logger.info(f"> Before: {self.ports_inside_flipped.to_str(runtime_id)}")
             self.custom_deduction(IOProxy(self.ports_inside_flipped, runtime_id, flipped = True))
-            # logger.info(f"> After: {self.ports_inside_flipped.to_str(runtime_id)}")
             return
         
+        runtime = self.get_runtime(runtime_id)
+        
         while not self.is_determined(runtime_id): # stop if already determined
-            self.runtimes[runtime_id].deduction_effective = False # reset flag before a new round of deduction
-            # logger.info(f"New round for structure `{self.name}`.")
+            runtime.deduction_effective = False # reset flag before a new round of deduction
             
+            """
+                subs.ports_outside[] are under the structure `self` (with runtime_id);
+                subs.ports_inside_flipped is under the substructure `subs` (with next_runtime_id).
+            """
             for sub_inst_name, subs in self.substructures.items():
-                # logger.info(f"Deduction on substructure `{sub_inst_name}` (`{subs.name}`, {subs.id}).")
-                
-                # if not subs.is_determined(runtime_id):
-                #     logger.info(f"Before (`{subs.name}`): {subs.ports_outside[self.id].to_str(runtime_id)}")
-                
                 # update substructure's ports with external ports (should be synchronized even though determined, the same below)
-                subs.ports_inside_flipped.update_runtime(runtime_id, subs.ports_outside[self.id]) # s.ports_outside[self.id] is the IO of `s` connected in `self`
+                subs.ports_inside_flipped.update_runtime(runtime_id.next(), subs.ports_outside[self.id], runtime_id) # s.ports_outside[self.id] is the IO of `s` connected in `self`
                 
                 """
                     deduction() should be recursively executed on all substructures, so that the runtime information can be passed down,
@@ -464,21 +490,15 @@ class Structure:
                         Because is_determined(rid) called get_type(rid) in ports, which will create runtime information for the net.
                         When initialized, reset_type will be called, and then merge_type, then set_type, which will fetch runtime information for the structure (if type changed).
                 """
-                subs.deduction(runtime_id) # recursive deduction
+                subs.deduction(runtime_id.next()) # recursive deduction
                 
                 # update external ports with substructure's ports
-                subs.ports_outside[self.id].update_runtime(runtime_id, subs.ports_inside_flipped)
-                
-                # if not subs.is_determined(runtime_id):
-                #     logger.info(f"After (`{subs.name}`): {subs.ports_outside[self.id].to_str(runtime_id)}")
+                subs.ports_outside[self.id].update_runtime(runtime_id, subs.ports_inside_flipped, runtime_id.next())
             
-            if not self.runtimes[runtime_id].deduction_effective: # no change, stop
-                # logger.info("Not changed, stop.")
-                # return
+            if not runtime.deduction_effective: # no change, stop
                 break
-        # else:
-        #     logger.info(f"Determined.")
     
+    # TODO TODO TODO TODO TODO
     def generation(self, runtime_id: RuntimeId, prefix: str = "") -> HDLFileModel:
         """
             Generate HDL file model.
@@ -490,10 +510,7 @@ class Structure:
         if not self.is_runtime_integrate(runtime_id):
             raise StructureGenerationException("Invalid (not integrate) runtime ID")
         
-        # logger.info(f"Generation on structure `{self.name}` ({self.id}), under {runtime_id}.")
-        
         if self.is_originally_determined(): # clear previous prefix if reusable
-            # logger.info("Originally determined structure.")
             prefix = ""
         
         res = HDLFileModel(f"hdl_{prefix}{self.id[:8]}") # create file model and set entity name
@@ -513,7 +530,7 @@ class Structure:
                 net_wires[port.located_net][1].append(port_full_name)
         
         if self.is_operator: # custom generation for operator
-            io_proxy = IOProxy(self.ports_inside_flipped, runtime_id, flipped = True)
+            io_proxy = IOProxy(self.ports_inside_flipped, runtime_id.next(), flipped = True)
             self.custom_generation(res, io_proxy)
         else: # universal generation for non-operators
             for sub_inst_name, subs in self.substructures.items(): # instantiate components
@@ -531,13 +548,11 @@ class Structure:
                     else:
                         net_wires[port.located_net][1].append(port_wire_name)
                 
-                odhdl = subs.runtimes[runtime_id].originally_determined_hdl_file_model # reuse HDL file model for the substructure
+                odhdl = subs.get_runtime(runtime_id).originally_determined_hdl_file_model # reuse HDL file model for the substructure
                 if odhdl is not None:
-                    # logger.info(f"Reuse HDL file model for substructure `{sub_inst_name}` (`{subs.name}`, {subs.id}).")
                     res.inst_component(sub_inst_name, odhdl, mapping)
                 else:
-                    # logger.info(f"Generation on substructure `{sub_inst_name}` (`{subs.name}`, {subs.id}).")
-                    res.inst_component(sub_inst_name, subs.generation(runtime_id, prefix + sub_inst_name + "_"), mapping)
+                    res.inst_component(sub_inst_name, subs.generation(runtime_id.next(), prefix + sub_inst_name + "_"), mapping)
         
         for net, (driver_wire_name, load_wire_names) in net_wires.items():
             if driver_wire_name is not None:
@@ -559,13 +574,13 @@ class Structure:
                                                             |
                                                             +--> load_n
                     """
-                    reg_next_name, reg_name = res.add_register(driver_wire_name, net.runtimes[runtime_id].signal_type, latency = net.latency)
+                    reg_next_name, reg_name = res.add_register(driver_wire_name, net.get_runtime(runtime_id).signal_type, latency = net.latency)
                     res.add_assignment(reg_next_name, driver_wire_name)
                     for load_wire_name in load_wire_names:
                         res.add_assignment(load_wire_name, reg_name)
         
         if self.is_originally_determined(): # save HDL file model for originally determined structure
-            self.runtimes[runtime_id].set_originally_determined_hdl_file_model(res) # self.runtimes[runtime_id] must exist because of self.is_determined(runtime_id)
+            self.get_runtime(runtime_id).set_originally_determined_hdl_file_model(res)
         
         return res
     

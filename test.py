@@ -3,6 +3,8 @@ from nodalhdl.core.structure import Structure, RuntimeId
 from nodalhdl.basic.arith import Addition
 from nodalhdl.core.hdl import HDLFileModel
 
+import gc
+import inspect
 
 print('哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈')
 
@@ -21,6 +23,11 @@ print('哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈�
 # print('=======================================================')
 
 
+# A = Addition(UInt[8], UInt[8])
+# print(A.ports_inside_flipped.res.origin_signal_type)
+# print(A.runtimes.keys())
+
+
 def TestDiagram() -> Structure:
     # 创建结构
     res = Structure()
@@ -32,7 +39,6 @@ def TestDiagram() -> Structure:
     
     # 添加 Substructure
     add_ab = res.add_substructure("add_ab", Addition(UInt[8], UInt[8]))
-    print(add_ab.proxy_structure.id)
     add_abc = res.add_substructure("add_abc", Addition(Auto, Auto))
     
     # 添加连接关系 / 非 IO 节点
@@ -44,78 +50,110 @@ def TestDiagram() -> Structure:
     add_ab.IO.res.set_latency(2)
     add_abc.IO.res.set_latency(1)
     
-    rid = RuntimeId()
+    rid = RuntimeId.create()
+    print(rid)
+    print(rid.next())
+    
+    import sys
+    print(sys.getrefcount(rid))
+    print(sys.getrefcount(rid.next()))
+    
+    # print([x for x in res.runtimes.keys()])
+    # print([x for x in res.substructures["add_ab"].runtimes.keys()])
+    
+    # print([x for x in res.ports_inside_flipped.c.located_net.runtimes.keys()])
+    # print([x for x in res.substructures["add_ab"].ports_inside_flipped.op2.located_net.runtimes.keys()])
+    
     res.deduction(rid)
+    
+    # print([x for x in gc.get_referrers(rid)]) # TODO 为什么有这么多 -> 好像是没来得及回收, 如果在这里 import inspect 或者 gc.collect() 一下就全没了
+    gc.collect() # TODO 手动调用才回收; 不调用的话出了这个函数也没自动回收; 不确定是不是真能自动回收, 亟待检查
+    # print([x for x in gc.get_referrers(rid)]) # 不对, 又有了
+    
+    print([x for x in RuntimeId.id_pool.values()])
+    
+    print(sys.getrefcount(rid))
+    print(sys.getrefcount(rid.next()))
+    
+    print([x for x in res.runtimes.keys()])
+    print([x for x in res.substructures["add_ab"].runtimes.keys()])
+    
+    print([x for x in res.ports_inside_flipped.c.located_net.runtimes.keys()])
+    print([x for x in res.substructures["add_ab"].ports_inside_flipped.op2.located_net.runtimes.keys()])
+    
     res.apply_runtime(rid)
     
     return res
 
 testDiagram = TestDiagram()
+print(testDiagram.ports_inside_flipped.z.origin_signal_type)
 print(testDiagram.substructures["add_ab"].ports_inside_flipped.res.origin_signal_type)
 print(testDiagram.is_originally_determined())
 
-
-print('A =======================================================')
-
-
-s = Structure()
-
-bi = s.add_port("bi", Bundle[{"i": Input[UInt[2]], "o": Output[Auto]}])
-t = s.add_port("t", Input[UInt]) # 改成 undetermined 测试 Addition 的反向推导 (未实现)
-n = s.add_port("n", Input[UInt[8]])
-m = s.add_port("m", Input[UInt[8]])
-
-td = s.add_substructure("td", TestDiagram())
-add_ti = s.add_substructure("add_ti", Addition(Auto, Auto))
-add_o = s.add_substructure("add_o", Addition(UInt[8], UInt[4]))
-
-add_ti_out = s.add_node("add_ti_out", Auto)
-
-s.connect(t, add_ti.IO.op1)
-s.connect(bi.i, add_ti.IO.op2)
-s.connect(add_ti.IO.res, add_ti_out)
-
-s.connect(n, td.IO.ab.a)
-s.connect(m, td.IO.ab.b)
-s.connect(add_ti_out, td.IO.c)
-
-s.connect(td.IO.z, add_o.IO.op1)
-s.connect(add_ti_out, add_o.IO.op2)
-
-s.connect(add_o.IO.res, bi.o)
-
-# s.connect(t, td.c) # test multi-driven signal exception
-
-print(s.substructures["td"].ports_inside_flipped.z.origin_signal_type)
+# !!!!!!!!!!!!!!! TODO .next() 的 id 会被 GC 吗?
 
 
-print('B =======================================================')
+# print('A =======================================================')
 
 
-rid = RuntimeId()
+# s = Structure()
 
-s.deduction(rid)
-s.apply_runtime(rid) # TODO
+# bi = s.add_port("bi", Bundle[{"i": Input[UInt[2]], "o": Output[Auto]}])
+# t = s.add_port("t", Input[UInt]) # 改成 undetermined 测试 Addition 的反向推导 (未实现)
+# n = s.add_port("n", Input[UInt[8]])
+# m = s.add_port("m", Input[UInt[8]])
 
-print(s.substructures["add_ti"].ports_outside[s.id].op1.get_type(rid))
-print(s.substructures["add_ti"].ports_outside[s.id].op2.get_type(rid))
+# td = s.add_substructure("td", TestDiagram())
+# add_ti = s.add_substructure("add_ti", Addition(Auto, Auto))
+# add_o = s.add_substructure("add_o", Addition(UInt[8], UInt[4]))
 
-print(s.substructures["add_ti"].ports_inside_flipped.op1.get_type(rid))
-print(s.substructures["add_ti"].ports_inside_flipped.op2.get_type(rid))
+# add_ti_out = s.add_node("add_ti_out", Auto)
 
-print(s.substructures["td"].substructures["add_ab"].runtimes.keys(), rid)
+# s.connect(t, add_ti.IO.op1)
+# s.connect(bi.i, add_ti.IO.op2)
+# s.connect(add_ti.IO.res, add_ti_out)
+
+# s.connect(n, td.IO.ab.a)
+# s.connect(m, td.IO.ab.b)
+# s.connect(add_ti_out, td.IO.c)
+
+# s.connect(td.IO.z, add_o.IO.op1)
+# s.connect(add_ti_out, add_o.IO.op2)
+
+# s.connect(add_o.IO.res, bi.o)
+
+# # s.connect(t, td.c) # test multi-driven signal exception
+
+# print(s.substructures["td"].ports_inside_flipped.z.origin_signal_type)
 
 
-print('C =======================================================')
+# print('B =======================================================')
 
 
-from nodalhdl.core.hdl import write_to_files
-import shutil
+# rid = RuntimeId.create()
 
-h = s.generation(rid)
-# print("2")
+# s.deduction(rid)
+# s.apply_runtime(rid) # TODO
+
+# print(s.substructures["add_ti"].ports_outside[s.id].op1.get_type(rid))
+# print(s.substructures["add_ti"].ports_outside[s.id].op2.get_type(rid))
+
+# print(s.substructures["add_ti"].ports_inside_flipped.op1.get_type(rid))
+# print(s.substructures["add_ti"].ports_inside_flipped.op2.get_type(rid))
+
+# print(s.substructures["td"].substructures["add_ab"].runtimes.keys(), rid)
+
+
+# print('C =======================================================')
+
+
+# from nodalhdl.core.hdl import write_to_files
+# import shutil
+
 # h = s.generation(rid)
+# # print("2")
+# # h = s.generation(rid)
 
-shutil.rmtree("C:/Workspace/test_project/test_project.srcs/sources_1/new")
-write_to_files(h.emit_vhdl(), "C:/Workspace/test_project/test_project.srcs/sources_1/new")
+# shutil.rmtree("C:/Workspace/test_project/test_project.srcs/sources_1/new")
+# write_to_files(h.emit_vhdl(), "C:/Workspace/test_project/test_project.srcs/sources_1/new")
 

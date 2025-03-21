@@ -59,7 +59,7 @@ end architecture;
     res.custom_deduction = deduction
     res.custom_generation = generation
     
-    rid = RuntimeId()
+    rid = RuntimeId.create()
     res.deduction(rid)
     res.apply_runtime(rid)
     
