@@ -413,8 +413,8 @@ class Structure:
         substructures_determined = all([s.is_determined(runtime_id.next(n)) for n, s in self.substructures.items()])
         return ports_determined and substructures_determined
     
-    def runtime_info(self, runtime_id: RuntimeId, indent: int = 0, fqn: str = "<self>"):
-        res = " " * indent + f"Structure {fqn}, IO: {self.ports_inside_flipped.runtime_info(runtime_id)}.\n"
+    def runtime_info(self, runtime_id: RuntimeId, indent: int = 0, fqn: str = "<root>"):
+        res = " " * indent + f"{fqn} ({self.id[:8]}), IO: {self.ports_inside_flipped.runtime_info(runtime_id)}.\n"
         for sub_inst_name, subs in self.substructures.items():
             res += subs.runtime_info(runtime_id.next(sub_inst_name), indent + 4, fqn + "." + sub_inst_name)
         return res
@@ -520,6 +520,7 @@ class Structure:
             raise StructureGenerationException("Invalid (not integrate) runtime ID")
         
         if self.is_reusable: # clear previous prefix if reusable
+            
             prefix = ""
         
         res = HDLFileModel(f"hdl_{prefix}") # create file model and set entity name
