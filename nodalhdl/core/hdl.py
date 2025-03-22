@@ -76,7 +76,7 @@ class HDLFileModel:
         
         self.libs: Dict[str, List[str]] = {} # Dict[语言类型, List[包引用行]]
         self.ports: Dict[str, Tuple[str, SignalType]] = {} # Dict[端口名, (方向, 类型)]
-        self.components: Set[HDLFileModel] = set() # Set[组件对应文件模型]
+        self.components: Dict[str, HDLFileModel] = {} # Dict[组件名, 组件对应文件模型]
         self.inst_comps: Dict[str, Tuple[str, Dict[str, str]]] = {} # Dict[实例名, (组件名, Dict[组件端口名, 实例端口名])]
         self.signals: Dict[str, SignalType] = {} # Dict[信号名, 信号类型]
         self.assignments: List[Tuple[str, str]] = [] # List[Tuple[目标信号, 源信号]] TODO 不带有表达式
@@ -94,7 +94,7 @@ class HDLFileModel:
     
     @property
     def is_sequential(self): # 存在时序逻辑或任意子模块存在时序逻辑
-        return len(self.registers) > 0 or any([comp.is_sequential for comp in self.components])
+        return len(self.registers) > 0 or any([comp.is_sequential for comp in self.components.values()])
     
     def emit_vhdl(self):
         res = {}
@@ -103,12 +103,12 @@ class HDLFileModel:
         
         def _collect(model: 'HDLFileModel'):
             models = set({model}) # 加入自身
-            for comp in model.components:
+            for comp in model.components.values():
                 sub_models = _collect(comp)
                 models.update(sub_models)
             return models
         
-        models = _collect(self) # 递归收集所有 HDLFileModel (去重)
+        models = _collect(self) # 递归收集所有 HDLFileModel
         
         def _gen_vhdl(model: HDLFileModel):
             # 包引用声明
@@ -136,8 +136,8 @@ class HDLFileModel:
             
             # 组件声明
             comp_declaration = ""
-            for comp in model.components:
-                comp_declaration += _gen_ports(comp, "component", "    ") + "\n"
+            for comp in model.components.values():
+                comp_declaration += _gen_ports(comp, "component", "    ") + "\n\n"
 
             # 信号声明
             signal_declaration = ""
@@ -179,7 +179,7 @@ class HDLFileModel:
                 assignment_content = assignment_content[:-1]
             
             # 拼接文件内容
-            return f"{libs_declaration}\n{_gen_ports(model, "entity")}\n\narchitecture Structural of {model.entity_name} is\n{comp_declaration}\n{signal_declaration}\nbegin\n{seq_process + "\n" if len(model.registers) > 0 else ""}{comp_content}\n{assignment_content}\nend architecture;"
+            return f"{libs_declaration}\n{_gen_ports(model, "entity")}\n\narchitecture Structural of {model.entity_name} is\n{comp_declaration}{signal_declaration}\nbegin\n{seq_process + "\n" if len(model.registers) > 0 else ""}{comp_content}\n{assignment_content}\nend architecture;"
         
         for model in models:
             if model.raw:
@@ -188,15 +188,13 @@ class HDLFileModel:
                 
                 file_name = model.entity_name + model.raw_suffix
                 if file_name in res.keys():
-                    # raise HDLFileModelException(f"File model names conflicting: \'{file_name}\'")
-                    continue # TODO warning. 可能有 runtime determined 结构经过 unique name 计算后和复用结构冲突, 但实际上是一致的. 但是不报错, 下同.
+                    raise HDLFileModelException(f"File model names conflicting: \'{file_name}\'")
                 
                 res[file_name] = model.raw_content
             else:
                 file_name = model.entity_name + ".vhd"
                 if file_name in res.keys():
-                    # raise HDLFileModelException(f"File model names conflicting")
-                    continue # TODO
+                    raise HDLFileModelException(f"File model names conflicting: \'{file_name}\'")
                 
                 res[file_name] = _gen_vhdl(model)
         
@@ -218,11 +216,13 @@ class HDLFileModel:
     
     def add_component(self, comp: 'HDLFileModel'): # 添加组件到 components, 将 comp 的全局信息传递给自己的全局信息
         self.global_info.merge(comp.global_info)
-        self.components.add(comp)
+        self.components[comp.entity_name] = comp
     
     def inst_component(self, inst_name: str, comp: 'HDLFileModel', mapping: Dict[str, str]):
-        if comp not in self.components: # 未添加到 components 中则添加
+        if comp.entity_name not in self.components.keys(): # 未添加到 components 中则添加
             self.add_component(comp)
+        elif comp is not self.components[comp.entity_name]: # 同名但不是同一个对象
+            raise HDLFileModelException(f"Component \'{comp.entity_name}\' already exists in components but not the same model.")
         
         self.inst_comps[inst_name] = (comp.entity_name, mapping if not comp.is_sequential else {
             "clock": "clock",
