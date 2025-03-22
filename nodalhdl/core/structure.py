@@ -338,16 +338,16 @@ class Structure:
             # properties
             self.id_weak: weakref.ReferenceType[RuntimeId] = weakref.ref(runtime_id)
             self.deduction_effective: bool = False
-            self.originally_determined_hdl_file_model: HDLFileModel = None # only originally determined structure can reuse HDL file model; and runtimes will be cleared if the structure is changed
+            self.reusable_hdl: HDLFileModel = None # only for reusable structure; destroy with runtime when structural information changed
             
             # references
             self.attach_structure: weakref.ReferenceType[Structure] = weakref.ref(attach_structure) # the structure this runtime is attached to
 
-        def set_originally_determined_hdl_file_model(self, hdl_file_model: HDLFileModel):
+        def set_reusable_hdl(self, model: HDLFileModel):
             if not self.attach_structure().is_reusable:
-                raise StructureException("Cannot set originally determined HDL file model for a originally undetermined structure")
+                raise StructureException("Cannot set reusable HDL file model for a originally undetermined structure")
             
-            self.originally_determined_hdl_file_model = hdl_file_model
+            self.reusable_hdl = model
     
     def create_runtime(self, runtime_id: RuntimeId) -> 'Structure.Runtime':
         new_runtime = Structure.Runtime(attach_structure = self, runtime_id = runtime_id)
@@ -362,9 +362,10 @@ class Structure:
     def clear_runtimes(self):
         self.runtimes.clear()
     
-    def __init__(self):
+    def __init__(self, unique_name: str = None):
         # properties
         self.id = str(uuid.uuid4()).replace('-', '')
+        self.unique_name: str = unique_name
         
         self.custom_deduction: callable = None
         self.custom_generation: callable = None
@@ -508,7 +509,7 @@ class Structure:
                 break
     
     # TODO TODO TODO TODO TODO
-    def generation(self, runtime_id: RuntimeId, prefix: str = "top") -> HDLFileModel:
+    def generation(self, runtime_id: RuntimeId, prefix: str = "root") -> HDLFileModel:
         """
             Generate HDL file model.
             prefix: e.g. this structure is instanced in somewhere as "bar" under "layer_xxx_foo_", then the prefix should be "layer_xxx_foo_bar_".
@@ -519,18 +520,25 @@ class Structure:
         if not self.is_runtime_integrate(runtime_id):
             raise StructureGenerationException("Invalid (not integrate) runtime ID")
         
-        if self.is_reusable: # clear previous prefix if reusable
-            
-            prefix = ""
+        # naming (1. hdl_root_inst_names; 2. hdl_unique_name_inst_names; 3. hdl_sid_inst_names)
+        runtime = self.get_runtime(runtime_id)
+        if self.is_reusable:
+            if runtime.reusable_hdl is not None:
+                return runtime.reusable_hdl
+            else:
+                prefix = self.unique_name if self.unique_name is not None else self.id[:8]
         
-        res = HDLFileModel(f"hdl_{prefix}") # create file model and set entity name
+        # create file model and set entity name
+        model = HDLFileModel(f"hdl_{prefix}")
         
         net_wires: Dict[Net, List[str, List[str]]] = {} # net -> (driver_wire_name, load_wire_names[])
         
-        for port_full_name, port in self.ports_inside_flipped.nodes(): # add ports
+        # add ports into model according to ports_inside_flipped
+        for port_full_name, port in self.ports_inside_flipped.nodes():
             direction = "out" if port.origin_signal_type.belongs(Input) else "in" # ports_inside_flipped is IO flipped
-            res.add_port(f"{port_full_name}", direction, port.get_type(runtime_id)) # use full name
+            model.add_port(f"{port_full_name}", direction, port.get_type(runtime_id)) # use full name
             
+            # fill net_wires
             if net_wires.get(port.located_net) is None:
                 net_wires[port.located_net] = [None, []]
             
@@ -539,16 +547,20 @@ class Structure:
             else:
                 net_wires[port.located_net][1].append(port_full_name)
         
-        if self.is_operator: # custom generation for operator
-            self.custom_generation(res, IOProxy(self.ports_inside_flipped, runtime_id, flipped = True))
-        else: # universal generation for non-operators
-            for sub_inst_name, subs in self.substructures.items(): # instantiate components
+        # substructures
+        if self.is_operator:
+            # custom generation for operator
+            self.custom_generation(model, IOProxy(self.ports_inside_flipped, runtime_id, flipped = True))
+        else:
+            # universal generation for non-operators
+            for sub_inst_name, subs in self.substructures.items():
                 mapping = {}
                 for port_full_name, port in subs.ports_outside[(self.id, sub_inst_name)].nodes(): # must use subs.ports_outside, which locates in self
                     port_wire_name = f"{sub_inst_name}_io_{port_full_name}" # inst_name_io_node_full_name
                     mapping[port_full_name] = port_wire_name
-                    res.add_signal(port_wire_name, port.get_type(runtime_id)) # add signal for port wire
-            
+                    model.add_signal(port_wire_name, port.get_type(runtime_id)) # add signal for port wire
+
+                    # fill net_wires
                     if net_wires.get(port.located_net) is None:
                         net_wires[port.located_net] = [None, []]
                     
@@ -557,41 +569,35 @@ class Structure:
                     else:
                         net_wires[port.located_net][1].append(port_wire_name)
                 
-                odhdl = subs.get_runtime(runtime_id).originally_determined_hdl_file_model # reuse HDL file model for the substructure
-                if odhdl is not None:
-                    res.inst_component(sub_inst_name, odhdl, mapping)
-                else:
-                    res.inst_component(sub_inst_name, subs.generation(runtime_id.next(sub_inst_name), prefix + sub_inst_name + "_"), mapping)
+                model.inst_component(sub_inst_name, subs.generation(runtime_id.next(sub_inst_name), prefix + "_" + sub_inst_name), mapping)
         
+        # build nets according to net_wires
         for net, (driver_wire_name, load_wire_names) in net_wires.items():
             if driver_wire_name is not None:
-                if net.latency == 0: # comb
+                if net.latency == 0:
                     """
-                                 +--> load_0
-                                 |
-                        driver --+--> load_i
-                                 |
-                                 +--> load_n
+                                 +-> load_0
+                        driver --+-> load_i
+                                 +-> load_n-1
                     """
                     for load_wire_name in load_wire_names:
-                        res.add_assignment(load_wire_name, driver_wire_name)
-                else: # seq
+                        model.add_assignment(load_wire_name, driver_wire_name)
+                else:
                     """
-                                                            +--> load_0
-                                                            |
-                        driver ----> reg_next | ... | reg --+--> load_i
-                                                            |
-                                                            +--> load_n
+                                                            +-> load_0
+                        driver ----> reg_next | ... | reg --+-> load_i
+                                                            +-> load_n-1
                     """
-                    reg_next_name, reg_name = res.add_register(driver_wire_name, net.get_runtime(runtime_id).signal_type, latency = net.latency)
-                    res.add_assignment(reg_next_name, driver_wire_name)
+                    reg_next_name, reg_name = model.add_register(driver_wire_name, net.get_runtime(runtime_id).signal_type, latency = net.latency)
+                    model.add_assignment(reg_next_name, driver_wire_name)
                     for load_wire_name in load_wire_names:
-                        res.add_assignment(load_wire_name, reg_name)
+                        model.add_assignment(load_wire_name, reg_name)
         
-        if self.is_reusable: # save HDL file model for originally determined structure
-            self.get_runtime(runtime_id).set_originally_determined_hdl_file_model(res)
+        # save model for reusable structures
+        if self.is_reusable:
+            runtime.set_reusable_hdl(model)
         
-        return res
+        return model
     
     def add_port(self, name: str, signal_type: SignalType) -> Node:
         if not signal_type.perfectly_io_wrapped:

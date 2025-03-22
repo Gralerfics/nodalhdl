@@ -5,11 +5,11 @@ from ..core.util import static
 
 
 def Addition(op1_type: SignalType, op2_type: SignalType) -> Structure:
-    res = Structure()
+    s = Structure()
     
-    res.add_port("op1", Input[op1_type])
-    res.add_port("op2", Input[op2_type])
-    res.add_port("res", Output[Auto])
+    s.add_port("op1", Input[op1_type])
+    s.add_port("op2", Input[op2_type])
+    s.add_port("res", Output[Auto])
     
     def deduction(io: IOProxy):
         t1, t2, tr = io.op1.type, io.op2.type, io.res.type
@@ -56,12 +56,15 @@ end architecture;
 """
         )
     
-    res.custom_deduction = deduction
-    res.custom_generation = generation
+    s.custom_deduction = deduction
+    s.custom_generation = generation
     
     rid = RuntimeId.create()
-    res.deduction(rid)
-    res.apply_runtime(rid)
+    s.deduction(rid)
+    s.apply_runtime(rid)
     
-    return res
+    if s.is_reusable:
+        s.unique_name = f"addition_{op1_type}_{op2_type}"
+    
+    return s
 

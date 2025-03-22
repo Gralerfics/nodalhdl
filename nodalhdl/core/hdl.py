@@ -179,7 +179,7 @@ class HDLFileModel:
                 assignment_content = assignment_content[:-1]
             
             # 拼接文件内容
-            return f"{libs_declaration}\n{_gen_ports(model, "entity")}\narchitecture Structural of {model.entity_name} is\n{comp_declaration}\n{signal_declaration}\nbegin\n{seq_process + "\n" if len(model.registers) > 0 else ""}{comp_content}\n{assignment_content}\nend architecture;"
+            return f"{libs_declaration}\n{_gen_ports(model, "entity")}\n\narchitecture Structural of {model.entity_name} is\n{comp_declaration}\n{signal_declaration}\nbegin\n{seq_process + "\n" if len(model.registers) > 0 else ""}{comp_content}\n{assignment_content}\nend architecture;"
         
         for model in models:
             if model.raw:

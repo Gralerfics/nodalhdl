@@ -17,7 +17,7 @@ print('add_u4_u4_u4 ============================================================
 
 
 def AddU4U4U4() -> Structure:
-    s = Structure()
+    s = Structure(unique_name = "addition_UInt_4_UInt_4_UInt_4")
     
     op1 = s.add_port("op1", Input[UInt[4]])
     op2 = s.add_port("op2", Input[UInt[4]])
@@ -58,17 +58,20 @@ def KeeperTickN(t: SignalType, n: int = 0) -> Structure:
     rid = RuntimeId.create()
     s.deduction(rid)
     s.apply_runtime(rid)
+    
+    if s.is_reusable:
+        s.unique_name = f"keeper_{t}_{n}CLK"
 
     return s
 
-keeper_u4_1clk = KeeperTickN(UInt[4])
+keeper_u4_1clk = KeeperTickN(UInt[4], 1)
 
 
 print('m1 ==============================================================================================================')
 
 
 def M1() -> Structure:
-    s = Structure()
+    s = Structure("m1")
     
     t = s.add_port("t", Input[UInt[4]])
     a = s.add_port("a", Input[UInt[4]])
@@ -200,4 +203,18 @@ rid = RuntimeId.create()
 m3.deduction(rid)
 
 print(m3.runtime_info(rid))
+
+
+print('m2.gen ==============================================================================================================')
+
+
+from nodalhdl.core.hdl import write_to_files
+import shutil
+
+rid = RuntimeId.create()
+m2.deduction(rid)
+model = m2.generation(rid)
+
+shutil.rmtree("C:/Workspace/test_project/test_project.srcs/sources_1/new")
+write_to_files(model.emit_vhdl(), "C:/Workspace/test_project/test_project.srcs/sources_1/new")
 
