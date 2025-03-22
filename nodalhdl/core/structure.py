@@ -370,6 +370,8 @@ class Structure:
         
         self.reusable_hdl: HDLFileModel = None # only for reusable structure; destroy when structural information changed
         
+        self.custom_params = {}
+        
         self.custom_deduction: callable = None
         self.custom_generation: callable = None
         
@@ -482,7 +484,7 @@ class Structure:
         structure_runtime = self.get_runtime(runtime_id) # ensure runtime information is created, for integrity consideration
         
         if self.is_operator:
-            self.custom_deduction(IOProxy(self.ports_inside_flipped, runtime_id, flipped = True))
+            self.custom_deduction(self, IOProxy(self.ports_inside_flipped, runtime_id, flipped = True))
             return
         
         while not self.is_determined(runtime_id): # stop if already determined
@@ -552,7 +554,7 @@ class Structure:
         # substructures
         if self.is_operator:
             # custom generation for operator
-            self.custom_generation(model, IOProxy(self.ports_inside_flipped, runtime_id, flipped = True))
+            self.custom_generation(self, model, IOProxy(self.ports_inside_flipped, runtime_id, flipped = True))
         else:
             # universal generation for non-operators
             for sub_inst_name, subs in self.substructures.items():

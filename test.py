@@ -1,31 +1,25 @@
 from nodalhdl.core.signal import UInt, SInt, Bits, Bit, Float, Bundle, Input, Output, Auto, SignalType
 from nodalhdl.core.structure import Structure, RuntimeId
-from nodalhdl.basic.arith import Addition
+from nodalhdl.basic.arith import Add, GetAttribute
 from nodalhdl.core.hdl import HDLFileModel
 
 import gc
 import inspect
 
 
-print('add_u4_u4 ==============================================================================================================')
-
-
-add_u4_u4 = Addition(UInt[4], UInt[4])
-
-
 print('add_u4_u4_u4 ==============================================================================================================')
 
 
 def AddU4U4U4() -> Structure:
-    s = Structure(unique_name = "addition_UInt_4_UInt_4_UInt_4")
+    s = Structure(unique_name = "Add_UInt_4_UInt_4_UInt_4")
     
     op1 = s.add_port("op1", Input[UInt[4]])
     op2 = s.add_port("op2", Input[UInt[4]])
     op3 = s.add_port("op3", Input[UInt[4]])
     res = s.add_port("res", Output[Auto])
     
-    add_12 = s.add_substructure("add_12", add_u4_u4)
-    add_123 = s.add_substructure("add_123", add_u4_u4)
+    add_12 = s.add_substructure("add_12", Add[UInt[4], UInt[4]])
+    add_123 = s.add_substructure("add_123", Add[UInt[4], UInt[4]])
     
     s.connect(op1, add_12.IO.op1)
     s.connect(op2, add_12.IO.op2)
@@ -60,7 +54,7 @@ def KeeperTickN(t: SignalType, n: int = 0) -> Structure:
     s.apply_runtime(rid)
     
     if s.is_reusable:
-        s.unique_name = f"keeper_{t}_{n}CLK"
+        s.unique_name = f"Keeper_{t}_{n}CLK"
 
     return s
 
@@ -80,7 +74,7 @@ def M1() -> Structure:
     o = s.add_port("o", Output[Auto])
     
     x = s.add_substructure("x", keeper_u4_1clk)
-    y = s.add_substructure("y", add_u4_u4)
+    y = s.add_substructure("y", Add[UInt[4], UInt[4]])
     z = s.add_substructure("z", add_u4_u4_u4)
     
     s.connect(t, x.IO.i)
@@ -103,7 +97,7 @@ m1 = M1()
 print('addw ==============================================================================================================')
 
 
-add_auto_auto = Addition(Auto, Auto)
+add_auto_auto = Add[Auto, Auto]
 
 def AddWrapper(t1: SignalType, t2: SignalType) -> Structure:
     s = Structure()
@@ -154,6 +148,8 @@ def M2() -> Structure:
     u1 = s.add_substructure("u1", m1)
     u2 = s.add_substructure("u2", addw)
     
+    u3 = s.add_substructure("u3", GetAttribute[B_t, ("xy", "y")])
+    
     s.connect(t, u1.IO.t)
     s.connect(a, u1.IO.a)
     s.connect(b, u1.IO.b)
@@ -162,7 +158,9 @@ def M2() -> Structure:
     s.connect(x, u2.IO.i2)
     s.connect(u2.IO.o, o)
     
-    s.connect(Bi, Bo)
+    # s.connect(Bi, Bo)
+    s.connect(Bi, u3.IO.i)
+    s.connect(u3.IO.o, Bo)
     Bi.set_latency(2)
 
     return s
@@ -192,7 +190,7 @@ def M3() -> Structure:
     
     p = s.add_substructure("p", addw)
     q = s.add_substructure("q", add_auto_auto)
-    r = s.add_substructure("r", add_u4_u4)
+    r = s.add_substructure("r", Add[UInt[4], UInt[4]])
     
     Nipq = s.add_node("Nipq", Auto)
     s.connect(ipq, Nipq)
