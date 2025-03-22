@@ -14,7 +14,8 @@ logger = logging.getLogger(__name__)
 """ Id """
 class RuntimeId:
     """
-        TODO
+        RuntimeId.get(id_str): runtime_id
+        runtime_id.next(inst_name): next runtime_id
     """
     NULL_NAMESPACE = uuid.UUID('00000000-0000-0000-0000-000000000000')
     
@@ -22,13 +23,13 @@ class RuntimeId:
     
     def __init__(self, id_str: str):
         self.id_str: str = id_str
-        self.next_id: RuntimeId = None # ensure the next_id is referenced by its previous id
+        self.nexts: Dict[str, RuntimeId] = {} # ensure the next ids are referenced by their previous id
     
     def __repr__(self):
-        return f"<RuntimeId: {self.id_str} (next: {self.next_id.id_str if self.next_id is not None else None})>"
+        return f"<RuntimeId: {self.id_str}>"
     
-    def _next(self):
-        next_id_str = str(uuid.uuid5(RuntimeId.NULL_NAMESPACE, self.id_str)).replace('-', '') # TODO 命名空间下生成的 next_id 和 uuid4 生成 id 的潜在冲突
+    def _next(self, key: str):
+        next_id_str = str(uuid.uuid5(RuntimeId.NULL_NAMESPACE, self.id_str + "_" + key)).replace('-', '') # TODO 命名空间下生成的 next_id 和 uuid4 生成 id 的潜在冲突
         next_id = RuntimeId.get(next_id_str)
         return next_id
     
@@ -47,10 +48,10 @@ class RuntimeId:
             return new_id
         return RuntimeId.id_pool[id_str]
     
-    def next(self):
-        if self.next_id is None:
-            self.next_id = self._next()
-        return self.next_id
+    def next(self, key: str):
+        if self.nexts.get(key) is None:
+            self.nexts[key] = self._next(key)
+        return self.nexts[key]
 
 
 """ Structure """
@@ -378,7 +379,6 @@ class Structure:
         # references (external structure)
         self.ports_outside: Dict[Tuple[str, str], StructuralNodes] = {} # Tuple[located_structure_id, inst_name_in_that_structure] -> IO in the located structure
         self.instance_number: int = 0 # number of instances
-        # self.located_structures_weak: weakref.WeakValueDictionary = weakref.WeakValueDictionary() # located_structure_id -> located_structure
         
         # runtime
         self.runtimes: weakref.WeakKeyDictionary[RuntimeId, Structure.Runtime] = weakref.WeakKeyDictionary() # runtime_id -> runtime info
@@ -388,18 +388,17 @@ class Structure:
         return self.custom_deduction is not None and self.custom_generation is not None
     
     @property
+    def is_reusable(self):
+        return self.is_originally_determined()
+    
+    @property
     def is_runtime_applicable(self):
         """
             Check if the structure and all its originally undetermined substructures are singletons, i.e. do not have multiple located structures.
             Only these structures can apply runtime information.
             Originally determined structures have same information that they will not conflict.
         """
-        # return len(self.located_structures_weak) <= 1 and all([subs.is_singleton for subs in self.substructures.values()])
         return self.is_reusable or (self.instance_number <= 1 and all([subs.is_runtime_applicable for subs in self.substructures.values()]))
-    
-    @property
-    def is_reusable(self):
-        return self.is_originally_determined()
 
     def is_runtime_integrate(self, runtime_id: RuntimeId):
         """
@@ -407,11 +406,11 @@ class Structure:
             Runtime information in structures will be cleared when there are structural modifications.
             No need to check all nodes and ports, their runtime information should be called by the structures.
         """
-        return runtime_id in self.runtimes.keys() and all([subs.is_runtime_integrate(runtime_id.next()) for subs in self.substructures.values()])
+        return runtime_id in self.runtimes.keys() and all([subs.is_runtime_integrate(runtime_id.next(sub_inst_name)) for sub_inst_name, subs in self.substructures.items()])
     
     def is_determined(self, runtime_id: RuntimeId): # all ports and substructures are determined
         ports_determined = all([p.is_determined(runtime_id) for _, p in self.ports_inside_flipped.nodes()])
-        substructures_determined = all([s.is_determined(runtime_id.next()) for s in self.substructures.values()])
+        substructures_determined = all([s.is_determined(runtime_id.next(n)) for n, s in self.substructures.items()])
         return ports_determined and substructures_determined
     
     def is_originally_determined(self): # i.e. reusable structure
@@ -430,6 +429,12 @@ class Structure:
     def duplicate(self, shallow: bool = False) -> 'Structure':
         """
             shallow: 是否浅复制, 即只复制一层结构, 子结构保留原引用.
+        """
+        pass # TODO
+    
+    def singletonize(self):
+        """
+            TODO
         """
         pass # TODO
     
@@ -462,8 +467,8 @@ class Structure:
         for node in self.nodes: # apply runtime info to all nodes (may be not necessary)
             node.set_origin_type(node.origin_signal_type.applys(node.get_type(runtime_id)), do_not_clear_structure_runtime = True) # (*)
         
-        for subs in self.substructures.values(): # apply runtime info to all substructures, recursively
-            subs.apply_runtime(runtime_id.next())
+        for sub_inst_name, subs in self.substructures.items(): # apply runtime info to all substructures, recursively
+            subs.apply_runtime(runtime_id.next(sub_inst_name))
     
     def deduction(self, runtime_id: RuntimeId):
         """
@@ -484,7 +489,7 @@ class Structure:
             """
             for sub_inst_name, subs in self.substructures.items():
                 # update substructure's ports with external ports (should be synchronized even though determined, the same below)
-                subs.ports_inside_flipped.update_runtime(runtime_id.next(), subs.ports_outside[(self.id, sub_inst_name)], runtime_id) # s.ports_outside[(self.id, sub_inst_name)] is the IO of `s` connected in `self`
+                subs.ports_inside_flipped.update_runtime(runtime_id.next(sub_inst_name), subs.ports_outside[(self.id, sub_inst_name)], runtime_id) # s.ports_outside[(self.id, sub_inst_name)] is the IO of `s` connected in `self`
                 
                 """
                     deduction() should be recursively executed on all substructures, so that the runtime information can be passed down,
@@ -493,16 +498,16 @@ class Structure:
                         Because is_determined(rid) called get_type(rid) in ports, which will create runtime information for the net.
                         When initialized, reset_type will be called, and then merge_type, then set_type, which will fetch runtime information for the structure (if type changed).
                 """
-                subs.deduction(runtime_id.next()) # recursive deduction
+                subs.deduction(runtime_id.next(sub_inst_name)) # recursive deduction
                 
                 # update external ports with substructure's ports
-                subs.ports_outside[(self.id, sub_inst_name)].update_runtime(runtime_id, subs.ports_inside_flipped, runtime_id.next())
+                subs.ports_outside[(self.id, sub_inst_name)].update_runtime(runtime_id, subs.ports_inside_flipped, runtime_id.next(sub_inst_name))
             
             if not structure_runtime.deduction_effective: # no change, stop
                 break
     
     # TODO TODO TODO TODO TODO
-    def generation(self, runtime_id: RuntimeId, prefix: str = "") -> HDLFileModel:
+    def generation(self, runtime_id: RuntimeId, prefix: str = "top") -> HDLFileModel:
         """
             Generate HDL file model.
             prefix: e.g. this structure is instanced in somewhere as "bar" under "layer_xxx_foo_", then the prefix should be "layer_xxx_foo_bar_".
@@ -516,7 +521,7 @@ class Structure:
         if self.is_reusable: # clear previous prefix if reusable
             prefix = ""
         
-        res = HDLFileModel(f"hdl_{prefix}{self.id[:8]}") # create file model and set entity name
+        res = HDLFileModel(f"hdl_{prefix}") # create file model and set entity name
         
         net_wires: Dict[Net, List[str, List[str]]] = {} # net -> (driver_wire_name, load_wire_names[])
         
@@ -533,7 +538,7 @@ class Structure:
                 net_wires[port.located_net][1].append(port_full_name)
         
         if self.is_operator: # custom generation for operator
-            self.custom_generation(res, IOProxy(self.ports_inside_flipped, runtime_id.next(), flipped = True))
+            self.custom_generation(res, IOProxy(self.ports_inside_flipped, runtime_id, flipped = True))
         else: # universal generation for non-operators
             for sub_inst_name, subs in self.substructures.items(): # instantiate components
                 mapping = {}
@@ -554,7 +559,7 @@ class Structure:
                 if odhdl is not None:
                     res.inst_component(sub_inst_name, odhdl, mapping)
                 else:
-                    res.inst_component(sub_inst_name, subs.generation(runtime_id.next(), prefix + sub_inst_name + "_"), mapping)
+                    res.inst_component(sub_inst_name, subs.generation(runtime_id.next(sub_inst_name), prefix + sub_inst_name + "_"), mapping)
         
         for net, (driver_wire_name, load_wire_names) in net_wires.items():
             if driver_wire_name is not None:
@@ -617,7 +622,6 @@ class Structure:
         
         self.substructures[inst_name] = structure # strong reference to the substructure
         structure.instance_number += 1
-        # structure.located_structures_weak[self.id] = self # weak reference to the located structure in the substructure
         
         def _create(io: Union[Node, StructuralNodes]):
             if isinstance(io, Node):
