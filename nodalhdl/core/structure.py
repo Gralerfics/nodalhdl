@@ -223,27 +223,34 @@ class Node:
         Likewise, only the following methods are allowed if you want to change the structural information.
         All runtime information should be cleared, so that any runtime_id that passes through the structure loses its integrity.
     """
-    def set_origin_type(self, signal_type: SignalType, do_not_clear_structure_runtime: bool = False):
+    def _structural_modification(self):
+        self.located_structure.clear_runtimes() # clear runtime info
+        self.located_structure.reusable_hdl = None # remove reusable_hdl
+    
+    def set_origin_type(self, signal_type: SignalType, safe_modification: bool = False):
         if self.origin_signal_type is signal_type: # no change
             return
 
         self.origin_signal_type = signal_type
-        if not do_not_clear_structure_runtime:
-            self.located_structure.clear_runtimes() # all runtime information is invalid, clear them
+        
+        if not safe_modification: # safe_modification: this modification do not influence runtime info
+            self._structural_modification() # structural modification
 
     def merge(self, other: 'Node'):
         if self.located_net is other.located_net: # same net, no change
             return
         
         self.located_net.merge(other.located_net)
-        self.located_structure.clear_runtimes() # all runtime information is invalid, clear them
+        
+        self._structural_modification() # structural modification
     
     def separate(self):
         if len(self.located_net) == 1: # only one node, no need to separate
             return
         
         self.located_net.separate_node(self)
-        self.located_structure.clear_runtimes() # all runtime information is invalid, clear them
+        
+        self._structural_modification() # structural modification
     
     def delete(self):
         if self.is_port:
@@ -251,7 +258,8 @@ class Node:
         
         self.located_net.nodes_weak.remove(self) # theoretically not necessary. this node should have been GCed after located_structure.nodes.remove()
         self.located_structure.nodes.remove(self)
-        self.located_structure.clear_runtimes() # all runtime information is invalid, clear them
+        
+        self._structural_modification() # structural modification
 
     """
         Latency setting will not change the structural information. Types are passed through the registers.
@@ -338,17 +346,10 @@ class Structure:
             # properties
             self.id_weak: weakref.ReferenceType[RuntimeId] = weakref.ref(runtime_id)
             self.deduction_effective: bool = False
-            self.reusable_hdl: HDLFileModel = None # only for reusable structure; destroy with runtime when structural information changed
             
             # references
             self.attach_structure: weakref.ReferenceType[Structure] = weakref.ref(attach_structure) # the structure this runtime is attached to
 
-        def set_reusable_hdl(self, model: HDLFileModel):
-            if not self.attach_structure().is_reusable:
-                raise StructureException("Cannot set reusable HDL file model for a originally undetermined structure")
-            
-            self.reusable_hdl = model
-    
     def create_runtime(self, runtime_id: RuntimeId) -> 'Structure.Runtime':
         new_runtime = Structure.Runtime(attach_structure = self, runtime_id = runtime_id)
         self.runtimes[runtime_id] = new_runtime
@@ -366,6 +367,8 @@ class Structure:
         # properties
         self.id = str(uuid.uuid4()).replace('-', '')
         self.unique_name: str = unique_name
+        
+        self.reusable_hdl: HDLFileModel = None # only for reusable structure; destroy when structural information changed
         
         self.custom_deduction: callable = None
         self.custom_generation: callable = None
@@ -460,14 +463,14 @@ class Structure:
             raise StructureException("Invalid (not integrate) runtime ID")
         
         for _, port in self.ports_inside_flipped.nodes(): # apply runtime info to internal nodes
-            port.set_origin_type(port.origin_signal_type.applys(port.get_type(runtime_id)), do_not_clear_structure_runtime = True) # (*)
+            port.set_origin_type(port.origin_signal_type.applys(port.get_type(runtime_id)), safe_modification = True) # (*)
         
         for ports in self.ports_outside.values(): # apply runtime info to all outside ports
             for _, port in ports.nodes():
-                port.set_origin_type(port.origin_signal_type.applys(port.get_type(runtime_id)), do_not_clear_structure_runtime = True) # (*)
+                port.set_origin_type(port.origin_signal_type.applys(port.get_type(runtime_id)), safe_modification = True) # (*)
         
         for node in self.nodes: # apply runtime info to all nodes (may be not necessary)
-            node.set_origin_type(node.origin_signal_type.applys(node.get_type(runtime_id)), do_not_clear_structure_runtime = True) # (*)
+            node.set_origin_type(node.origin_signal_type.applys(node.get_type(runtime_id)), safe_modification = True) # (*)
         
         for sub_inst_name, subs in self.substructures.items(): # apply runtime info to all substructures, recursively
             subs.apply_runtime(runtime_id.next(sub_inst_name))
@@ -521,10 +524,9 @@ class Structure:
             raise StructureGenerationException("Invalid (not integrate) runtime ID")
         
         # naming (1. hdl_root_inst_names; 2. hdl_unique_name_inst_names; 3. hdl_sid_inst_names)
-        runtime = self.get_runtime(runtime_id)
         if self.is_reusable:
-            if runtime.reusable_hdl is not None:
-                return runtime.reusable_hdl
+            if self.reusable_hdl is not None:
+                return self.reusable_hdl
             else:
                 prefix = self.unique_name if self.unique_name is not None else self.id[:8]
         
@@ -595,7 +597,7 @@ class Structure:
         
         # save model for reusable structures
         if self.is_reusable:
-            runtime.set_reusable_hdl(model)
+            self.reusable_hdl = model
         
         return model
     

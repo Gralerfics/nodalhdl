@@ -137,7 +137,7 @@ def M2() -> Structure:
     a = s.add_port("a", Input[UInt[4]])
     b = s.add_port("b", Input[UInt[4]])
     c = s.add_port("c", Input[UInt[4]])
-    x = s.add_port("c", Input[UInt[8]])
+    x = s.add_port("x", Input[UInt[8]])
     o = s.add_port("o", Output[Auto])
     
     u1 = s.add_substructure("u1", m1)
