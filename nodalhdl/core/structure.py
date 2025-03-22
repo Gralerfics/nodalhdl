@@ -374,6 +374,7 @@ class Structure:
         
         self.custom_deduction: callable = None
         self.custom_generation: callable = None
+        # self.custom_timing: callable = None # TODO operators (组合逻辑的, 带时序逻辑的先不让流水化) generation 后用其他工具运行时序分析得到 timing 信息.
         
         # references (internal structure)
         self.ports_inside_flipped: StructuralNodes = StructuralNodes() # to be connected to internal nodes, IO flipped (EEB)
@@ -389,6 +390,10 @@ class Structure:
     
     @property
     def is_operator(self):
+        """
+            Check if the structure is an operator, i.e. not allowed to expand.
+            Some structures do not have substructures, but they are not operators.
+        """
         return self.custom_deduction is not None and self.custom_generation is not None
     
     @property
@@ -396,6 +401,10 @@ class Structure:
         ports_determined = all([p.is_originally_determined for _, p in self.ports_inside_flipped.nodes()])
         substructures_determined = all([s.is_reusable for s in self.substructures.values()])
         return ports_determined and substructures_determined
+    
+    @property
+    def is_singleton(self):
+        return self.instance_number <= 1 and all([subs.is_singleton for subs in self.substructures.values()])
     
     @property
     def is_runtime_applicable(self):
@@ -425,30 +434,40 @@ class Structure:
             res += subs.runtime_info(runtime_id.next(sub_inst_name), indent + 4, fqn + "." + sub_inst_name)
         return res
     
-    def substitute_substructure(self, inst_name: str, structure: 'Structure'):
+    def duplicate(self) -> 'Structure':
         """
-            将 inst_name 对应的子结构移出该结构, 并替换为 structure.
-            要求 inst_name 对应的子结构和 structure 的端口类型完全一致.
-            用于深度复制: 递归浅复制配合此方法即可实现深复制.
+            完全复制.
         """
         pass # TODO
     
-    def duplicate(self, shallow: bool = False) -> 'Structure':
+    def strip(self, deep: bool = False):
         """
-            shallow: 是否浅复制, 即只复制一层结构, 子结构保留原引用.
+            和其他结构公用的结构剥出来, 不包括 reusable 结构.
+            strip() 之后即可 apply_runtime().
+            
+            deep: 是否将被多次引用的 reusable 结构也剥离/复制, deep strip 之后可以进行 expand().
+            
+            递归, 如果 instance_number > 1, 则 duplicate 之, 替代原结构的对应子结构.
         """
         pass # TODO
     
     def singletonize(self):
+        self.strip(deep = True)
+    
+    def expand(self):
         """
-            TODO
+            展开所有子结构, 最终应当只剩下一层子结构.
+            要求必须是 singleton 结构, 即所有子结构 instance_number <= 1. 可以通过 singletonize() 实现.
         """
+        if not self.is_singleton:
+            raise StructureException("Only singleton structure can be expanded")
+        
         pass # TODO
     
     def apply_runtime(self, runtime_id: RuntimeId):
         """
             Fix the runtime information under runtime_id into the structure.
-            The structure should be singleton and runtime-integrate.
+            The structure should be runtime_applicable and runtime-integrate.
             (*) note:
                 set_origin_type() will be called, which clears the runtime information in the structure (not in the net so do not worry that node.get_type(runtime_id) will fail after calling set_origin_type).
                 but if the runtime information is applied, the change must be safe, the runtime_id should be kept valid.
@@ -459,7 +478,7 @@ class Structure:
             return
         
         if not self.is_runtime_applicable:
-            raise StructureException("Only singleton structure can apply runtime")
+            raise StructureException("The structure cannot apply runtime")
         
         if not self.is_runtime_integrate(runtime_id):
             raise StructureException("Invalid (not integrate) runtime ID")
@@ -513,7 +532,6 @@ class Structure:
             if not structure_runtime.deduction_effective: # no change, stop
                 break
     
-    # TODO TODO TODO TODO TODO
     def generation(self, runtime_id: RuntimeId, prefix: str = "root") -> HDLFileModel:
         """
             Generate HDL file model.
@@ -602,6 +620,23 @@ class Structure:
             self.reusable_hdl = model
         
         return model
+    
+    # def timing(self, runtime_id: RuntimeId, from_port: str, to_port: str):
+    #     """
+    #         Timing analysis.
+    #         TODO
+    #         from/to_port: a.b.c, 或可用 eval?
+    #     """
+    #     if not self.is_determined(runtime_id):
+    #         raise StructureGenerationException("Only determined structure can be analyzed")
+        
+    #     if not self.is_runtime_integrate(runtime_id):
+    #         raise StructureGenerationException("Invalid (not integrate) runtime ID")
+        
+    #     if self.is_operator:
+    #         return self.custom_timing(self, IOProxy(self.ports_inside_flipped, runtime_id, flipped = True), from_port, to_port)
+        
+    #     pass # TODO
     
     def add_port(self, name: str, signal_type: SignalType) -> Node:
         if not signal_type.perfectly_io_wrapped:
