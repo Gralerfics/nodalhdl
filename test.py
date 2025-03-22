@@ -155,6 +155,8 @@ m2 = M2()
 rid = RuntimeId.create()
 m2.deduction(rid)
 
+print(m2.runtime_info(rid))
+
 
 print('m3 ==============================================================================================================')
 
@@ -196,4 +198,6 @@ m3 = M3()
 
 rid = RuntimeId.create()
 m3.deduction(rid)
+
+print(m3.runtime_info(rid))
 

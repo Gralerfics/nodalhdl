@@ -128,9 +128,6 @@ class Net:
     def __len__(self):
         return len(self.nodes_weak)
     
-    def to_str(self, runtime_id: RuntimeId):
-        return str({x.to_str(runtime_id) for x in self.nodes_weak})
-    
     """
         The following actions (add_node, separate_node and merge) may change the structural information.
         They should not be called by the user directly, but by the Node object.
@@ -190,22 +187,23 @@ class Node:
             Net(located_structure).add_node(self) # add_node() will update runtime signal type, so no need to be called after assigning origin_signal_type
         self.port_of_structure_weak: weakref.ReferenceType = weakref.ref(port_of_structure) if port_of_structure is not None else None # if the node is an external port of a structure, this will be the structure
 
-    def to_str(self, runtime_id: RuntimeId):
-        return f"<Node {self.name} {id(self)} ({self.origin_signal_type.__name__} -> {self.get_type(runtime_id).__name__})>"
-    
     @property
     def is_port(self):
         return self.port_of_structure_weak is not None
     
     @property
+    def is_originally_determined(self):
+        return self.origin_signal_type.determined
+    
+    @property
     def located_structure(self):
         return self.located_net.located_structure_weak()
+
+    def runtime_info(self, runtime_id: RuntimeId):
+        return f"<Node {self.name} ({self.get_type(runtime_id).__name__})>"
     
     def is_determined(self, runtime_id: RuntimeId):
         return self.get_type(runtime_id).determined
-    
-    def is_originally_determined(self):
-        return self.origin_signal_type.determined
     
     def get_type(self, runtime_id: RuntimeId):
         """
@@ -290,8 +288,8 @@ class StructuralNodes(dict):
         else:
             super().__delattr__(name)
     
-    def to_str(self, runtime_id: RuntimeId):
-        return str({n.name: n.to_str(runtime_id) for _, n in self.nodes()})
+    def runtime_info(self, runtime_id: RuntimeId):
+        return "[" + ", ".join([n.runtime_info(runtime_id) for _, n in self.nodes()]) + "]"
     
     def connect(self, other: 'StructuralNodes'):
         for k, v in self.items():
@@ -389,7 +387,9 @@ class Structure:
     
     @property
     def is_reusable(self):
-        return self.is_originally_determined()
+        ports_determined = all([p.is_originally_determined for _, p in self.ports_inside_flipped.nodes()])
+        substructures_determined = all([s.is_reusable for s in self.substructures.values()])
+        return ports_determined and substructures_determined
     
     @property
     def is_runtime_applicable(self):
@@ -413,10 +413,11 @@ class Structure:
         substructures_determined = all([s.is_determined(runtime_id.next(n)) for n, s in self.substructures.items()])
         return ports_determined and substructures_determined
     
-    def is_originally_determined(self): # i.e. reusable structure
-        ports_determined = all([p.is_originally_determined() for _, p in self.ports_inside_flipped.nodes()])
-        substructures_determined = all([s.is_originally_determined() for s in self.substructures.values()])
-        return ports_determined and substructures_determined
+    def runtime_info(self, runtime_id: RuntimeId, indent: int = 0, fqn: str = "<self>"):
+        res = " " * indent + f"Structure {fqn}, IO: {self.ports_inside_flipped.runtime_info(runtime_id)}.\n"
+        for sub_inst_name, subs in self.substructures.items():
+            res += subs.runtime_info(runtime_id.next(sub_inst_name), indent + 4, fqn + "." + sub_inst_name)
+        return res
     
     def substitute_substructure(self, inst_name: str, structure: 'Structure'):
         """
