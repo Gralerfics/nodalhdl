@@ -133,12 +133,23 @@ print('m2 ======================================================================
 def M2() -> Structure:
     s = Structure()
     
+    B_t = Bundle[{
+        "xy": Bundle[{
+            "x": UInt[4],
+            "y": UInt[5]
+        }],
+        "z": UInt[6]
+    }]
+    
     t = s.add_port("t", Input[UInt[4]])
     a = s.add_port("a", Input[UInt[4]])
     b = s.add_port("b", Input[UInt[4]])
     c = s.add_port("c", Input[UInt[4]])
     x = s.add_port("x", Input[UInt[8]])
     o = s.add_port("o", Output[Auto])
+    
+    Bi = s.add_port("Bi", Input[B_t])
+    Bo = s.add_port("Bo", Output[Auto])
     
     u1 = s.add_substructure("u1", m1)
     u2 = s.add_substructure("u2", addw)
@@ -150,6 +161,9 @@ def M2() -> Structure:
     s.connect(u1.IO.o, u2.IO.i1)
     s.connect(x, u2.IO.i2)
     s.connect(u2.IO.o, o)
+    
+    s.connect(Bi, Bo)
+    Bi.set_latency(2)
 
     return s
 
