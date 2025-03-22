@@ -79,10 +79,10 @@ class HDLFileModel:
         self.components: Dict[str, HDLFileModel] = {} # Dict[组件名, 组件对应文件模型]
         self.inst_comps: Dict[str, Tuple[str, Dict[str, str]]] = {} # Dict[实例名, (组件名, Dict[组件端口名, 实例端口名])]
         self.signals: Dict[str, SignalType] = {} # Dict[信号名, 信号类型]
-        self.assignments: List[Tuple[str, str]] = [] # List[Tuple[目标信号, 源信号]] TODO 不带有表达式
-        self.registers: Set[Tuple[str, str, str]] = set() # Set[<reg_next_name>, <reg_name>, <initial_value>]
+        self.assignments: List[Tuple[str, str]] = [] # List[Tuple[目标信号, 源信号]]
+        self.registers: Set[Tuple[str, str, SignalType]] = set() # Set[<reg_next_name>, <reg_name>, <signal_type>], <signal_type> for initial value generation
         
-        self.raw: bool = False # 是否直接使用 HDL 定义 (即使使用 HDL 定义也应当声明 entity_name; port 应与 substructure 相符) TODO
+        self.raw: bool = False # 是否直接使用 HDL 定义 (即使使用 HDL 定义也应当声明 entity_name; port 应与 substructure 相符)
         self.raw_suffix: str = None
         self.raw_content: str = None
         
@@ -152,8 +152,17 @@ class HDLFileModel:
             # 寄存器时序
             if len(model.registers) > 0:
                 seq_process = "    process (clock, reset) is\n    begin\n        if (reset = '1') then\n"
-                for _, reg_name, initial_value in model.registers:
-                    seq_process += f"            {reg_name} <= {initial_value};\n"
+                for _, reg_name, signal_type in model.registers:
+                    def _generate(sub_reg_name: str, t: SignalType):
+                        res = ""
+                        if t.belongs(Bundle):
+                            for k, v in t._bundle_types.items():
+                                res += _generate(sub_reg_name + "." + k, v)
+                        else:
+                            res += f"            {sub_reg_name} <= (others => '0');\n"
+                        return res
+                    
+                    seq_process += _generate(reg_name, signal_type)
                 seq_process += "        elsif rising_edge(clock) then\n"
                 for reg_next_name, reg_name, _ in model.registers:
                     seq_process += f"            {reg_name} <= {reg_next_name};\n"
@@ -240,11 +249,9 @@ class HDLFileModel:
         """
             Return next_signal_name and reg_signal_name.
         """
-        initial_value = "(others => \'0\')" # TODO 根据 t, 不可行的话需要改成子属性逐个赋值 TODO TODO TODO TODO TODO
-        
         for level in range(latency):
             reg_next_name, reg_name = f"reg_next_{level}_{name}", f"reg_{level}_{name}"
-            self.registers.add((reg_next_name, reg_name, initial_value))
+            self.registers.add((reg_next_name, reg_name, t))
             
             self.add_signal(reg_next_name, t)
             self.add_signal(reg_name, t)
