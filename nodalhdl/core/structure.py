@@ -404,10 +404,13 @@ class Structure:
         
         # references (external structure)
         self.ports_outside: Dict[Tuple[str, str], StructuralNodes] = {} # Tuple[located_structure_id, inst_name_in_that_structure] -> IO in the located structure
-        self.instance_number: int = 0 # number of instances
         
         # runtime
         self.runtimes: weakref.WeakKeyDictionary[RuntimeId, Structure.Runtime] = weakref.WeakKeyDictionary() # runtime_id -> runtime info
+    
+    @property
+    def instance_number(self):
+        return len(self.ports_outside.keys())
     
     @property
     def is_operator(self):
@@ -458,7 +461,7 @@ class Structure:
     def duplicate(self) -> 'Structure':
         """
             Deep copy of the structure.
-            Reusable substructures under the structure will also be duplicated, with ports_outside and instance_number those are not under this structure removed.
+            Reusable substructures under the structure will also be duplicated, with ports_outside those are not under this structure removed.
         """
         s_build_map: Dict[Structure, Structure] = {} # reference structure -> duplicated structure
         
@@ -517,9 +520,8 @@ class Structure:
                     new_subs = _duplicate(ref_subs)
                     s_build_map[ref_subs] = new_subs
                 
-                # new_s.substructures and new_subs.instance_number
+                # new_s.substructures
                 new_s.substructures[sub_inst_name] = new_subs
-                new_subs.instance_number += 1
                 
                 # new_subs.ports_outside
                 new_subs.ports_outside[(new_s.id, sub_inst_name)] = _build_ports(ref_subs.ports_outside[(ref_s.id, sub_inst_name)])
@@ -548,11 +550,9 @@ class Structure:
                     # need to strip
                     new_subs = subs.duplicate()
                     
-                    # move ports_outside from (ref_)subs to new_subs, and update instance_number
+                    # move ports_outside from (ref_)subs to new_subs
                     new_subs.ports_outside[(s.id, sub_inst_name)] = subs.ports_outside[(s.id, sub_inst_name)]
-                    new_subs.instance_number += 1
                     del subs.ports_outside[(s.id, sub_inst_name)]
-                    subs.instance_number -= 1
                     
                     # replace the substructure
                     s.substructures[sub_inst_name] = new_subs
@@ -848,7 +848,6 @@ class Structure:
             raise StructureException("Instance name already exists")
         
         self.substructures[inst_name] = structure # strong reference to the substructure
-        structure.instance_number += 1
         
         def _create(io: Union[Node, StructuralNodes]):
             if isinstance(io, Node):
