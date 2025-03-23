@@ -114,13 +114,16 @@ class Net:
             return self.create_runtime(runtime_id)
         return self.runtimes[runtime_id]
     
-    def __init__(self, located_structure: 'Structure'): # not allowed to create a Net/Node without a located structure
+    def clear_runtimes(self):
+        self.runtimes.clear()
+    
+    def __init__(self, located_structure: 'Structure', latency: int = 0): # not allowed to create a Net/Node without a located structure
         # references
         self.nodes_weak: weakref.WeakSet[Node] = weakref.WeakSet()
         self.located_structure_weak: weakref.ReferenceType[Structure] = weakref.ref(located_structure)
         
         self.driver: weakref.ReferenceType[Node] = None # driver node (also in nodes_weak) or None, should be only one, originlly Output; others are loads
-        self.latency: int = 0 # latency of the net, i.e. registers between driver and loads
+        self.latency: int = latency # latency of the net, i.e. registers between driver and loads
         
         # runtime
         self.runtimes: weakref.WeakKeyDictionary[RuntimeId, Net.Runtime] = weakref.WeakKeyDictionary()
@@ -132,7 +135,10 @@ class Net:
         The following actions (add_node, separate_node and merge) may change the structural information.
         They should not be called by the user directly, but by the Node object.
     """
-    def add_node(self, node: 'Node'):
+    def _add_node(self, node: 'Node'):
+        if node in self.nodes_weak: # avoid duplicate add (note that `node.located_net is self` should not be used for checking: some nodes' located_net may be assigned previously, but have not been added to the nodes_weak)
+            return
+        
         if node.origin_signal_type.belongs(Output): # driver
             if self.driver is not None:
                 raise StructureException("Net cannot have multiple drivers")
@@ -140,10 +146,10 @@ class Net:
         
         self.nodes_weak.add(node)
         node.located_net = self
-        for runtime in self.runtimes.values(): # update all related net runtime
-            runtime.merge_type(node.origin_signal_type)
+        
+        self.clear_runtimes() # structural modification, runtime information should be cleared
     
-    def separate_node(self, node: 'Node'):
+    def _separate_node(self, node: 'Node'):
         if node not in self.nodes_weak:
             raise StructureException("Node not in net")
         
@@ -154,9 +160,9 @@ class Net:
             self.driver = None
         
         self.nodes_weak.remove(node)
-        Net(self.located_structure_weak()).add_node(node)
+        Net(self.located_structure_weak())._add_node(node)
     
-    def merge(self, other: 'Net'):
+    def _merge(self, other: 'Net'):
         if self is other:
             return
         
@@ -168,7 +174,7 @@ class Net:
         
         net_h, net_l = (self, other) if len(self) > len(other) else (other, self)
         for node in net_l.nodes_weak: # [NOTICE] 会不会出现某个 node 被删除但尚未被 GC 掉的问题
-            net_h.add_node(node) # all nodes' located_net will be set to net_h and net_l will be garbage collected
+            net_h._add_node(node) # all nodes' located_net will be set to net_h and net_l will be garbage collected
 
 class Node:
     """
@@ -180,13 +186,14 @@ class Node:
         self.origin_signal_type: SignalType = origin_signal_type # must be set by set_origin_type()
         
         # references
-        self.located_net: Net # strong reference to Net
-        if located_net is not None:
-            self.located_net.add_node(self) # add_node() will set located_net to self
-        else:
-            Net(located_structure).add_node(self) # add_node() will update runtime signal type, so no need to be called after assigning origin_signal_type
+        self.located_net: Net = located_net # strong reference to Net
         self.port_of_structure_weak: weakref.ReferenceType = weakref.ref(port_of_structure) if port_of_structure is not None else None # if the node is an external port of a structure, this will be the structure
 
+        if self.located_net is not None:
+            self.located_net._add_node(self) # add_node() will set located_net to self
+        else:
+            Net(located_structure)._add_node(self) # add_node() will update runtime signal type, so no need to be called after assigning origin_signal_type
+    
     @property
     def is_port(self):
         return self.port_of_structure_weak is not None
@@ -240,7 +247,7 @@ class Node:
         if self.located_net is other.located_net: # same net, no change
             return
         
-        self.located_net.merge(other.located_net)
+        self.located_net._merge(other.located_net)
         
         self._structural_modification() # structural modification
     
@@ -248,7 +255,7 @@ class Node:
         if len(self.located_net) == 1: # only one node, no need to separate
             return
         
-        self.located_net.separate_node(self)
+        self.located_net._separate_node(self)
         
         self._structural_modification() # structural modification
     
@@ -437,8 +444,81 @@ class Structure:
     def duplicate(self) -> 'Structure':
         """
             完全复制.
+            
+            (ok) 基本属性: 复制
+            
+            (ok) ports_inside_flipped: 对应复制
+            (ok) substructures: 还没复制则对应复制, 否则更新 ports_outside 和 instance_number 信息
+            (ok) nodes: 复制, 对应重建
+            
+            (ok) ports_outside: 复制子结构时给子结构添加 ports_outside 中对应 self.id 的项, 子结构还没复制过则复制
+            (ok) instance_number: 根据 ports_outside 统计
+            
+            (ok) runtime: 不需要复制
         """
-        pass # TODO
+        new_s = Structure()
+        
+        new_s.unique_name = self.unique_name
+        new_s.reusable_hdl = self.reusable_hdl # ?
+        new_s.custom_params = self.custom_params.copy()
+        new_s.custom_deduction = self.custom_deduction
+        new_s.custom_generation = self.custom_generation
+        
+        # nets
+        net_build_map: Dict[Net, Net] = {} # reference net -> duplicated net
+        
+        def _trace_net(ref_node: Node) -> Net:
+            ref_net = ref_node.located_net
+            if net_build_map.get(ref_net) is not None:
+                return net_build_map[ref_net]
+            else:
+                new_net = Net(new_s, latency = ref_net.latency)
+                net_build_map[ref_net] = new_net
+                return new_net
+        
+        # ports
+        def _build_ports(ref: Union[StructuralNodes, Node]) -> StructuralNodes:
+            if isinstance(ref, Node):
+                # check if the net is already duplicated, obtain new_net (net')
+                new_net = _trace_net(ref)
+                
+                # duplicate the port under net'
+                new_port = Node(ref.name, ref.origin_signal_type, new_s, located_net = new_net)
+                return new_port
+            else: # StructuralNodes
+                return StructuralNodes({k: _build_ports(v) for k, v in ref.items()})
+        
+        # internal ports
+        new_s.ports_inside_flipped = _build_ports(self.ports_inside_flipped)
+        
+        # internal nodes
+        for ref_node in self.nodes:
+            # check if the net is already duplicated, obtain new_net (net')
+            new_net = _trace_net(ref_node)
+            
+            # duplicate the node under net'
+            new_node = Node(ref_node.name, ref_node.origin_signal_type, new_s, located_net = new_net)
+            new_s.nodes.add(new_node)
+        
+        # substructures
+        subs_build_map: Dict[Structure, Structure] = {} # reference substructure -> duplicated substructure
+        
+        for sub_inst_name, ref_subs in self.substructures.items():
+            # check if the substructure is already duplicated, obtain new_subs (subs')
+            if subs_build_map.get(ref_subs) is not None:
+                new_subs = subs_build_map[ref_subs]
+            else:
+                new_subs = ref_subs.duplicate()
+                subs_build_map[ref_subs] = new_subs
+            
+            # new_s.substructures and new_subs.instance_number
+            new_s.substructures[sub_inst_name] = new_subs
+            new_subs.instance_number += 1
+            
+            # new_subs.ports_outside
+            new_subs.ports_outside[(new_s.id, sub_inst_name)] = _build_ports(ref_subs.ports_outside[(self.id, sub_inst_name)])
+        
+        return new_s
     
     def strip(self, deep: bool = False):
         """
