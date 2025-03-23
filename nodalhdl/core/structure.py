@@ -180,15 +180,15 @@ class Node:
     """
         Circuit node.
     """
-    def __init__(self, name: str, origin_signal_type: SignalType, located_structure: 'Structure' = None, port_of_structure: 'Structure' = None, located_net: Net = None):
+    def __init__(self, name: str, origin_signal_type: SignalType, is_port: bool, located_structure: 'Structure' = None, located_net: Net = None):
         # properties
         self.name: str = name # raw name, no need to be unique. layer information for ports will be added in StructuralNodes.nodes()
         self.origin_signal_type: SignalType = origin_signal_type # must be set by set_origin_type()
+        self.is_port: bool = is_port
         
         # references
         self.located_net: Net = located_net # strong reference to Net
-        self.port_of_structure_weak: weakref.ReferenceType = weakref.ref(port_of_structure) if port_of_structure is not None else None # if the node is an external port of a structure, this will be the structure
-
+        
         if self.located_net is not None:
             if located_structure is not None:
                 raise StructureException(f"located_structure not needed when located_net is provided")
@@ -197,10 +197,6 @@ class Node:
             if located_structure is None:
                 raise StructureException(f"located_structure is needed when located_net is not provided")
             Net(located_structure)._add_node(self) # add_node() will update runtime signal type, so no need to be called after assigning origin_signal_type
-    
-    @property
-    def is_port(self):
-        return self.port_of_structure_weak is not None
     
     @property
     def is_originally_determined(self):
@@ -466,7 +462,7 @@ class Structure:
         """
         s_build_map: Dict[Structure, Structure] = {} # reference structure -> duplicated structure
         
-        def _duplicate(ref_s):
+        def _duplicate(ref_s: Structure):
             new_s = Structure()
             
             new_s.unique_name = ref_s.unique_name
@@ -495,7 +491,7 @@ class Structure:
                     new_net = _trace_net(ref)
                     
                     # duplicate the port under net'
-                    new_port = Node(ref.name, ref.origin_signal_type, located_net = new_net)
+                    new_port = Node(ref.name, ref.origin_signal_type, is_port = ref.is_port, located_net = new_net)
                     return new_port
                 else: # StructuralNodes
                     return StructuralNodes({k: _build_ports(v) for k, v in ref.items()})
@@ -509,7 +505,7 @@ class Structure:
                 new_net = _trace_net(ref_node)
                 
                 # duplicate the node under net'
-                new_node = Node(ref_node.name, ref_node.origin_signal_type, located_net = new_net)
+                new_node = Node(ref_node.name, ref_node.origin_signal_type, is_port = ref_node.is_port, located_net = new_net)
                 new_s.nodes.add(new_node)
             
             # substructures
@@ -616,7 +612,7 @@ class Structure:
                         
                         # add equivalent node (port_i and port_o will be GCed TODO to be checked)
                         node_type = sub_port_i.origin_signal_type.merges(sub_port_o.origin_signal_type)
-                        new_node = Node(sub_inst_name + "_io_" + sub_port_i.name, node_type, located_net = sub_port_o.located_net)
+                        new_node = Node(sub_inst_name + "_io_" + sub_port_i.name, node_type, is_port = False, located_net = sub_port_o.located_net)
                         self.nodes.add(new_node)
                     
                     # move out the nodes
@@ -828,7 +824,7 @@ class Structure:
         
         def _extract(key: str, t: SignalType):
             if t.belongs(IOWrapper):
-                return Node(key, t.flip_io(), located_structure = self) # (1.) io is flipped in ports_inside_flipped, (2.) ports inside are connected with internal nodes/nets, so located_structure is set to self
+                return Node(key, t.flip_io(), is_port = True, located_structure = self) # (1.) io is flipped in ports_inside_flipped, (2.) ports inside are connected with internal nodes/nets, so located_structure is set to self
             elif t.belongs(Bundle):
                 return StructuralNodes({k: _extract(key + "_" + k, v) for k, v in t._bundle_types.items()}) # node_name should be layered
 
@@ -841,7 +837,7 @@ class Structure:
         if signal_type.io_wrapper_included:
             signal_type = signal_type.clear_io()
         
-        new_node = Node(name, signal_type, located_structure = self)
+        new_node = Node(name, signal_type, is_port = False, located_structure = self)
         new_node.set_latency(latency)
         self.nodes.add(new_node) # remember to add to nodes, or it may be garbage collected
         
@@ -856,7 +852,7 @@ class Structure:
         
         def _create(io: Union[Node, StructuralNodes]):
             if isinstance(io, Node):
-                return Node(io.name, io.origin_signal_type.flip_io(), located_structure = self, port_of_structure = structure)
+                return Node(io.name, io.origin_signal_type.flip_io(), is_port = True, located_structure = self)
             else: # StructuralNodes
                 return StructuralNodes({k: _create(v) for k, v in io.items()})
         
