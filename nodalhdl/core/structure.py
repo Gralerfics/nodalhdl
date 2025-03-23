@@ -516,15 +516,41 @@ class Structure:
     
     def strip(self, deep: bool = False):
         """
-            和其他结构公用的结构剥出来, 不包括 reusable 结构.
-            strip() 之后即可 apply_runtime().
+            Strip the structure, i.e. duplicate and reassign the substructures those are referenced more than once.
+            After strip the structure can perform apply_runtime().
+            `deep`: process reusable substructures if True, False by default. After deep-strip (singletonize), expand() can be performed.
+
+            allow_reusing should be set to False for stripped structures, i.e. do not allow the (sub)structures to be reused.
             
-            deep: 是否将被多次引用的 reusable 结构也剥离/复制, deep strip 之后可以进行 expand().
-                注意 reusable 结构如果复制, 则 allow_reusing 应被置 False, 以禁止其被自动复用, 以区分同一结构下的多个相同实例, 命名也会走默认层级命名.
-            
-            递归, 如果 instance_number > 1, 则 duplicate 之, 替代原结构的对应子结构.
+            TODO strip 后应该清除 runtime 信息?
         """
-        pass # TODO
+        res = self.duplicate() if self.instance_number > 1 and (not self.is_reusable or deep) else self
+        
+        def _strip(s: Structure):
+            s.allow_reusing = False # [NOTICE] disable reusing for duplicated substructure (under the same structure)
+            
+            for sub_inst_name, subs in s.substructures.items():
+                if subs.instance_number > 1 and (not subs.is_reusable or deep):
+                    # need to strip
+                    new_subs = subs.duplicate()
+                    
+                    # move ports_outside from (ref_)subs to new_subs, and update instance_number
+                    new_subs.ports_outside[(s.id, sub_inst_name)] = subs.ports_outside[(s.id, sub_inst_name)]
+                    new_subs.instance_number += 1
+                    del subs.ports_outside[(s.id, sub_inst_name)]
+                    subs.instance_number -= 1
+                    
+                    # replace the substructure
+                    s.substructures[sub_inst_name] = new_subs # do not influence `subs`
+                    
+                    _strip(new_subs) # recursive strip on new substructure
+                else:
+                    # no need to strip, recursive strip
+                    _strip(subs)
+        
+        _strip(res)
+        
+        return res
     
     def singletonize(self):
         self.strip(deep = True)

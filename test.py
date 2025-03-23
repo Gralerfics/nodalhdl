@@ -167,10 +167,10 @@ def M2() -> Structure:
 
 m2 = M2()
 
-rid = RuntimeId.create()
-m2.deduction(rid)
+rid_m2 = RuntimeId.create()
+m2.deduction(rid_m2)
 
-print(m2.runtime_info(rid))
+print(m2.runtime_info(rid_m2))
 
 
 print('m3 ==============================================================================================================')
@@ -211,10 +211,11 @@ def M3() -> Structure:
 
 m3 = M3()
 
-rid = RuntimeId.create()
-m3.deduction(rid)
+rid_m3 = RuntimeId.create()
+m3.deduction(rid_m3)
 
-print(m3.runtime_info(rid))
+print(m2.runtime_info(rid_m2))
+print(m3.runtime_info(rid_m3))
 
 
 print('m2.gen ==============================================================================================================')
@@ -223,9 +224,7 @@ print('m2.gen ==================================================================
 from nodalhdl.core.hdl import write_to_files
 import shutil
 
-rid = RuntimeId.create()
-m2.deduction(rid)
-model = m2.generation(rid)
+model = m2.generation(rid_m2)
 
 shutil.rmtree("C:/Workspace/test_project/test_project.srcs/sources_1/new")
 write_to_files(model.emit_vhdl(), "C:/Workspace/test_project/test_project.srcs/sources_1/new")
@@ -236,13 +235,55 @@ print('m2.dup ==================================================================
 
 m2_dup = m2.duplicate()
 
-rid = RuntimeId.create()
-m2_dup.deduction(rid)
+rid_m2_dup = RuntimeId.create()
+m2_dup.deduction(rid_m2_dup)
 
-print(m2_dup.runtime_info(rid))
+print(m2.runtime_info(rid_m2))
+print(m2_dup.runtime_info(rid_m2_dup))
 
 # print(m2_dup.substructures["u1"].ports_outside[(m2_dup.id, "u1")].t.located_net)
 # print(m2_dup.ports_inside_flipped.t.located_net)
 # print([x for x in m2_dup.ports_inside_flipped.t.located_net.nodes_weak])
 # print([x for x in m2_dup.ports_inside_flipped.t.located_net.runtimes.keys()])
+
+
+print('m2.strip ==============================================================================================================')
+
+
+print(m2.runtime_info(rid_m2))
+print(m2.substructures["u2"].ports_outside.keys())
+print(m3.substructures["p"].ports_outside.keys())
+print("")
+
+del rid_m2
+m2.strip()
+
+rid_m2_strip = RuntimeId.create()
+m2.deduction(rid_m2_strip)
+
+print(m2.runtime_info(rid_m2_strip))
+print(m2.substructures["u2"].ports_outside.keys())
+print(m3.substructures["p"].ports_outside.keys())
+
+
+print('m2.singletonize ==============================================================================================================')
+
+
+del rid_m2_strip
+m2.singletonize()
+
+rid_m2_sin = RuntimeId.create()
+m2.deduction(rid_m2_sin)
+
+print(m2.runtime_info(rid_m2_sin))
+print(m3.runtime_info(rid_m3))
+
+
+print('m2.singletonize.gen ==============================================================================================================')
+
+
+model = m2.generation(rid_m2_sin)
+
+shutil.rmtree("C:/Workspace/test_project/test_project.srcs/sources_1/new")
+write_to_files(model.emit_vhdl(), "C:/Workspace/test_project/test_project.srcs/sources_1/new")
 
