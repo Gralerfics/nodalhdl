@@ -375,6 +375,7 @@ class Structure:
         self.id = str(uuid.uuid4()).replace('-', '')
         self.unique_name: str = unique_name
         
+        self.allow_reusing: bool = True # allow to be reused, True by default. if False, the structure will be treated as a independent instance in generation
         self.reusable_hdl: HDLFileModel = None # only for reusable structure; destroy when structural information changed
         
         self.custom_params = {}
@@ -443,18 +444,8 @@ class Structure:
     
     def duplicate(self) -> 'Structure':
         """
-            完全复制.
-            
-            (ok) 基本属性: 复制
-            
-            (ok) ports_inside_flipped: 对应复制
-            (ok) substructures: 还没复制则对应复制, 否则更新 ports_outside 和 instance_number 信息
-            (ok) nodes: 复制, 对应重建
-            
-            (ok) ports_outside: 复制子结构时给子结构添加 ports_outside 中对应 self.id 的项, 子结构还没复制过则复制
-            (ok) instance_number: 根据 ports_outside 统计
-            
-            (ok) runtime: 不需要复制
+            Deep copy of the structure.
+            Reusable substructures under the structure will also be duplicated, with ports_outside and instance_number those are not under this structure removed.
         """
         new_s = Structure()
         
@@ -526,6 +517,7 @@ class Structure:
             strip() 之后即可 apply_runtime().
             
             deep: 是否将被多次引用的 reusable 结构也剥离/复制, deep strip 之后可以进行 expand().
+                注意 reusable 结构如果复制, 则 allow_reusing 应被置 False, 以禁止其被自动复用, 以区分同一结构下的多个相同实例, 命名也会走默认层级命名.
             
             递归, 如果 instance_number > 1, 则 duplicate 之, 替代原结构的对应子结构.
         """
@@ -623,8 +615,8 @@ class Structure:
         if not self.is_runtime_integrate(runtime_id):
             raise StructureGenerationException("Invalid (not integrate) runtime ID")
         
-        # naming (1. hdl_root_inst_names; 2. hdl_unique_name_inst_names; 3. hdl_sid_inst_names)
-        if self.is_reusable:
+        # naming
+        if self.allow_reusing and self.is_reusable:
             if self.reusable_hdl is not None:
                 return self.reusable_hdl
             else:
