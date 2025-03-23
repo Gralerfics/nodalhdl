@@ -437,7 +437,7 @@ class Structure:
         return ports_determined and substructures_determined
     
     def runtime_info(self, runtime_id: RuntimeId, indent: int = 0, fqn: str = "<root>"):
-        res = " " * indent + f"{fqn} ({self.id[:8]}), IO: {self.ports_inside_flipped.runtime_info(runtime_id)}.\n"
+        res = " " * indent + f"{fqn} ({self.id[:8]}, {self.instance_number} ref(s)), IO: {self.ports_inside_flipped.runtime_info(runtime_id)}.\n"
         for sub_inst_name, subs in self.substructures.items():
             res += subs.runtime_info(runtime_id.next(sub_inst_name), indent + 4, fqn + "." + sub_inst_name)
         return res
@@ -447,69 +447,72 @@ class Structure:
             Deep copy of the structure.
             Reusable substructures under the structure will also be duplicated, with ports_outside and instance_number those are not under this structure removed.
         """
-        new_s = Structure()
+        s_build_map: Dict[Structure, Structure] = {} # reference structure -> duplicated structure
         
-        new_s.unique_name = self.unique_name
-        new_s.reusable_hdl = self.reusable_hdl # ?
-        new_s.custom_params = self.custom_params.copy()
-        new_s.custom_deduction = self.custom_deduction
-        new_s.custom_generation = self.custom_generation
-        
-        # nets
-        net_build_map: Dict[Net, Net] = {} # reference net -> duplicated net
-        
-        def _trace_net(ref_node: Node) -> Net:
-            ref_net = ref_node.located_net
-            if net_build_map.get(ref_net) is not None:
-                return net_build_map[ref_net]
-            else:
-                new_net = Net(new_s, latency = ref_net.latency)
-                net_build_map[ref_net] = new_net
-                return new_net
-        
-        # ports
-        def _build_ports(ref: Union[StructuralNodes, Node]) -> StructuralNodes:
-            if isinstance(ref, Node):
+        def _duplicate(ref_s):
+            new_s = Structure()
+            
+            new_s.unique_name = ref_s.unique_name
+            new_s.reusable_hdl = ref_s.reusable_hdl # ?
+            new_s.custom_params = ref_s.custom_params.copy()
+            new_s.custom_deduction = ref_s.custom_deduction
+            new_s.custom_generation = ref_s.custom_generation
+            
+            # nets
+            net_build_map: Dict[Net, Net] = {} # reference net -> duplicated net
+            
+            def _trace_net(ref_node: Node) -> Net:
+                ref_net = ref_node.located_net
+                if net_build_map.get(ref_net) is not None:
+                    return net_build_map[ref_net]
+                else:
+                    new_net = Net(new_s, latency = ref_net.latency)
+                    net_build_map[ref_net] = new_net
+                    return new_net
+            
+            # ports
+            def _build_ports(ref: Union[StructuralNodes, Node]) -> StructuralNodes:
+                if isinstance(ref, Node):
+                    # check if the net is already duplicated, obtain new_net (net')
+                    new_net = _trace_net(ref)
+                    
+                    # duplicate the port under net'
+                    new_port = Node(ref.name, ref.origin_signal_type, new_s, located_net = new_net)
+                    return new_port
+                else: # StructuralNodes
+                    return StructuralNodes({k: _build_ports(v) for k, v in ref.items()})
+            
+            # internal ports
+            new_s.ports_inside_flipped = _build_ports(ref_s.ports_inside_flipped)
+            
+            # internal nodes
+            for ref_node in ref_s.nodes:
                 # check if the net is already duplicated, obtain new_net (net')
-                new_net = _trace_net(ref)
+                new_net = _trace_net(ref_node)
                 
-                # duplicate the port under net'
-                new_port = Node(ref.name, ref.origin_signal_type, new_s, located_net = new_net)
-                return new_port
-            else: # StructuralNodes
-                return StructuralNodes({k: _build_ports(v) for k, v in ref.items()})
-        
-        # internal ports
-        new_s.ports_inside_flipped = _build_ports(self.ports_inside_flipped)
-        
-        # internal nodes
-        for ref_node in self.nodes:
-            # check if the net is already duplicated, obtain new_net (net')
-            new_net = _trace_net(ref_node)
+                # duplicate the node under net'
+                new_node = Node(ref_node.name, ref_node.origin_signal_type, new_s, located_net = new_net)
+                new_s.nodes.add(new_node)
             
-            # duplicate the node under net'
-            new_node = Node(ref_node.name, ref_node.origin_signal_type, new_s, located_net = new_net)
-            new_s.nodes.add(new_node)
-        
-        # substructures
-        subs_build_map: Dict[Structure, Structure] = {} # reference substructure -> duplicated substructure
-        
-        for sub_inst_name, ref_subs in self.substructures.items():
-            # check if the substructure is already duplicated, obtain new_subs (subs')
-            if subs_build_map.get(ref_subs) is not None:
-                new_subs = subs_build_map[ref_subs]
-            else:
-                new_subs = ref_subs.duplicate()
-                subs_build_map[ref_subs] = new_subs
+            # substructures
+            for sub_inst_name, ref_subs in ref_s.substructures.items():
+                # check if the substructure is already duplicated, obtain new_subs (subs')
+                if s_build_map.get(ref_subs) is not None:
+                    new_subs = s_build_map[ref_subs]
+                else:
+                    new_subs = _duplicate(ref_subs)
+                    s_build_map[ref_subs] = new_subs
+                
+                # new_s.substructures and new_subs.instance_number
+                new_s.substructures[sub_inst_name] = new_subs
+                new_subs.instance_number += 1
+                
+                # new_subs.ports_outside
+                new_subs.ports_outside[(new_s.id, sub_inst_name)] = _build_ports(ref_subs.ports_outside[(ref_s.id, sub_inst_name)])
             
-            # new_s.substructures and new_subs.instance_number
-            new_s.substructures[sub_inst_name] = new_subs
-            new_subs.instance_number += 1
-            
-            # new_subs.ports_outside
-            new_subs.ports_outside[(new_s.id, sub_inst_name)] = _build_ports(ref_subs.ports_outside[(self.id, sub_inst_name)])
+            return new_s
         
-        return new_s
+        return _duplicate(self)
     
     def strip(self, deep: bool = False):
         """
