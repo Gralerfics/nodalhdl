@@ -287,3 +287,24 @@ model = m2.generation(rid_m2_sin)
 shutil.rmtree("C:/Workspace/test_project/test_project.srcs/sources_1/new")
 write_to_files(model.emit_vhdl(), "C:/Workspace/test_project/test_project.srcs/sources_1/new")
 
+
+print('m2.singletonize.expand ==============================================================================================================')
+
+
+del rid_m2_sin
+m2.expand(shallow = False)
+
+rid_m2_exp = RuntimeId.create()
+m2.deduction(rid_m2_exp)
+
+print(m2.runtime_info(rid_m2_exp))
+
+
+print('m2.singletonize.gen ==============================================================================================================')
+
+
+model = m2.generation(rid_m2_exp)
+
+shutil.rmtree("C:/Workspace/test_project/test_project.srcs/sources_1/new")
+write_to_files(model.emit_vhdl(), "C:/Workspace/test_project/test_project.srcs/sources_1/new")
+

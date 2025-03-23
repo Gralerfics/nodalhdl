@@ -180,7 +180,7 @@ class Node:
     """
         Circuit node.
     """
-    def __init__(self, name: str, origin_signal_type: SignalType, located_structure: 'Structure', port_of_structure: 'Structure' = None, located_net: Net = None):
+    def __init__(self, name: str, origin_signal_type: SignalType, located_structure: 'Structure' = None, port_of_structure: 'Structure' = None, located_net: Net = None):
         # properties
         self.name: str = name # raw name, no need to be unique. layer information for ports will be added in StructuralNodes.nodes()
         self.origin_signal_type: SignalType = origin_signal_type # must be set by set_origin_type()
@@ -190,8 +190,12 @@ class Node:
         self.port_of_structure_weak: weakref.ReferenceType = weakref.ref(port_of_structure) if port_of_structure is not None else None # if the node is an external port of a structure, this will be the structure
 
         if self.located_net is not None:
+            if located_structure is not None:
+                raise StructureException(f"located_structure not needed when located_net is provided")
             self.located_net._add_node(self) # add_node() will set located_net to self
         else:
+            if located_structure is None:
+                raise StructureException(f"located_structure is needed when located_net is not provided")
             Net(located_structure)._add_node(self) # add_node() will update runtime signal type, so no need to be called after assigning origin_signal_type
     
     @property
@@ -247,7 +251,21 @@ class Node:
         if self.located_net is other.located_net: # same net, no change
             return
         
+        self.located_net.latency += other.located_net.latency # [NOTICE]
         self.located_net._merge(other.located_net)
+        
+        self._structural_modification() # structural modification
+    
+    def counteract(self, other: 'Node'):
+        if self.located_net is other.located_net: # same net, no change
+            return
+        
+        self.located_net.latency += other.located_net.latency
+        
+        n_self, n_other = self.located_net, other.located_net
+        n_self._separate_node(self)
+        n_other._separate_node(other)
+        n_self._merge(n_other)
         
         self._structural_modification() # structural modification
     
@@ -379,7 +397,6 @@ class Structure:
         self.reusable_hdl: HDLFileModel = None # only for reusable structure; destroy when structural information changed
         
         self.custom_params = {}
-        
         self.custom_deduction: callable = None
         self.custom_generation: callable = None
         # self.custom_timing: callable = None # TODO operators (组合逻辑的, 带时序逻辑的先不让流水化) generation 后用其他工具运行时序分析得到 timing 信息.
@@ -400,7 +417,7 @@ class Structure:
     def is_operator(self):
         """
             Check if the structure is an operator, i.e. not allowed to expand.
-            Some structures do not have substructures, but they are not operators.
+            Some structures do not have substructures, but they are not operators; operators should have no substructures.
         """
         return self.custom_deduction is not None and self.custom_generation is not None
     
@@ -454,6 +471,7 @@ class Structure:
             
             new_s.unique_name = ref_s.unique_name
             new_s.reusable_hdl = ref_s.reusable_hdl # ?
+            
             new_s.custom_params = ref_s.custom_params.copy()
             new_s.custom_deduction = ref_s.custom_deduction
             new_s.custom_generation = ref_s.custom_generation
@@ -477,7 +495,7 @@ class Structure:
                     new_net = _trace_net(ref)
                     
                     # duplicate the port under net'
-                    new_port = Node(ref.name, ref.origin_signal_type, new_s, located_net = new_net)
+                    new_port = Node(ref.name, ref.origin_signal_type, located_net = new_net)
                     return new_port
                 else: # StructuralNodes
                     return StructuralNodes({k: _build_ports(v) for k, v in ref.items()})
@@ -491,7 +509,7 @@ class Structure:
                 new_net = _trace_net(ref_node)
                 
                 # duplicate the node under net'
-                new_node = Node(ref_node.name, ref_node.origin_signal_type, new_s, located_net = new_net)
+                new_node = Node(ref_node.name, ref_node.origin_signal_type, located_net = new_net)
                 new_s.nodes.add(new_node)
             
             # substructures
@@ -529,7 +547,7 @@ class Structure:
         def _strip(s: Structure):
             s.allow_reusing = False # [NOTICE] disable reusing for duplicated substructure (under the same structure)
             
-            for sub_inst_name, subs in s.substructures.items():
+            for sub_inst_name, subs in dict(s.substructures).items(): # copy the dict to avoid runtime modification
                 if subs.instance_number > 1 and (not subs.is_reusable or deep):
                     # need to strip
                     new_subs = subs.duplicate()
@@ -541,7 +559,7 @@ class Structure:
                     subs.instance_number -= 1
                     
                     # replace the substructure
-                    s.substructures[sub_inst_name] = new_subs # do not influence `subs`
+                    s.substructures[sub_inst_name] = new_subs
                     
                     _strip(new_subs) # recursive strip on new substructure
                 else:
@@ -555,15 +573,80 @@ class Structure:
     def singletonize(self):
         self.strip(deep = True)
     
-    def expand(self):
+    def expand(self, shallow: bool = False):
         """
-            展开所有子结构, 最终应当只剩下一层子结构.
-            要求必须是 singleton 结构, 即所有子结构 instance_number <= 1. 可以通过 singletonize() 实现.
+            Expand the substructures, w/o operators.
+            Must be singleton, i.e. instance_number <= 1 for all substructures, which can be achieved by singletonize().
+            `shallow`: only expand one level, False by default. If False, expand iteratively until there are only operators in substructures[].
+            
+            Notes when expanding:
+                (1.) `self`, `subs` and `sub_subs`. We need to move out `sub_subs` and remove `subs`.
+                (2.) Elements to be moved out: subs.ports_inside_flipped, subs.nodes, subs.substructures[] (sub_subs), sub_subs.ports_outside[].
+                (3.) For subs.ports_inside_flipped: it should be counteract with subs.ports_outside[], leaving an equivalent node, keeping the origin type.
+                (4.) All nets under subs should be moved out (modify .located_structure_weak) from `subs` into `self`.
+                (5.) When moving out, elements with inst_name should add a prefix (the inst_name of subs).
+                (6.) sub_subs.ports_outside[]'s key should be updated (subs.id -> self.id, inst_name -> new_inst_name).
         """
         if not self.is_singleton:
             raise StructureException("Only singleton structure can be expanded")
         
-        pass # TODO
+        first_round = True
+        while first_round or not shallow:
+            first_round = False
+            non_operator_exists = False
+            new_substructures: Dict[str, Structure] = {}
+            
+            # expand substructures (shallow, w/o operators)
+            for sub_inst_name, subs in self.substructures.items():
+                if subs.is_operator:
+                    # operator, move into new_substructures
+                    new_substructures[sub_inst_name] = subs
+                else:
+                    # non-operator, expand
+                    non_operator_exists = True
+                    
+                    # merge subs.ports_inside_flipped and subs.ports_outside (only one element)
+                    sub_ports_o, sub_ports_i = subs.ports_outside[(self.id, sub_inst_name)].nodes(), subs.ports_inside_flipped.nodes()
+                    for idx in range(len(sub_ports_o)): # TODO 顺序一定对?
+                        sub_port_o, sub_port_i = sub_ports_o[idx][1], sub_ports_i[idx][1]
+                        
+                        # merge net
+                        sub_port_i.located_net.located_structure_weak = weakref.ref(self)
+                        sub_port_o.counteract(sub_port_i) # merged, latency added
+                        
+                        # add equivalent node (port_i and port_o will be GCed TODO to be checked)
+                        node_type = sub_port_i.origin_signal_type.merges(sub_port_o.origin_signal_type)
+                        new_node = Node(sub_inst_name + "_io_" + sub_port_i.name, node_type, located_net = sub_port_o.located_net)
+                        self.nodes.add(new_node)
+                    
+                    # move out the nodes
+                    for sub_node in subs.nodes:
+                        sub_node.located_net.located_structure_weak = weakref.ref(self)
+                        sub_node.name = sub_inst_name + "_" + sub_node.name # [NOTICE] nodes are not generated in generation(), only provide information in dedution(). so the names do not matter
+                        self.nodes.add(sub_node)
+                        subs.nodes.remove(sub_node)
+                    
+                    # sub-substructures
+                    for sub_sub_inst_name, sub_subs in subs.substructures.items():
+                        new_inst_name = sub_inst_name + "_" + sub_sub_inst_name
+                        
+                        # modify ports_outside keys
+                        sub_sub_ports_o = sub_subs.ports_outside[(subs.id, sub_sub_inst_name)]
+                        sub_subs.ports_outside[(self.id, new_inst_name)] = sub_sub_ports_o
+                        del sub_subs.ports_outside[(subs.id, sub_sub_inst_name)]
+                        
+                        # move out the nets connected to sub_subs's ports_outside
+                        for _, p in sub_sub_ports_o.nodes():
+                            p.located_net.located_structure_weak = weakref.ref(self)
+                        
+                        # move out
+                        new_substructures[new_inst_name] = sub_subs
+            
+            # replace substructures, old one will be GCed TODO to be checked
+            self.substructures = new_substructures
+            
+            if not non_operator_exists: # all expanded
+                break
     
     def apply_runtime(self, runtime_id: RuntimeId):
         """
