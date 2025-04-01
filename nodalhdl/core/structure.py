@@ -393,6 +393,7 @@ class Structure:
         self.reusable_hdl: HDLFileModel = None # only for reusable structure; destroy when structural information changed
         
         self.custom_params = {}
+        self.custom_sequential: bool = False # should be asserted to True if there are registers in custom_generation (raw_content)
         self.custom_deduction: callable = None
         self.custom_generation: callable = None
         # self.custom_timing: callable = None # TODO operators (组合逻辑的, 带时序逻辑的先不让流水化) generation 后用其他工具运行时序分析得到 timing 信息.
@@ -427,6 +428,12 @@ class Structure:
         return ports_determined and substructures_determined
     
     @property
+    def is_sequential(self): # TODO to be checked
+        ports_inside_nets_flag = any([p.located_net.latency > 0 for _, p in self.ports_inside_flipped.nodes()])
+        subs_ports_outside_nets_flag = any([any([p.located_net.latency > 0 for _, p in self.get_subs_ports_outside(subs_inst_name).nodes()]) for subs_inst_name in self.substructures.keys()])
+        return ports_inside_nets_flag or subs_ports_outside_nets_flag or self.custom_sequential or any([subs.is_sequential for subs in self.substructures.values()])
+    
+    @property
     def is_singleton(self):
         return self.instance_number <= 1 and all([subs.is_singleton for subs in self.substructures.values()])
     
@@ -457,6 +464,9 @@ class Structure:
         for sub_inst_name, subs in self.substructures.items():
             res += subs.runtime_info(runtime_id.next(sub_inst_name), indent + 4, fqn + "." + sub_inst_name)
         return res
+    
+    def get_subs_ports_outside(self, subs_inst_name: str) -> StructuralNodes: # TODO to be checked
+        return self.substructures[subs_inst_name].ports_outside[(self.id, subs_inst_name)]
     
     def duplicate(self) -> 'Structure':
         """

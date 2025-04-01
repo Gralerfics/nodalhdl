@@ -3,8 +3,8 @@ from nodalhdl.core.structure import Structure, RuntimeId
 from nodalhdl.basic.arith import Add, GetAttribute
 from nodalhdl.core.hdl import HDLFileModel
 
-import gc
-import inspect
+# import gc
+# import inspect
 
 
 print('add_u4_u4_u4 ==============================================================================================================')
@@ -298,6 +298,8 @@ rid_m2_exp = RuntimeId.create()
 m2.deduction(rid_m2_exp)
 
 print(m2.runtime_info(rid_m2_exp))
+
+print(m2.is_sequential)
 
 
 print('m2.singletonize.gen ==============================================================================================================')
