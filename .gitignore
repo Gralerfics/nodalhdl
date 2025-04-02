@@ -6,3 +6,4 @@ vivado*.log
 
 doc/tmp/
 **.egg-info/
+m2.dill

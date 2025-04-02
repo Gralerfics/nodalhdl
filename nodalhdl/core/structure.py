@@ -6,9 +6,10 @@ import weakref
 import uuid
 from typing import List, Dict, Set, Tuple, Union
 
-import logging # TODO 搞一个分频道调试输出工具
-logging.basicConfig(level = logging.INFO,format = '%(asctime)s - [%(levelname)s] - %(message)s')
-logger = logging.getLogger(__name__)
+
+# import logging # TODO 搞一个分频道调试输出工具
+# logging.basicConfig(level = logging.INFO,format = '%(asctime)s - [%(levelname)s] - %(message)s')
+# logger = logging.getLogger(__name__)
 
 
 """ Id """
@@ -118,6 +119,8 @@ class Net:
         self.runtimes.clear()
     
     def __init__(self, located_structure: 'Structure', latency: int = 0): # not allowed to create a Net/Node without a located structure
+        self.id = str(uuid.uuid4()).replace('-', '')
+        
         # references
         self.nodes_weak: weakref.WeakSet[Node] = weakref.WeakSet()
         self.located_structure_weak: weakref.ReferenceType[Structure] = weakref.ref(located_structure)
@@ -182,6 +185,7 @@ class Node:
     """
     def __init__(self, name: str, origin_signal_type: SignalType, is_port: bool, located_structure: 'Structure' = None, located_net: Net = None):
         # properties
+        self.id = str(uuid.uuid4()).replace('-', '')
         self.name: str = name # raw name, no need to be unique. layer information for ports will be added in StructuralNodes.nodes()
         self.origin_signal_type: SignalType = origin_signal_type # must be set by set_origin_type()
         self.is_port: bool = is_port
