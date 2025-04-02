@@ -108,7 +108,7 @@ class SignalType(type):
             return super().__call__(*args, **kwds)
     
     def __repr__(cls):
-        return cls.__name__
+        return cls.def_str()
     
     determined = False # i.e. width-determined w.r.t. signals
     io_wrapper_included = False # i.e. whether IO Wrapper is included
@@ -298,10 +298,6 @@ class IOWrapperType(SignalType):
         else:
             raise SignalTypeException(f"Invalid parameter(s) \'{item}\' for type {cls.__name__}[<signal_type (SignalType)>]")
 
-    def __repr__(cls):
-        io_tag = "Input" if cls.belongs(Input) else "Output"
-        return f"{io_tag}{'[' + str(cls.T) + ']' if hasattr(cls, 'T') else ''}"
-
 class BundleType(SignalType):
     def __getitem__(cls, item):
         if isinstance(item, dict) and all([isinstance(x, SignalType) for x in item.values()]):
@@ -320,42 +316,76 @@ class BundleType(SignalType):
         else:
             raise SignalTypeException(f"Invalid parameter(s) \'{item}\' for type {cls.__name__}[<members (dict[str, SignalType])>]")
 
-    def __repr__(cls):
-        return str({k: v for k, v in cls._bundle_types.items()})
-
 
 """ Types """
 class Signal(metaclass = SignalType): pass
 
-class Auto(Signal): pass
+class Auto(Signal):
+    @classmethod
+    def def_str(cls):
+        return "Auto"
 
-class Bits(Auto, metaclass = BitsType): pass
+class Bits(Auto, metaclass = BitsType):
+    @classmethod
+    def def_str(cls):
+        return f"Bits[{cls.W}]" if hasattr(cls, 'W') else "Bits"
+
 Bit = Bits[1]
 Byte = Bits[8]
 
-class UInt(Bits): pass
+class UInt(Bits):
+    @classmethod
+    def def_str(cls):
+        return f"UInt[{cls.W}]" if hasattr(cls, 'W') else "UInt"
+
 UInt8 = UInt[8]
 UInt16 = UInt[16]
 UInt32 = UInt[32]
 UInt64 = UInt[64]
 
-class SInt(Bits): pass
+class SInt(Bits):
+    @classmethod
+    def def_str(cls):
+        return f"SInt[{cls.W}]" if hasattr(cls, 'W') else "SInt"
+
 Int8 = SInt[8]
 Int16 = SInt[16]
 Int32 = SInt[32]
 Int64 = SInt[64]
 
-class FixedPoint(Bits, metaclass = FixedPointType): pass
+class FixedPoint(Bits, metaclass = FixedPointType):
+    @classmethod
+    def def_str(cls):
+        return f"FixedPoint[{cls.W_int}, {cls.W_frac}]" if hasattr(cls, 'W_int') and hasattr(cls, 'W_frac') else "FixedPoint"
 
-class FloatingPoint(Bits, metaclass = FloatingPointType): pass
+class FloatingPoint(Bits, metaclass = FloatingPointType):
+    @classmethod
+    def def_str(cls):
+        return f"FloatingPoint[{cls.W_exp}, {cls.W_frac}]" if hasattr(cls, 'W_exp') and hasattr(cls, 'W_frac') else "FloatingPoint"
+
 Float = FloatingPoint[8, 23]
 Double = FloatingPoint[11, 52]
 
-class Bundle(Auto, metaclass = BundleType): pass
+class Bundle(Auto, metaclass = BundleType):
+    @classmethod
+    def def_str(cls):
+        return "Bundle[{" + ", ".join([f"\"{k}\": {v.def_str()}" for k, v in cls._bundle_types.items()]) + "}]" if hasattr(cls, '_bundle_types') else "Bundle"
 
-class IOWrapper(Signal, metaclass = IOWrapperType): pass
-class Input(IOWrapper): pass
-class Output(IOWrapper): pass
+class IOWrapper(Signal, metaclass = IOWrapperType):
+    @classmethod
+    def def_str(cls):
+        return f"IOWrapper[{cls.T.def_str()}]" if hasattr(cls, 'T') else "IOWrapper"
+
+class Input(IOWrapper):
+    @classmethod
+    def def_str(cls):
+        return f"Input[{cls.T.def_str()}]" if hasattr(cls, 'T') else "Input"
+
+class Output(IOWrapper):
+    @classmethod
+    def def_str(cls):
+        return f"Output[{cls.T.def_str()}]" if hasattr(cls, 'T') else "Output"
+
 
 
 # S = Bundle[{
@@ -397,3 +427,18 @@ class Output(IOWrapper): pass
 # print(P)
 # print(S.applys(P))
 
+
+
+# T = Bundle[{
+#     "a": Output[Auto],
+#     "b": Output[Bits],
+#     "c": Bundle[{
+#         "x": Input[SInt[3]],
+#         "y": Output[SInt]
+#     }],
+#     "d": Input[Bundle[{
+#         "t": Auto
+#     }]]
+# }]
+
+# print(eval(str(T)))
