@@ -11,5 +11,5 @@ m2: Structure = dill.load(open("m2.dill", "rb"))
 rid = RuntimeId.create()
 m2.deduction(rid)
 
-# print(m2.runtime_info(rid))
+print(m2.runtime_info(rid))
 

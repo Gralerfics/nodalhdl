@@ -130,15 +130,24 @@ class SignalType(type):
         有关信号类型关系的方法.
         以下这些第一个参数为 signal_type 的方法被 Signal 类型和其子类继承后, 第一个参数相当于 self.
     """
-    def equals(signal_type: 'SignalType', other: 'SignalType'):
-        # return signal_type == other
-        return signal_type is other
+    def normalize(signal_type: 'SignalType'):
+        """
+            使用 dill 在不同运行中保存和读取 Structure 后, 读取所得 SignalType 和 .signal 中创建的类型虽然内容相同但不再是同一对象,
+            导致 ==, is, issubclass 等方法判断结果有误, 这里将 SignalType 转字符串后重新求值得到新环境中的 SignalType 对象以解决这个问题.
+            TODO 是否还有其他潜在问题有待发现.
+        """
+        return eval(str(signal_type))
     
-    def belongs(signal_type: 'SignalType', other: Union['SignalType', List['SignalType']]): # 要求从属于 other, 即比 other 更具体 (子类型) 或等同 TODO to be tested
-        if isinstance(other, list):
-            return any([issubclass(signal_type, o) for o in other])
-        else: # SignalType
-            return issubclass(signal_type, other)
+    def equals(signal_type: 'SignalType', other: 'SignalType'):
+        signal_type, other = signal_type.normalize(), other.normalize()
+        
+        # return signal_type is other
+        return str(signal_type) == str(other)
+    
+    def belongs(signal_type: 'SignalType', other: 'SignalType'): # 要求从属于 other, 即比 other 更具体 (子类型) 或等同
+        signal_type, other = signal_type.normalize(), other.normalize()
+        
+        return issubclass(signal_type, other)
     
     def merges(signal_type: 'SignalType', other: 'SignalType'): # 合并两个信号类型的信息, 去 IO Wrapper
         """
