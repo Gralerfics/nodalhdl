@@ -230,14 +230,6 @@ shutil.rmtree("C:/Workspace/test_project/test_project.srcs/sources_1/new")
 write_to_files(model.emit_vhdl(), "C:/Workspace/test_project/test_project.srcs/sources_1/new")
 
 
-print('m2 persistence ==============================================================================================================')
-
-
-import dill
-
-dill.dump(m2, open("m2.dill", "wb"))
-
-
 print('m2.dup ==============================================================================================================')
 
 
@@ -317,4 +309,10 @@ model = m2.generation(rid_m2_exp)
 
 shutil.rmtree("C:/Workspace/test_project/test_project.srcs/sources_1/new")
 write_to_files(model.emit_vhdl(), "C:/Workspace/test_project/test_project.srcs/sources_1/new")
+
+
+print('m2 persistence ==============================================================================================================')
+
+
+m2.save_dill("m2.dill")
 

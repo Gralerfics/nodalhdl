@@ -4,6 +4,7 @@ from .hdl import HDLFileModel
 import sys
 import weakref
 import uuid
+import dill # TODO 加入 dependencies
 from typing import List, Dict, Set, Tuple, Union
 
 
@@ -880,6 +881,15 @@ class Structure:
         for idx, node in enumerate(nodes):
             if idx != 0:
                 self.connect(nodes[0], node)
+    
+    def save_dill(self, file_path: str):
+        with open(file_path, "wb") as f:
+            dill.dump(self, f)
+    
+    @classmethod
+    def load_dill(self, file_path: str) -> 'Structure':
+        with open(file_path, "rb") as f:
+            return dill.load(f)
 
 class NodeProxy:
     def __init__(self, node: Node, runtime_id: str, flipped: bool = False):

@@ -141,8 +141,7 @@ class SignalType(type):
     def equals(signal_type: 'SignalType', other: 'SignalType'):
         signal_type, other = signal_type.normalize(), other.normalize()
         
-        # return signal_type is other
-        return str(signal_type) == str(other)
+        return signal_type is other
     
     def belongs(signal_type: 'SignalType', other: 'SignalType'): # 要求从属于 other, 即比 other 更具体 (子类型) 或等同
         signal_type, other = signal_type.normalize(), other.normalize()
