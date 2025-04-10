@@ -47,7 +47,7 @@ def KeeperTickN(t: SignalType, n: int = 0) -> Structure:
     
     s.connect(i, o)
     
-    i.set_latency(n)
+    i.set_latency(0)#n)
     
     rid = RuntimeId.create()
     s.deduction(rid)
@@ -161,7 +161,7 @@ def M2() -> Structure:
     # s.connect(Bi, Bo)
     s.connect(Bi, u3.IO.i)
     s.connect(u3.IO.o, Bo)
-    Bi.set_latency(2)
+    Bi.set_latency(0)#2)
 
     return s
 

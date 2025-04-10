@@ -3,10 +3,8 @@ from nodalhdl.core.structure import Structure, RuntimeId
 from nodalhdl.basic.arith import Add, GetAttribute
 from nodalhdl.core.hdl import HDLFileModel
 
-import dill
 
-
-m2: Structure = dill.load(open("m2.dill", "rb"))
+m2: Structure = Structure.load_dill("m2.dill")
 
 rid = RuntimeId.create()
 m2.deduction(rid)

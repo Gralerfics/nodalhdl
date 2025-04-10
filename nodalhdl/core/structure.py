@@ -888,6 +888,7 @@ class Structure:
     
     @classmethod
     def load_dill(self, file_path: str) -> 'Structure':
+        # TODO traverse the structure and rebuild the SignalType(s)?
         with open(file_path, "rb") as f:
             return dill.load(f)
 
