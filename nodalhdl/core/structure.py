@@ -9,7 +9,7 @@ from typing import List, Dict, Set, Tuple, Union
 
 
 # import logging # TODO 搞一个分频道调试输出工具
-# logging.basicConfig(level = logging.INFO,format = '%(asctime)s - [%(levelname)s] - %(message)s')
+# logging.basicConfig(level = logging.INFO, format = '%(asctime)s - [%(levelname)s] - %(message)s')
 # logger = logging.getLogger(__name__)
 
 
@@ -401,7 +401,6 @@ class Structure:
         self.custom_sequential: bool = False # should be asserted to True if there are registers in custom_generation (raw_content)
         self.custom_deduction: callable = None
         self.custom_generation: callable = None
-        # self.custom_timing: callable = None # TODO operators (组合逻辑的, 带时序逻辑的先不让流水化) generation 后用其他工具运行时序分析得到 timing 信息.
         
         # references (internal structure)
         self.ports_inside_flipped: StructuralNodes = StructuralNodes() # to be connected to internal nodes, IO flipped (EEB)
@@ -469,6 +468,25 @@ class Structure:
         for sub_inst_name, subs in self.substructures.items():
             res += subs.runtime_info(runtime_id.next(sub_inst_name), indent + 4, fqn + "." + sub_inst_name)
         return res
+    
+    def get_nets(self) -> List[Net]:
+        """
+            Traverse the structure and return all nets connected to the ports and nodes.
+            TODO to be checked
+        """
+        res: Set[Net] = set()
+        
+        for _, port in self.ports_inside_flipped.nodes():
+            res.add(port.located_net)
+        
+        for sub_inst_name, subs in self.substructures.items():
+            for _, port in subs.ports_outside[(self.id, sub_inst_name)].nodes():
+                res.add(port.located_net)
+        
+        for node in self.nodes:
+            res.add(node.located_net)
+        
+        return list(res)
     
     def get_subs_ports_outside(self, subs_inst_name: str) -> StructuralNodes: # TODO to be checked
         return self.substructures[subs_inst_name].ports_outside[(self.id, subs_inst_name)]
@@ -621,14 +639,14 @@ class Structure:
                     for idx in range(len(sub_ports_o)): # TODO 顺序一定对?
                         sub_port_o, sub_port_i = sub_ports_o[idx][1], sub_ports_i[idx][1]
                         
+                        # add equivalent node (before `sub_port_o.counteract`, or sub_port_o will be separated)
+                        equi_node_type = sub_port_i.origin_signal_type.merges(sub_port_o.origin_signal_type)
+                        equi_node = Node(sub_inst_name + "_io_" + sub_port_i.name, equi_node_type, is_port = False, located_net = sub_port_o.located_net)
+                        self.nodes.add(equi_node)
+                        
                         # merge net
                         sub_port_i.located_net.located_structure_weak = weakref.ref(self)
                         sub_port_o.counteract(sub_port_i) # merged, latency added
-                        
-                        # add equivalent node (port_i and port_o will be GCed TODO to be checked)
-                        node_type = sub_port_i.origin_signal_type.merges(sub_port_o.origin_signal_type)
-                        new_node = Node(sub_inst_name + "_io_" + sub_port_i.name, node_type, is_port = False, located_net = sub_port_o.located_net)
-                        self.nodes.add(new_node)
                     
                     # move out the nodes
                     for sub_node in subs.nodes:
@@ -815,23 +833,6 @@ class Structure:
             self.reusable_hdl = model
         
         return model
-    
-    # def timing(self, runtime_id: RuntimeId, from_port: str, to_port: str):
-    #     """
-    #         Timing analysis.
-    #         TODO
-    #         from/to_port: a.b.c, 或可用 eval?
-    #     """
-    #     if not self.is_determined(runtime_id):
-    #         raise StructureGenerationException("Only determined structure can be analyzed")
-        
-    #     if not self.is_runtime_integrate(runtime_id):
-    #         raise StructureGenerationException("Invalid (not integrate) runtime ID")
-        
-    #     if self.is_operator:
-    #         return self.custom_timing(self, IOProxy(self.ports_inside_flipped, runtime_id, flipped = True), from_port, to_port)
-        
-    #     pass # TODO
     
     def add_port(self, name: str, signal_type: SignalType) -> Node:
         if not signal_type.perfectly_io_wrapped:
