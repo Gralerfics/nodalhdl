@@ -12,11 +12,6 @@ class ArgsOperatorMeta(type):
         s.custom_deduction = cls.deduction
         s.custom_generation = cls.generation
         
-        # if hasattr(cls, "naming") and callable(cls.naming):
-        #     naming_func = getattr(cls, "naming")
-        # else:
-        #     naming_func = lambda cls, args: f"{cls.__name__}_{'_'.join(map(str, args))}"
-        
         rid = RuntimeId.create()
         s.deduction(rid)
         
@@ -24,7 +19,7 @@ class ArgsOperatorMeta(type):
             s.apply_runtime(rid)
         
         if s.is_reusable:
-            unique_name = cls.naming(*args)
+            unique_name = cls.naming(*args) # should be a valid string and unique across all operators
             if unique_name in cls.pool:
                 return cls.pool[unique_name]
             else:
@@ -47,7 +42,7 @@ class ArgsOperator(metaclass = ArgsOperatorMeta):
     def generation(s: Structure, h: HDLFileModel, io: IOProxy): pass
     
     @classmethod
-    def naming(cls, *args): return f"{cls.__name__}_{'_'.join(map(str, args))}"
+    def naming(cls, *args): return f"{cls.__name__}_{'_'.join(map(str, args))}" # [NOTICE] use valid string
 
 
 class Add(ArgsOperator):

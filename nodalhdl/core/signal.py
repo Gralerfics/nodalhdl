@@ -107,8 +107,8 @@ class SignalType(type):
         else:
             return super().__call__(*args, **kwds)
     
-    def __repr__(cls):
-        return cls.def_str()
+    def __repr__(cls): # [NOTICE] used in operator naming, should be valid string
+        return cls.valid_str()
     
     determined = False # i.e. width-determined w.r.t. signals
     io_wrapper_included = False # i.e. whether IO Wrapper is included
@@ -136,7 +136,7 @@ class SignalType(type):
             导致 ==, is, issubclass 等方法判断结果有误, 这里将 SignalType 转字符串后重新求值得到新环境中的 SignalType 对象以解决这个问题.
             TODO 是否还有其他潜在问题有待发现.
         """
-        return eval(str(signal_type))
+        return eval(signal_type.def_str())
     
     def equals(signal_type: 'SignalType', other: 'SignalType'):
         signal_type, other = signal_type.normalize(), other.normalize()
@@ -326,7 +326,10 @@ class BundleType(SignalType):
 
 
 """ Types """
-class Signal(metaclass = SignalType): pass
+class Signal(metaclass = SignalType):
+    @classmethod
+    def valid_str(cls):
+        return cls.__name__
 
 class Auto(Signal):
     @classmethod
@@ -449,4 +452,4 @@ class Output(IOWrapper):
 #     }]]
 # }]
 
-# print(eval(str(T)))
+# print(eval(T.def_str()))
