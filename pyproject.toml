@@ -7,9 +7,16 @@ name = "nodalhdl"
 version = "0.0.1a1"
 description = "A pipelined circuit development toolchain."
 readme = "README.md"
-authors = [{ name = "Gralerfics", email = "glverfer@outlook.com" }]
-license = { text = "GPL-3.0-or-later" }
+authors = [
+    {name = "Gralerfics", email = "glverfer@outlook.com"}
+]
+license = {file = "LICENSE"}
+keywords = ["hdl", "circuit", "pipelining"]
 requires-python = ">=3.12"
+dependencies = [
+    "dill>=0.3.9",
+    "networkx>=3.4.2"
+]
 
 [tool.setuptools]
 packages = ["nodalhdl"]
