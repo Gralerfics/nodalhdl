@@ -394,7 +394,6 @@ class Structure:
         self.id = str(uuid.uuid4()).replace('-', '')
         self.unique_name: str = unique_name
         
-        self.allow_reusing: bool = True # allow to be reused, True by default. if False, the structure will be treated as a independent instance in generation
         self.reusable_hdl: HDLFileModel = None # only for reusable structure; destroy when structural information changed
         
         self.custom_params = {}
@@ -573,15 +572,11 @@ class Structure:
             After strip the structure can perform apply_runtime().
             `deep`: process reusable substructures if True, False by default. After deep-strip (singletonize), expand() can be performed.
             `deep_to_operators`: if deep is True, deep_to_operators will decide if the operators should be stripped.
-                TODO to be checked
-
-            allow_reusing should be set to False for stripped structures, i.e. do not allow the (sub)structures to be reused.
+                TODO to be checked.
         """
         res = self.duplicate() if self.instance_number > 1 and (not self.is_reusable or deep) else self
         
         def _strip(s: Structure):
-            s.allow_reusing = False # [NOTICE] disable reusing for duplicated substructure (under the same structure)
-            
             for sub_inst_name, subs in dict(s.substructures).items(): # copy the dict to avoid runtime modification
                 """
                     if subs.instance_number > 1, it might be needed to be stripped, in this case:
@@ -768,7 +763,7 @@ class Structure:
             raise StructureGenerationException("Invalid (not integrate) runtime ID")
         
         # naming
-        if self.allow_reusing and self.is_reusable:
+        if self.is_reusable:
             if self.reusable_hdl is not None:
                 return self.reusable_hdl
             else:
