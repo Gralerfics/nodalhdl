@@ -426,7 +426,7 @@ class Structure:
         return self.custom_deduction is not None and self.custom_generation is not None
     
     @property
-    def is_reusable(self):
+    def is_reusable(self): # i.e. originally determined
         ports_determined = all([p.is_originally_determined for _, p in self.ports_inside_flipped.nodes()])
         substructures_determined = all([s.is_reusable for s in self.substructures.values()])
         return ports_determined and substructures_determined
@@ -439,6 +439,10 @@ class Structure:
     
     @property
     def is_singleton(self):
+        return (self.is_operator or self.instance_number <= 1) and all([subs.is_singleton for subs in self.substructures.values()])
+    
+    @property
+    def is_strictly_singleton(self):
         return self.instance_number <= 1 and all([subs.is_singleton for subs in self.substructures.values()])
     
     @property
@@ -464,7 +468,7 @@ class Structure:
         return ports_determined and substructures_determined
     
     def runtime_info(self, runtime_id: RuntimeId, indent: int = 0, fqn: str = "<root>"):
-        res = " " * indent + f"{fqn} ({self.id[:8]}, {self.instance_number} ref(s)), IO: {self.ports_inside_flipped.runtime_info(runtime_id)}.\n"
+        res = " " * indent + f"{fqn} ({self.id[:8]}, {self.instance_number} ref(s){", R" if self.is_reusable else ""}), IO: {self.ports_inside_flipped.runtime_info(runtime_id)}.\n"
         for sub_inst_name, subs in self.substructures.items():
             res += subs.runtime_info(runtime_id.next(sub_inst_name), indent + 4, fqn + "." + sub_inst_name)
         return res
@@ -563,15 +567,15 @@ class Structure:
         
         return _duplicate(self)
     
-    def strip(self, deep: bool = False):
+    def strip(self, deep: bool = False, deep_to_operators: bool = False) -> 'Structure':
         """
             Strip the structure, i.e. duplicate and reassign the substructures those are referenced more than once.
             After strip the structure can perform apply_runtime().
             `deep`: process reusable substructures if True, False by default. After deep-strip (singletonize), expand() can be performed.
+            `deep_to_operators`: if deep is True, deep_to_operators will decide if the operators should be stripped.
+                TODO to be checked
 
             allow_reusing should be set to False for stripped structures, i.e. do not allow the (sub)structures to be reused.
-            
-            TODO strip 后应该清除 runtime 信息?
         """
         res = self.duplicate() if self.instance_number > 1 and (not self.is_reusable or deep) else self
         
@@ -579,7 +583,14 @@ class Structure:
             s.allow_reusing = False # [NOTICE] disable reusing for duplicated substructure (under the same structure)
             
             for sub_inst_name, subs in dict(s.substructures).items(): # copy the dict to avoid runtime modification
-                if subs.instance_number > 1 and (not subs.is_reusable or deep):
+                """
+                    if subs.instance_number > 1, it might be needed to be stripped, in this case:
+                        if not subs.is_reusable, it should be stripped;
+                        or it is a reusable substructure, but deep is True, it might be needed to be stripped, in this case:
+                            if not subs.is_operator, it should be stripped;
+                            or it is an operator, but deep_to_operators is True, it should also be stripped.
+                """
+                if subs.instance_number > 1 and (not subs.is_reusable or (deep and (not subs.is_operator or deep_to_operators))):
                     # need to strip
                     new_subs = subs.duplicate()
                     
@@ -592,20 +603,20 @@ class Structure:
                     
                     _strip(new_subs) # recursive strip on new substructure
                 else:
-                    # no need to strip, recursive strip
+                    # current structure do not need to be stripped (substructures could need), recursive strip
                     _strip(subs)
         
         _strip(res)
         
         return res
     
-    def singletonize(self):
-        self.strip(deep = True)
+    def singletonize(self, singletonize_operators: bool = False):
+        self.strip(deep = True, deep_to_operators = singletonize_operators)
     
     def expand(self, shallow: bool = False):
         """
             Expand the substructures, w/o operators.
-            Must be singleton, i.e. instance_number <= 1 for all substructures, which can be achieved by singletonize().
+            Must be singleton, i.e. instance_number <= 1 or .is_operator for all substructures, which can be achieved by singletonize().
             `shallow`: only expand one level, False by default. If False, expand iteratively until there are only operators in substructures[].
             
             Notes when expanding:
@@ -634,9 +645,9 @@ class Structure:
                     # non-operator, expand
                     non_operator_exists = True
                     
-                    # merge subs.ports_inside_flipped and subs.ports_outside (only one element)
+                    # merge subs.ports_inside_flipped and subs.ports_outside
                     sub_ports_o, sub_ports_i = subs.ports_outside[(self.id, sub_inst_name)].nodes(), subs.ports_inside_flipped.nodes()
-                    for idx in range(len(sub_ports_o)): # TODO 顺序一定对?
+                    for idx in range(len(sub_ports_o)): # [NOTICE] traversing order guaranteed?
                         sub_port_o, sub_port_i = sub_ports_o[idx][1], sub_ports_i[idx][1]
                         
                         # add equivalent node (before `sub_port_o.counteract`, or sub_port_o will be separated)
@@ -671,7 +682,7 @@ class Structure:
                         # move out
                         new_substructures[new_inst_name] = sub_subs
             
-            # replace substructures, old one will be GCed TODO to be checked
+            # replace substructures, old one will be GCed
             self.substructures = new_substructures
             
             if not non_operator_exists: # all expanded
