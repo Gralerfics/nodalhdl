@@ -4,11 +4,11 @@ from .hdl import HDLFileModel
 import sys
 import weakref
 import uuid
-import dill # TODO 加入 dependencies
+import dill
 from typing import List, Dict, Set, Tuple, Union
 
 
-# import logging # TODO 搞一个分频道调试输出工具
+# import logging # TODO build a channel logger utility
 # logging.basicConfig(level = logging.INFO, format = '%(asctime)s - [%(levelname)s] - %(message)s')
 # logger = logging.getLogger(__name__)
 
@@ -36,7 +36,7 @@ class RuntimeId:
         return next_id
     
     @staticmethod
-    def create(): # TODO 重复
+    def create():
         new_id_str = str(uuid.uuid4()).replace('-', '')
         new_id = RuntimeId(new_id_str)
         RuntimeId.id_pool[new_id_str] = new_id
@@ -431,7 +431,7 @@ class Structure:
         return ports_determined and substructures_determined
     
     @property
-    def is_sequential(self): # TODO to be checked
+    def is_sequential(self):
         ports_inside_nets_flag = any([p.located_net.latency > 0 for _, p in self.ports_inside_flipped.nodes()])
         subs_ports_outside_nets_flag = any([any([p.located_net.latency > 0 for _, p in self.get_subs_ports_outside(subs_inst_name).nodes()]) for subs_inst_name in self.substructures.keys()])
         return ports_inside_nets_flag or subs_ports_outside_nets_flag or self.custom_sequential or any([subs.is_sequential for subs in self.substructures.values()])
@@ -475,7 +475,6 @@ class Structure:
     def get_nets(self) -> List[Net]:
         """
             Traverse the structure and return all nets connected to the ports and nodes.
-            TODO to be checked
         """
         res: Set[Net] = set()
         
@@ -491,7 +490,7 @@ class Structure:
         
         return list(res)
     
-    def get_subs_ports_outside(self, subs_inst_name: str) -> StructuralNodes: # TODO to be checked
+    def get_subs_ports_outside(self, subs_inst_name: str) -> StructuralNodes:
         return self.substructures[subs_inst_name].ports_outside[(self.id, subs_inst_name)]
     
     def duplicate(self) -> 'Structure':
