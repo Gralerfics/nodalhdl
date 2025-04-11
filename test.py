@@ -316,3 +316,15 @@ print('m2 persistence ==========================================================
 
 m2.save_dill("m2.dill")
 
+
+print('m2.singletonize.gen (set 1 CLK delay for all nets) ==============================================================================================================')
+
+
+for net in m2.get_nets():
+    net.latency = 1
+
+model = m2.generation(rid_m2_exp)
+
+shutil.rmtree("C:/Workspace/test_project/test_project.srcs/sources_1/new")
+write_to_files(model.emit_vhdl(), "C:/Workspace/test_project/test_project.srcs/sources_1/new")
+
