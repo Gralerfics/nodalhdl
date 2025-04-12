@@ -166,7 +166,7 @@ class HDLFileModel:
                 seq_process += "        elsif rising_edge(clock) then\n"
                 for reg_next_name, reg_name, _ in model.registers:
                     seq_process += f"            {reg_name} <= {reg_next_name};\n"
-                seq_process += "        end if;\n    end process;"
+                seq_process += "        end if;\n    end process;\n"
             
             # 模块例化
             comp_content = ""
@@ -248,6 +248,7 @@ class HDLFileModel:
     def add_register(self, name: str, t: SignalType, latency: int = 1) -> Tuple[str, str]: # , initial_values: Union[str, List[str]] = None)
         """
             Return next_signal_name and reg_signal_name.
+            [NOTICE] notice that the naming method influences auto-pipelining.
         """
         for level in range(latency):
             reg_next_name, reg_name = f"reg_next_{level}_{name}", f"reg_{level}_{name}"

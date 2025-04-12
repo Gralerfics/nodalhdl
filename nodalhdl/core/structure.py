@@ -611,6 +611,9 @@ class Structure:
         """
             Expand the substructures, w/o operators.
             Must be singleton, i.e. instance_number <= 1 or .is_operator for all substructures, which can be achieved by singletonize().
+                P.S. the ports_inside of the `reusable substructures which are not operators` are going to be moved out, so they should be singleton.
+                     operators need not be expanded, so they can be reused.
+                     so asserting .is_singleton instead of .is_strictly_singleton is enough.
             `shallow`: only expand one level, False by default. If False, expand iteratively until there are only operators in substructures[].
             
             Notes when expanding:
