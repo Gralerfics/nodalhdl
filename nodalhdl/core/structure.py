@@ -8,11 +8,6 @@ import dill
 from typing import List, Dict, Set, Tuple, Union
 
 
-# import logging # TODO build a channel logger utility
-# logging.basicConfig(level = logging.INFO, format = '%(asctime)s - [%(levelname)s] - %(message)s')
-# logger = logging.getLogger(__name__)
-
-
 """ Id """
 class RuntimeId:
     """
