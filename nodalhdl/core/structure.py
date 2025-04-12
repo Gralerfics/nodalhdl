@@ -119,7 +119,7 @@ class Net:
     def clear_runtimes(self):
         self.runtimes.clear()
     
-    def __init__(self, located_structure: 'Structure', latency: int = 0): # not allowed to create a Net/Node without a located structure
+    def __init__(self, located_structure: 'Structure'): # not allowed to create a Net/Node without a located structure
         self.id = str(uuid.uuid4()).replace('-', '')
         
         # references
@@ -127,13 +127,36 @@ class Net:
         self.located_structure_weak: weakref.ReferenceType[Structure] = weakref.ref(located_structure)
         
         self.driver: weakref.ReferenceType[Node] = None # driver node (also in nodes_weak) or None, should be only one, originlly Output; others are loads
-        self.latency: int = latency # latency of the net, i.e. registers between driver and loads
         
         # runtime
         self.runtimes: weakref.WeakKeyDictionary[RuntimeId, Net.Runtime] = weakref.WeakKeyDictionary()
     
     def __len__(self):
         return len(self.nodes_weak)
+    
+    def get_loads(self): # ports(*) that are not drivers
+        return [n for n in self.nodes_weak if n is not self.driver() and n.is_port]
+    
+    """
+        Latency management.
+    """
+    @property
+    def is_sequential(self):
+        return any([n.latency > 0 for n in self.nodes_weak])
+    
+    def transform_driver_latency_to_loads(self):
+        """
+            Move the driver latency to the loads.
+            The driver latency will be set to 0, and the loads' latency will add the driver latency.
+        """
+        if self.driver() is None:
+            return
+        
+        driver_latency = self.driver().latency
+        for load in self.get_loads():
+            load.set_latency(driver_latency + load.latency)
+        
+        self.driver().set_latency(0)
     
     """
         The following actions (add_node, separate_node and merge) may change the structural information.
@@ -184,12 +207,16 @@ class Node:
     """
         Circuit node.
     """
-    def __init__(self, name: str, origin_signal_type: SignalType, is_port: bool, located_structure: 'Structure' = None, located_net: Net = None):
+    def __init__(self, name: str, origin_signal_type: SignalType, is_port: bool, located_structure: 'Structure' = None, located_net: Net = None, latency: int = 0):
         # properties
         self.id = str(uuid.uuid4()).replace('-', '')
         self.name: str = name # raw name, no need to be unique. layer information for ports will be added in StructuralNodes.nodes()
         self.origin_signal_type: SignalType = origin_signal_type # must be set by set_origin_type()
         self.is_port: bool = is_port
+        
+        self.latency: int = latency # latency, only for ports
+        if self.latency > 0 and not self.is_port:
+            raise StructureException("Latency can only be set for ports")
         
         # references
         self.located_net: Net = located_net # strong reference to Net
@@ -252,17 +279,29 @@ class Node:
         if self.located_net is other.located_net: # same net, no change
             return
         
-        self.located_net.latency += other.located_net.latency # [NOTICE]
         self.located_net._merge(other.located_net)
         
         self._structural_modification() # structural modification
     
-    def counteract(self, other: 'Node'):
+    def counteract(self, other: 'Node', equiv_node_name: str = ""):
         if self.located_net is other.located_net: # same net, no change
             return
         
-        self.located_net.latency += other.located_net.latency
+        if not self.is_port or not other.is_port:
+            raise StructureException("Counteract only allowed between an inside port (other) and its outside port (self)")
         
+        # add equivalent node (reserve original signal type info)
+        equiv_node_type = other.origin_signal_type.merges(other.origin_signal_type)
+        equiv_node = Node(equiv_node_name, equiv_node_type, is_port = False, located_net = self.located_net)
+        self.located_structure.nodes.add(equiv_node)
+
+        # latency setting
+        driver_node, load_node = (self, other) if self.origin_signal_type.belongs(Output) else (other, self)
+        driver_node.set_latency(driver_node.latency + load_node.latency)
+        load_node.set_latency(0)
+        driver_node.located_net.transform_driver_latency_to_loads()
+        
+        # remove two nodes
         n_self, n_other = self.located_net, other.located_net
         n_self._separate_node(self)
         n_other._separate_node(other)
@@ -288,10 +327,12 @@ class Node:
         self._structural_modification() # structural modification
 
     """
-        Latency setting will not change the structural information. Types are passed through the registers.
+        Latency setting will not change the structural information (i.e. influence runtime type infos). Types are passed through the registers.
     """
     def set_latency(self, latency: int):
-        self.located_net.latency = latency
+        if not self.is_port:
+            raise StructureException("Cannot set latency for non-port node")
+        self.latency = latency
 
 class StructuralNodes(dict):
     def __init__(self, d: dict = {}):
@@ -432,8 +473,8 @@ class Structure:
     
     @property
     def is_sequential(self):
-        ports_inside_nets_flag = any([p.located_net.latency > 0 for _, p in self.ports_inside_flipped.nodes()])
-        subs_ports_outside_nets_flag = any([any([p.located_net.latency > 0 for _, p in self.get_subs_ports_outside(subs_inst_name).nodes()]) for subs_inst_name in self.substructures.keys()])
+        ports_inside_nets_flag = any([p.latency > 0 for _, p in self.ports_inside_flipped.nodes()])
+        subs_ports_outside_nets_flag = any([any([p.latency > 0 for _, p in self.get_subs_ports_outside(subs_inst_name).nodes()]) for subs_inst_name in self.substructures.keys()])
         return ports_inside_nets_flag or subs_ports_outside_nets_flag or self.custom_sequential or any([subs.is_sequential for subs in self.substructures.values()])
     
     @property
@@ -513,12 +554,12 @@ class Structure:
             # nets
             net_build_map: Dict[Net, Net] = {} # reference net -> duplicated net
             
-            def _trace_net(ref_node: Node) -> Net:
+            def _trace_net(ref_node: Node) -> Net: # check if the located_net of ref_node is already duplicated, return net'
                 ref_net = ref_node.located_net
                 if net_build_map.get(ref_net) is not None:
                     return net_build_map[ref_net]
                 else:
-                    new_net = Net(new_s, latency = ref_net.latency)
+                    new_net = Net(new_s)
                     net_build_map[ref_net] = new_net
                     return new_net
             
@@ -529,7 +570,7 @@ class Structure:
                     new_net = _trace_net(ref)
                     
                     # duplicate the port under net'
-                    new_port = Node(ref.name, ref.origin_signal_type, is_port = ref.is_port, located_net = new_net)
+                    new_port = Node(ref.name, ref.origin_signal_type, is_port = ref.is_port, located_net = new_net, latency = ref.latency)
                     return new_port
                 else: # StructuralNodes
                     return StructuralNodes({k: _build_ports(v) for k, v in ref.items()})
@@ -543,7 +584,7 @@ class Structure:
                 new_net = _trace_net(ref_node)
                 
                 # duplicate the node under net'
-                new_node = Node(ref_node.name, ref_node.origin_signal_type, is_port = ref_node.is_port, located_net = new_net)
+                new_node = Node(ref_node.name, ref_node.origin_signal_type, is_port = ref_node.is_port, located_net = new_net, latency = ref_node.latency)
                 new_s.nodes.add(new_node)
             
             # substructures
@@ -647,14 +688,9 @@ class Structure:
                     for idx in range(len(sub_ports_o)): # [NOTICE] traversing order guaranteed?
                         sub_port_o, sub_port_i = sub_ports_o[idx][1], sub_ports_i[idx][1]
                         
-                        # add equivalent node (before `sub_port_o.counteract`, or sub_port_o will be separated)
-                        equi_node_type = sub_port_i.origin_signal_type.merges(sub_port_o.origin_signal_type)
-                        equi_node = Node(sub_inst_name + "_io_" + sub_port_i.name, equi_node_type, is_port = False, located_net = sub_port_o.located_net)
-                        self.nodes.add(equi_node)
-                        
                         # merge net
                         sub_port_i.located_net.located_structure_weak = weakref.ref(self)
-                        sub_port_o.counteract(sub_port_i) # merged, latency added
+                        sub_port_o.counteract(sub_port_i, equiv_node_name = sub_inst_name + "_io_" + sub_port_i.name) # counteract, this two ports removed, type merged and assigned to a equi node, latency merged
                     
                     # move out the nodes
                     for sub_node in subs.nodes:
@@ -774,7 +810,16 @@ class Structure:
         # create file model and set entity name
         model = HDLFileModel(f"hdl_{prefix}")
         
-        net_wires: Dict[Net, List[str, List[str]]] = {} # net -> (driver_wire_name, load_wire_names[])
+        net_wires: Dict[Net, List[List[str, int], List[List[str, int]]]] = {} # net -> [[driver_wire_name, latency], [[load_wire_name, latency], ...]]
+        
+        def fill_net_wires(port: Node, wire_name: str):
+            if net_wires.get(port.located_net) is None:
+                net_wires[port.located_net] = [[None, 0], []]
+            
+            if port.origin_signal_type.belongs(Output):
+                net_wires[port.located_net][0] = [wire_name, port.latency] # add driver
+            else:
+                net_wires[port.located_net][1].append([wire_name, port.latency]) # add load
         
         # add ports into model according to ports_inside_flipped
         for port_full_name, port in self.ports_inside_flipped.nodes():
@@ -782,13 +827,7 @@ class Structure:
             model.add_port(f"{port_full_name}", direction, port.get_type(runtime_id)) # use full name
             
             # fill net_wires
-            if net_wires.get(port.located_net) is None:
-                net_wires[port.located_net] = [None, []]
-            
-            if port.origin_signal_type.belongs(Output):
-                net_wires[port.located_net][0] = port_full_name
-            else:
-                net_wires[port.located_net][1].append(port_full_name)
+            fill_net_wires(port, wire_name = port_full_name)
         
         # substructures
         if self.is_operator:
@@ -804,37 +843,46 @@ class Structure:
                     model.add_signal(port_wire_name, port.get_type(runtime_id)) # add signal for port wire
 
                     # fill net_wires
-                    if net_wires.get(port.located_net) is None:
-                        net_wires[port.located_net] = [None, []]
-                    
-                    if port.origin_signal_type.belongs(Output):
-                        net_wires[port.located_net][0] = port_wire_name
-                    else:
-                        net_wires[port.located_net][1].append(port_wire_name)
+                    fill_net_wires(port, wire_name = port_wire_name)
                 
                 model.inst_component(sub_inst_name, subs.generation(runtime_id.next(sub_inst_name), prefix + "_" + sub_inst_name), mapping)
         
         # build nets according to net_wires
-        for net, (driver_wire_name, load_wire_names) in net_wires.items():
+        for net, ((driver_wire_name, driver_latency), loads_info) in net_wires.items():
             if driver_wire_name is not None:
-                if net.latency == 0:
+                """
+                    driver_wire_name (= center_wire_name)
+                """
+                center_wire_name = driver_wire_name
+                
+                # driver
+                if driver_latency > 0:
                     """
-                                 +-> load_0
-                        driver --+-> load_i
-                                 +-> load_n-1
+                        driver_wire_name --> reg_next_0_d_{name} | ... | reg_{l-1}_d_{name} (= center_wire_name)
                     """
-                    for load_wire_name in load_wire_names:
-                        model.add_assignment(load_wire_name, driver_wire_name)
-                else:
-                    """
-                                                            +-> load_0
-                        driver ----> reg_next | ... | reg --+-> load_i
-                                                            +-> load_n-1
-                    """
-                    reg_next_name, reg_name = model.add_register(driver_wire_name, net.get_runtime(runtime_id).signal_type, latency = net.latency)
+                    reg_next_name, reg_name = model.add_register("d_" + driver_wire_name, net.get_runtime(runtime_id).signal_type, latency = driver_latency)
                     model.add_assignment(reg_next_name, driver_wire_name)
-                    for load_wire_name in load_wire_names:
-                        model.add_assignment(load_wire_name, reg_name)
+                    center_wire_name = reg_name
+                
+                # loads
+                for idx, (load_wire_name, load_latency) in enumerate(loads_info):
+                    """
+                        center_wire_name (= end_wire_name)
+                    """
+                    end_wire_name = center_wire_name
+                    
+                    if load_latency > 0:
+                        """
+                            center_wire_name --> reg_next_0_l_{name} | ... | reg_{l-1}_l_{name} (= end_wire_name)
+                        """
+                        reg_next_name, reg_name = model.add_register(f"l_" + load_wire_name, net.get_runtime(runtime_id).signal_type, latency = load_latency)
+                        model.add_assignment(reg_next_name, center_wire_name)
+                        end_wire_name = reg_name
+                    
+                    """
+                        end_wire_name --> load_wire_name
+                    """
+                    model.add_assignment(load_wire_name, end_wire_name)
         
         # save model for reusable structures
         if self.is_reusable:
@@ -857,12 +905,11 @@ class Structure:
         
         return new_port
     
-    def add_node(self, name: str, signal_type: SignalType, latency: int = 0) -> Node:
+    def add_node(self, name: str, signal_type: SignalType) -> Node:
         if signal_type.io_wrapper_included:
             signal_type = signal_type.clear_io()
         
         new_node = Node(name, signal_type, is_port = False, located_structure = self)
-        new_node.set_latency(latency)
         self.nodes.add(new_node) # remember to add to nodes, or it may be garbage collected
         
         return new_node

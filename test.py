@@ -47,7 +47,7 @@ def KeeperTickN(t: SignalType, n: int = 0) -> Structure:
     
     s.connect(i, o)
     
-    i.set_latency(0)#n)
+    i.set_latency(n)
     
     rid = RuntimeId.create()
     s.deduction(rid)
@@ -58,7 +58,7 @@ def KeeperTickN(t: SignalType, n: int = 0) -> Structure:
 
     return s
 
-keeper_u4_1clk = KeeperTickN(UInt[4], 1)
+keeper_u4_0clk = KeeperTickN(UInt[4], 0)
 
 
 print('m1 ==============================================================================================================')
@@ -73,7 +73,7 @@ def M1() -> Structure:
     c = s.add_port("c", Input[UInt[4]])
     o = s.add_port("o", Output[Auto])
     
-    x = s.add_substructure("x", keeper_u4_1clk)
+    x = s.add_substructure("x", keeper_u4_0clk)
     y = s.add_substructure("y", Add[UInt[4], UInt[4]])
     z = s.add_substructure("z", add_u4_u4_u4)
     
@@ -141,6 +141,7 @@ def M2() -> Structure:
     c = s.add_port("c", Input[UInt[4]])
     x = s.add_port("x", Input[UInt[8]])
     o = s.add_port("o", Output[Auto])
+    u1o = s.add_port("u1o", Output[Auto])
     
     Bi = s.add_port("Bi", Input[B_t])
     Bo = s.add_port("Bo", Output[Auto])
@@ -157,6 +158,8 @@ def M2() -> Structure:
     s.connect(u1.IO.o, u2.IO.i1)
     s.connect(x, u2.IO.i2)
     s.connect(u2.IO.o, o)
+    
+    s.connect(u1.IO.o, u1o)
     
     # s.connect(Bi, Bo)
     s.connect(Bi, u3.IO.i)
@@ -317,11 +320,13 @@ print('m2 persistence ==========================================================
 m2.save_dill("m2.dill")
 
 
-print('m2.singletonize.gen (set 1 CLK delay for all nets) ==============================================================================================================')
+print('m2.singletonize.gen (test latencies) ==============================================================================================================')
 
 
 for net in m2.get_nets():
-    net.latency = 1
+    net.driver().set_latency(1)
+    for idx, load in enumerate(net.get_loads()):
+        load.set_latency(idx + 1)
 
 model = m2.generation(rid_m2_exp)
 
