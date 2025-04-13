@@ -376,7 +376,7 @@ class StructuralNodes(dict):
         res = []
         for k, v in self.items():
             if isinstance(v, Node):
-                res.append((v.name, v))
+                res.append((prefix + v.name, v))
             elif isinstance(v, StructuralNodes):
                 res.extend(v.nodes(prefix + k + "_"))
         return res
@@ -890,10 +890,15 @@ class Structure:
             raise StructureException("Port signal type should be perfectly IO wrapped")
         
         def _extract(key: str, t: SignalType):
+            """
+                Extract sub-ports with IOWrapper as independent Node objects.
+                The names are the raw names, instead of the full names (with layer information).
+                StructuralNodes().nodes() will add the layer information to the returned full names.
+            """
             if t.belongs(IOWrapper):
                 return Node(key, t.flip_io(), is_port = True, located_structure = self) # (1.) io is flipped in ports_inside_flipped, (2.) ports inside are connected with internal nodes/nets, so located_structure is set to self
             elif t.belongs(Bundle):
-                return StructuralNodes({k: _extract(key + "_" + k, v) for k, v in t._bundle_types.items()}) # node_name should be layered
+                return StructuralNodes({k: _extract(k, v) for k, v in t._bundle_types.items()}) # node_name should be layered
 
         new_port = _extract(name, signal_type)
         self.ports_inside_flipped[name] = new_port
@@ -940,6 +945,7 @@ class Structure:
     @classmethod
     def load_dill(self, file_path: str) -> 'Structure':
         # TODO traverse the structure and rebuild the SignalType(s)?
+        # TODO 除了 SignalType 这种, 像 arith 这种带 pool 的情况, 读取后 pool 是没有的, 会不会导致对象不一致?
         with open(file_path, "rb") as f:
             return dill.load(f)
 

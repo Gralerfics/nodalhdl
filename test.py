@@ -73,6 +73,8 @@ def M1() -> Structure:
     c = s.add_port("c", Input[UInt[4]])
     o = s.add_port("o", Output[Auto])
     
+    o.set_latency(2) # TODO
+    
     x = s.add_substructure("x", keeper_u4_0clk)
     y = s.add_substructure("y", Add[UInt[4], UInt[4]])
     z = s.add_substructure("z", add_u4_u4_u4)
@@ -135,6 +137,20 @@ def M2() -> Structure:
         "z": UInt[6]
     }]
     
+    """ Test structural ports Begin """
+    ti = s.add_port("ti", Bundle[{
+        "x": Input[UInt[4]],
+        "y": Bundle[{
+            "a": Input[UInt[2]],
+            "b": Output[Auto],
+        }]
+    }])
+    u4 = s.add_substructure("u4", add_auto_auto)
+    s.connect(ti.x, u4.IO.op1)
+    s.connect(ti.y.a, u4.IO.op2)
+    s.connect(u4.IO.res, ti.y.b)
+    """ Test structural ports End """
+    
     t = s.add_port("t", Input[UInt[4]])
     a = s.add_port("a", Input[UInt[4]])
     b = s.add_port("b", Input[UInt[4]])
@@ -142,13 +158,12 @@ def M2() -> Structure:
     x = s.add_port("x", Input[UInt[8]])
     o = s.add_port("o", Output[Auto])
     u1o = s.add_port("u1o", Output[Auto])
-    
     Bi = s.add_port("Bi", Input[B_t])
     Bo = s.add_port("Bo", Output[Auto])
     
     u1 = s.add_substructure("u1", m1)
+    u1.IO.o.set_latency(1) # TODO
     u2 = s.add_substructure("u2", addw)
-    
     u3 = s.add_substructure("u3", GetAttribute[B_t, ("xy", "y")])
     
     s.connect(t, u1.IO.t)
@@ -320,16 +335,16 @@ print('m2 persistence ==========================================================
 m2.save_dill("m2.dill")
 
 
-print('m2.singletonize.gen (test latencies) ==============================================================================================================')
+# print('m2.singletonize.gen (test latencies) ==============================================================================================================')
 
 
-for net in m2.get_nets():
-    net.driver().set_latency(1)
-    for idx, load in enumerate(net.get_loads()):
-        load.set_latency(idx + 1)
+# for net in m2.get_nets():
+#     net.driver().set_latency(1)
+#     for idx, load in enumerate(net.get_loads()):
+#         load.set_latency(idx + 1)
 
-model = m2.generation(rid_m2_exp)
+# model = m2.generation(rid_m2_exp)
 
-shutil.rmtree("C:/Workspace/test_project/test_project.srcs/sources_1/new")
-write_to_files(model.emit_vhdl(), "C:/Workspace/test_project/test_project.srcs/sources_1/new")
+# shutil.rmtree("C:/Workspace/test_project/test_project.srcs/sources_1/new")
+# write_to_files(model.emit_vhdl(), "C:/Workspace/test_project/test_project.srcs/sources_1/new")
 
