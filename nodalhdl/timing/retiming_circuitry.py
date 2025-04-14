@@ -401,55 +401,56 @@ class ExtendedCircuit:
 
 
 # Test
-G = ExtendedCircuit()
+if __name__ == '__main__':
+    G = ExtendedCircuit()
 
-# G.add_internal_edge(0, 0, [3, 4], [0, 5])
-# G.add_internal_edge(1, 2, [0], [1])
-# G.add_internal_edge(1, 3, [0], [2])
-# G.add_internal_edge(1, 5, [5], [2])
-# G.add_internal_edge(2, 2, [1], [3])
-# G.add_internal_edge(2, 1, [1], [4])
-# G.add_internal_edge(2, 4, [2], [4])
-# G.set_external_edge_weight(0, 2)
-# G.set_external_edge_weight(5, 2)
+    # G.add_internal_edge(0, 0, [3, 4], [0, 5])
+    # G.add_internal_edge(1, 2, [0], [1])
+    # G.add_internal_edge(1, 3, [0], [2])
+    # G.add_internal_edge(1, 5, [5], [2])
+    # G.add_internal_edge(2, 2, [1], [3])
+    # G.add_internal_edge(2, 1, [1], [4])
+    # G.add_internal_edge(2, 4, [2], [4])
+    # G.set_external_edge_weight(0, 2)
+    # G.set_external_edge_weight(5, 2)
 
-G.add_internal_edges([
-    (0, 0, [12, 13, 14, 15], [0, 1, 2, 3]),
-    (1, 2, [0], [4]),
-    (1, 1, [0], [5]),
-    (1, 3, [1], [5]),
-    (2, 4, [2], [6, 7]),
-    (2, 2, [3], [6, 7]),
-    (2, 5, [3], [8]),
-    (3, 1, [4], [9]),
-    (3, 4, [4], [14]),
-    (3, 2, [5], [9]),
-    (3, 3, [5], [14]),
-    (3, 7, [6], [14]),
-    (3, 2, [6], [10]),
-    (3, 4, [7], [10]),
-    (3, 2, [8], [11]),
-    (4, 3, [9], [12]),
-    (4, 4, [9], [13]),
-    (5, 3, [10], [15]),
-    (5, 5, [11], [15])
-])
-G.set_external_edge_weight(0, 1)
-G.set_external_edge_weight(1, 1)
-G.set_external_edge_weight(6, 1)
-G.set_external_edge_weight(7, 1)
-G.set_external_edge_weight(8, 1)
+    G.add_internal_edges([
+        (0, 0, [12, 13, 14, 15], [0, 1, 2, 3]),
+        (1, 2, [0], [4]),
+        (1, 1, [0], [5]),
+        (1, 3, [1], [5]),
+        (2, 4, [2], [6, 7]),
+        (2, 2, [3], [6, 7]),
+        (2, 5, [3], [8]),
+        (3, 1, [4], [9]),
+        (3, 4, [4], [14]),
+        (3, 2, [5], [9]),
+        (3, 3, [5], [14]),
+        (3, 7, [6], [14]),
+        (3, 2, [6], [10]),
+        (3, 4, [7], [10]),
+        (3, 2, [8], [11]),
+        (4, 3, [9], [12]),
+        (4, 4, [9], [13]),
+        (5, 3, [10], [15]),
+        (5, 5, [11], [15])
+    ])
+    G.set_external_edge_weight(0, 1)
+    G.set_external_edge_weight(1, 1)
+    G.set_external_edge_weight(6, 1)
+    G.set_external_edge_weight(7, 1)
+    G.set_external_edge_weight(8, 1)
 
-print(G.minimize_clock_period([0]))
+    print(G.minimize_clock_period([0]))
 
-# import time
-# t = time.time()
-# r = G.solve_retiming(5)
-# print(time.time() - t)
-# if r:
-#     print("r:", r)
-#     G.apply_retiming(r)
-#     [print(f"e_{idx}.w_r = {e_obj.w}") for idx, e_obj in enumerate(G.E)]
-# else:
-#     print("No solution.")
+    # import time
+    # t = time.time()
+    # r = G.solve_retiming(5)
+    # print(time.time() - t)
+    # if r:
+    #     print("r:", r)
+    #     G.apply_retiming(r)
+    #     [print(f"e_{idx}.w_r = {e_obj.w}") for idx, e_obj in enumerate(G.E)]
+    # else:
+    #     print("No solution.")
 
