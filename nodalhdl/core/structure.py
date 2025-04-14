@@ -232,12 +232,12 @@ class Node:
     @property
     def located_structure(self):
         return self.located_net.located_structure_weak()
-
-    def runtime_info(self, runtime_id: RuntimeId):
-        return f"<Node {self.name} ({self.get_type(runtime_id).__name__})>"
     
     def is_determined(self, runtime_id: RuntimeId):
         return self.get_type(runtime_id).determined
+
+    def runtime_info(self, runtime_id: RuntimeId):
+        return f"<Node {self.name} ({self.get_type(runtime_id).__name__})>"
     
     def get_type(self, runtime_id: RuntimeId):
         """
@@ -488,6 +488,10 @@ class Structure:
             Originally determined structures have same information that they will not conflict.
         """
         return self.is_reusable or (self.instance_number <= 1 and all([subs.is_runtime_applicable for subs in self.substructures.values()]))
+    
+    @property
+    def is_flattened(self):
+        return all([subs.is_operator for subs in self.substructures.values()])
 
     def is_runtime_integrate(self, runtime_id: RuntimeId):
         """
@@ -533,6 +537,7 @@ class Structure:
         """
             Deep copy of the structure.
             Reusable substructures under the structure will also be duplicated, with ports_outside those are not under this structure removed.
+            TODO: prevent duplicating substructures and nodes if is_operator?
         """
         s_build_map: Dict[Structure, Structure] = {} # reference structure -> duplicated structure
         

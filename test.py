@@ -296,6 +296,8 @@ m2.deduction(rid_m2_sin)
 print(m2.runtime_info(rid_m2_sin))
 print(m3.runtime_info(rid_m3))
 
+print(m2.is_flattened)
+
 
 print('m2.singletonize.gen ==============================================================================================================')
 
@@ -344,6 +346,8 @@ for net in m2.get_nets():
         load.set_latency(1)
 
 model = m2.generation(rid_m2_exp)
+
+print(m2.is_flattened)
 
 shutil.rmtree("C:/Workspace/test_project/test_project.srcs/sources_1/new")
 write_to_files(model.emit_vhdl(), "C:/Workspace/test_project/test_project.srcs/sources_1/new")
