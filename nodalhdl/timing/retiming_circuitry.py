@@ -1,7 +1,8 @@
 import uuid
 import weakref
-from typing import List
+from typing import List, Set
 from dataclasses import dataclass, field
+from functools import total_ordering
 
 import math
 import heapq
@@ -131,10 +132,51 @@ class MIDCSolver:
         return x
 
 
+@total_ordering
+class OrderedPair:
+    def __init__(self, a, b):
+        self.a = a
+        self.b = b
+    
+    def __add__(self, other):
+        if isinstance(other, OrderedPair):
+            return OrderedPair(self.a + other.a, self.b + other.b)
+        elif isinstance(other, (int, float)):
+            return OrderedPair(self.a + other, self.b + other)
+        return NotImplemented
+    
+    def __sub__(self, other):
+        if isinstance(other, OrderedPair):
+            return OrderedPair(self.a - other.a, self.b - other.b)
+        elif isinstance(other, (int, float)):
+            return OrderedPair(self.a - other, self.b - other)
+        return NotImplemented
+    
+    __radd__ = __add__
+    __rsub__ = __sub__
+    
+    def __eq__(self, other):
+        if isinstance(other, OrderedPair):
+            return (self.a, self.b) == (other.a, other.b)
+        elif isinstance(other, (int, float)):
+            return self.a == other
+        return False
+    
+    def __lt__(self, other):
+        if isinstance(other, OrderedPair):
+            return (self.a, self.b) < (other.a, other.b)
+        elif isinstance(other, (int, float)):
+            return self.a < other
+        return NotImplemented
+    
+    def __repr__(self):
+        return f"({self.a}, {self.b})"
+
 class ExtendedCircuit:
     """
         Extended circuit model allowing nonuniform functional element delays.
-        Only record (u, v, w) for edges and (v, d, e_ins, e_outs) for internal edges, that is enough to build constraints and build H<E, F, wd>.
+        Record (u, v, w) for edges and (v, d, e_ins[], e_outs[]) for internal edges, that is enough to build constraints and build H<E, F, wd>;
+        Record (fs[]) for vertices, for WD computation.
         Support:
             1. Solve retiming r for a given clock period c by solving an MILP problem.
             2. Apply retiming r on G to obtain G_r.
@@ -151,6 +193,10 @@ class ExtendedCircuit:
     EPSILON = 1e-5
     
     @dataclass
+    class FunctionalElement:
+        fs: Set[int] = field(default_factory = set)
+    
+    @dataclass
     class ExternalEdge:
         u: int = -1
         v: int = -1
@@ -160,13 +206,18 @@ class ExtendedCircuit:
     class InternalEdge:
         v: int
         d: float
-        e_ins: List[int] = field(default_factory = list)
-        e_outs: List[int] = field(default_factory = list)
+        e_ins: Set[int] = field(default_factory = set)
+        e_outs: Set[int] = field(default_factory = set)
     
-    def __init__(self, n_v: int):
-        self.n_v: int = n_v # number of functional elements
+    def __init__(self):
+        self.V: List[ExtendedCircuit.FunctionalElement] = []
         self.E: List[ExtendedCircuit.ExternalEdge] = []
         self.F: List[ExtendedCircuit.InternalEdge] = []
+    
+    def get_vertex(self, v: int):
+        if v > len(self.V) - 1:
+            self.V.extend([ExtendedCircuit.FunctionalElement() for _ in range(v + 1 - len(self.V))])
+        return self.V[v]
     
     def get_external_edge(self, e: int):
         if e > len(self.E) - 1:
@@ -180,6 +231,7 @@ class ExtendedCircuit:
         f = len(self.F)
         self.F.append(ExtendedCircuit.InternalEdge(v = v, d = d))
         self.update_internal_edge(f, e_ins_update = e_ins_init, e_outs_update = e_outs_init)
+        self.get_vertex(v).fs.add(f)
         return f
     
     def update_internal_edge(self, f: int, e_ins_update: List[int] = [], e_outs_update: List[int] = []):
@@ -187,11 +239,11 @@ class ExtendedCircuit:
         
         for e_in in e_ins_update:
             self.get_external_edge(e_in).v = f_obj.v
-        f_obj.e_ins.extend(e_ins_update)
+        f_obj.e_ins.update(e_ins_update)
         
         for e_out in e_outs_update:
             self.get_external_edge(e_out).u = f_obj.v
-        f_obj.e_outs.extend(e_outs_update)
+        f_obj.e_outs.update(e_outs_update)
     
     def solve_retiming(self, c: float): # (1.)
         """
@@ -199,14 +251,14 @@ class ExtendedCircuit:
             Return a legal r if feasible, or return False.
             
             Construct mixed-integer difference constraints and solve using MIDCSolver.
-            Variable 0 ~ n_v - 1 are integer variables (i.e. r(v)); variable n_v ~ n_v + n_e - 1 are real variables (i.e. R(e)).
+            Variable 0 ~ |V| - 1 are integer variables (i.e. r(v)); Variable |V| ~ |V| + |E| - 1 are real variables (i.e. R(e)).
         """
         c += ExtendedCircuit.EPSILON # ?
         
-        solver = MIDCSolver(n = self.n_v + len(self.E), k = self.n_v)
+        solver = MIDCSolver(n = len(self.V) + len(self.E), k = len(self.V))
         
         r = lambda v: v
-        R = lambda e: self.n_v + e
+        R = lambda e: len(self.V) + e
         
         # 16.1  r(u) - R(e) <= -d(f) / c, for f --e-> ?, f in F_u
         for f_obj in self.F:
@@ -238,7 +290,7 @@ class ExtendedCircuit:
                 # print(f"R{e_a} - R{e_b} <= {w_e_a - f_obj.d / c}")
         
         solution = solver.solve()
-        return False if not solution else solution[:self.n_v]
+        return False if not solution else solution[:len(self.V)]
     
     def apply_retiming(self, r: List[int]): # (2.)
         """
@@ -249,14 +301,25 @@ class ExtendedCircuit:
             e_obj.w = e_obj.w + r[e_obj.v] - r[e_obj.u]
     
     def build_H(self):
-        pass # TODO
+        """
+            Build an auxiliary graph H<E, F, wd> for WD and CP.
+            In H, vertices are from E (external edges), edges are from F (internal edges);
+            The weight for H edge `e --f-> ?` wd(f) = (w(e), -d(f)).
+        """
+        H = nx.DiGraph()
+        H_edges = [(e_a, e_b, OrderedPair(self.get_external_edge(e_a).w, -f_obj.d)) for f_obj in self.F for e_a in f_obj.e_ins for e_b in f_obj.e_outs] # all edges e_a --f-> e_b
+        H.add_weighted_edges_from(H_edges)
+        return H
     
-    def WD(self):
-        pass # TODO
+    def ExtendedWD(self): # (3.)
+        H = self.build_H()
+        dists = dict(nx.all_pairs_dijkstra_path_length(H))
+        
+        # TODO
 
 
 # Test
-G = ExtendedCircuit(n_v = 3)
+G = ExtendedCircuit()
 
 G.add_internal_edge(0, 0, [3, 4], [0, 5])
 G.add_internal_edge(1, 2, [0], [1])
@@ -271,7 +334,7 @@ G.set_external_edge_weight(5, 2)
 
 import time
 t = time.time()
-r = G.solve_retiming(8)
+r = G.solve_retiming(5)
 print(time.time() - t)
 if r:
     print("r:", r)
@@ -279,4 +342,7 @@ if r:
     [print(f"e_{idx}.w_r = {e_obj.w}") for idx, e_obj in enumerate(G.E)]
 else:
     print("No solution.")
+
+
+# G.ExtendedWD()
 

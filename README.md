@@ -1,4 +1,4 @@
-# nodalHDL
+# nodalhdl
 
 ## Introduction
 
@@ -8,4 +8,4 @@ Provide block diagram level circuit abstraction data structures, check `test.py`
 
 ## Dependencies
 
-TODO.
+Please check `pyproject.toml`.
