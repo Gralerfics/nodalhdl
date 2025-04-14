@@ -230,6 +230,9 @@ class ExtendedCircuit:
     def get_internal_edge(self, f: int):
         return self.F[f]
     
+    def get_vertex_e_outs(self, v: int):
+        return set([e_out for f in self.get_vertex(v).fs for e_out in self.get_internal_edge(f).e_outs])
+    
     """ Constructing """
     def set_external_edge_weight(self, e: int, w: int):
         self.get_external_edge(e).w = w
@@ -323,11 +326,13 @@ class ExtendedCircuit:
         H.add_weighted_edges_from(H_edges)
         return H
     
-    def ExtendedWD(self): # (3.)
+    def WD(self): # (3.)
         H = self.build_H()
         dists = dict(nx.all_pairs_dijkstra_path_length(H))
         
-        # TODO
+        # dists[e_a][e_b]
+        
+        # W = 
 
 
 # Test
@@ -344,17 +349,16 @@ G.add_internal_edge(2, 4, [2], [4])
 G.set_external_edge_weight(0, 2)
 G.set_external_edge_weight(5, 2)
 
-import time
-t = time.time()
-r = G.solve_retiming(5)
-print(time.time() - t)
-if r:
-    print("r:", r)
-    G.apply_retiming(r)
-    [print(f"e_{idx}.w_r = {e_obj.w}") for idx, e_obj in enumerate(G.E)]
-else:
-    print("No solution.")
+# import time
+# t = time.time()
+# r = G.solve_retiming(5)
+# print(time.time() - t)
+# if r:
+#     print("r:", r)
+#     G.apply_retiming(r)
+#     [print(f"e_{idx}.w_r = {e_obj.w}") for idx, e_obj in enumerate(G.E)]
+# else:
+#     print("No solution.")
 
-
-# G.ExtendedWD()
+G.WD()
 
