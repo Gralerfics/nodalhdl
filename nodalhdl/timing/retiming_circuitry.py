@@ -201,6 +201,8 @@ class ExtendedCircuit:
         u: int = -1
         v: int = -1
         w: int = 0
+        f_as: Set[int] = field(default_factory = set)
+        f_bs: Set[int] = field(default_factory = set)
     
     @dataclass
     class InternalEdge:
@@ -214,6 +216,7 @@ class ExtendedCircuit:
         self.E: List[ExtendedCircuit.ExternalEdge] = []
         self.F: List[ExtendedCircuit.InternalEdge] = []
     
+    """ Getters """
     def get_vertex(self, v: int):
         if v > len(self.V) - 1:
             self.V.extend([ExtendedCircuit.FunctionalElement() for _ in range(v + 1 - len(self.V))])
@@ -224,6 +227,10 @@ class ExtendedCircuit:
             self.E.extend([ExtendedCircuit.ExternalEdge() for _ in range(e + 1 - len(self.E))])
         return self.E[e]
     
+    def get_internal_edge(self, f: int):
+        return self.F[f]
+    
+    """ Constructing """
     def set_external_edge_weight(self, e: int, w: int):
         self.get_external_edge(e).w = w
     
@@ -235,16 +242,21 @@ class ExtendedCircuit:
         return f
     
     def update_internal_edge(self, f: int, e_ins_update: List[int] = [], e_outs_update: List[int] = []):
-        f_obj = self.F[f]
+        f_obj = self.get_internal_edge(f)
         
         for e_in in e_ins_update:
-            self.get_external_edge(e_in).v = f_obj.v
+            e_in_obj = self.get_external_edge(e_in)
+            e_in_obj.v = f_obj.v
+            e_in_obj.f_bs.add(f)
         f_obj.e_ins.update(e_ins_update)
         
         for e_out in e_outs_update:
-            self.get_external_edge(e_out).u = f_obj.v
+            e_out_obj = self.get_external_edge(e_out)
+            e_out_obj.u = f_obj.v
+            e_out_obj.f_as.add(f)
         f_obj.e_outs.update(e_outs_update)
     
+    """ Tasks """
     def solve_retiming(self, c: float): # (1.)
         """
             Compute the retiming r on given clock period c.
