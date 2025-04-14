@@ -110,15 +110,6 @@ class MIDCSolver:
                     continue
                 visited.add(i)
                 
-                # e = self.head[i]
-                # while e != -1: # T19
-                #     j, b_ij = self.edges[e].v, self.edges[e].b
-                #     if not self.is_int[j]: # j in V_R
-                #         if y[j] > y[i] + b_ij:
-                #             y[j] = y[i] + b_ij # T20
-                #             heapq.heappush(Q, (y[j], j))
-                #     e = self.edges[e].next
-
                 e_r = self.head_r[i]
                 while e_r != -1: # T19
                     j, b_ij = self.edges[e_r].v, self.edges[e_r].b
@@ -139,7 +130,10 @@ class MIDCSolver:
 
 
 # 扩展模型
+class ExtendedCircuit:
+    pass # TODO
 
 
 # 求解，运行 WD 得到 D，在 D 上二分查找，使用 MIDCSolver 求解得到 r
+pass # TODO
 
