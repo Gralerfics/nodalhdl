@@ -1,6 +1,6 @@
 import uuid
 import weakref
-from typing import List, Set
+from typing import List, Set, Tuple
 from dataclasses import dataclass, field
 from functools import total_ordering
 
@@ -238,6 +238,10 @@ class ExtendedCircuit:
         self.get_vertex(v).fs.add(f)
         return f
     
+    def add_internal_edges(self, info: List[Tuple]):
+        for entry in info:
+            self.add_internal_edge(*entry)
+    
     def update_internal_edge(self, f: int, e_ins_update: List[int] = [], e_outs_update: List[int] = []):
         f_obj = self.get_internal_edge(f)
         
@@ -254,7 +258,7 @@ class ExtendedCircuit:
         f_obj.e_outs.update(e_outs_update)
     
     """ Tasks """
-    def solve_retiming(self, c: float): # (1.)
+    def solve_retiming(self, c: float, external_port_vertices: List[int] = [0]): # (1.)
         """
             Compute the retiming r on given clock period c.
             Return a legal r if feasible, or return False.
@@ -294,7 +298,13 @@ class ExtendedCircuit:
         # 16.4  R(e_a) - R(e_b) <= w(e_a) - d(f) / c, for e_a --f-> e_b
         for f_obj in self.F:
             for (e_a, e_b) in [(x, y) for x in f_obj.e_ins for y in f_obj.e_outs]:
-                w_e_a = self.get_external_edge(e_a).w
+                e_a_obj = self.get_external_edge(e_a)
+                
+                # [NOTICE] if e_a is a output edge of an external port vertex, this constraint should be deserted. It considers the delay from tail to head in cycle.
+                if e_a_obj.u in external_port_vertices:
+                    continue
+                
+                w_e_a = e_a_obj.w
                 solver.add_constraint(R(e_a), R(e_b), w_e_a - f_obj.d / c)
                 # print(f"R{e_a} - R{e_b} <= {w_e_a - f_obj.d / c}")
         
@@ -309,13 +319,11 @@ class ExtendedCircuit:
         for e_obj in self.E:
             e_obj.w = e_obj.w + r[e_obj.v] - r[e_obj.u]
     
-    def build_H(self, ignore_vertices: List[int] = []):
+    def build_H(self, external_port_vertices: List[int] = [0]):
         """
             Build an auxiliary graph H<E, F, wd> for WD and CP.
             In H, vertices are from E (external edges), edges are from F (internal edges);
             The weight for H edge `e --f-> ?` wd(f) = (w(e), -d(f)).
-            
-            TODO ignore_vertices, 算 WD 似乎可以把输入输出 port 的等效点（一般为 0 号）断掉? 否则容易绕圈.
         """
         H = nx.DiGraph()
         H_edges = [
@@ -323,19 +331,22 @@ class ExtendedCircuit:
             for f_obj in self.F
             for e_a in f_obj.e_ins
             for e_b in f_obj.e_outs
-            if f_obj.v not in ignore_vertices
-        ] # all edges e_a --f-> e_b, w/o f in ignore_vertices
+            if f_obj.v not in external_port_vertices
+        ] # all edges e_a --f-> e_b, [NOTICE] w/o f in external_port_vertices
         H.add_weighted_edges_from(H_edges)
         return H
     
-    def compute_Ds(self): # (3.)
+    def compute_Ds(self, external_port_vertices: List[int] = [0]): # (3.)
         """
             Run (Extended) WD algorithm to obtain D(u, v).
             Return sorted and de-duplicated D-value list.
             TODO improve performance?
         """
-        H = self.build_H(ignore_vertices = [0]) # [NOTICE] ignore f in v0?
-        dists = dict(nx.all_pairs_dijkstra_path_length(H)) # [NOTICE] seems all nonnegative. need Johnson?
+        H = self.build_H(external_port_vertices = external_port_vertices) # [NOTICE] ignore f in v0?
+        try:
+            dists = dict(nx.all_pairs_dijkstra_path_length(H)) # [NOTICE] seems all nonnegative. need Johnson?
+        except Exception:
+            raise Exception("There is something wrong with the circuit structure")
         
         D_min = max([f_obj.d for f_obj in self.F]) # Phi(G) >= max{D(v, v) | v in V}, D(v, v) = max{d(f), f in F_v}
         Ds: Set[int] = set([D_min])
@@ -348,9 +359,9 @@ class ExtendedCircuit:
                 W_uv, D_uv = None, None
                 for e_a in self.get_vertex_e_outs(u):
                     for e_b in self.get_vertex_e_outs(v):
-                        if dists.get(e_a) is None or dists[e_a].get(e_b) is None:
+                        if e_a == e_b or dists.get(e_a) is None or dists[e_a].get(e_b) is None:
                             continue
-                            
+                        
                         dist: OrderedPair = dists[e_a][e_b]
                         W = dist.a
                         D = max([self.get_internal_edge(f_a).d for f_a in self.get_external_edge(e_a).f_as]) - dist.b
@@ -366,12 +377,12 @@ class ExtendedCircuit:
         
         return sorted(list(Ds))
     
-    def minimize_clock_period(self): # (5.)
+    def minimize_clock_period(self, external_port_vertices: List[int] = [0]): # (5.)
         """
             Perform binary search on sorted Ds, check answer by solving retiming.
             Return Phi(G_r) and the retiming r.
         """
-        Ds = self.compute_Ds()
+        Ds = self.compute_Ds(external_port_vertices = external_port_vertices)
         
         left, right = 0, len(Ds) - 1
         res = None
@@ -379,7 +390,7 @@ class ExtendedCircuit:
             mid = (left + right) // 2
             c = Ds[mid]
             
-            solution = self.solve_retiming(c)
+            solution = self.solve_retiming(c, external_port_vertices = external_port_vertices)
             if solution is not False:
                 res = (c, solution)
                 right = mid - 1
@@ -392,18 +403,44 @@ class ExtendedCircuit:
 # Test
 G = ExtendedCircuit()
 
-G.add_internal_edge(0, 0, [3, 4], [0, 5])
-G.add_internal_edge(1, 2, [0], [1])
-G.add_internal_edge(1, 3, [0], [2])
-G.add_internal_edge(1, 5, [5], [2])
-G.add_internal_edge(2, 2, [1], [3])
-G.add_internal_edge(2, 1, [1], [4])
-G.add_internal_edge(2, 4, [2], [4])
+# G.add_internal_edge(0, 0, [3, 4], [0, 5])
+# G.add_internal_edge(1, 2, [0], [1])
+# G.add_internal_edge(1, 3, [0], [2])
+# G.add_internal_edge(1, 5, [5], [2])
+# G.add_internal_edge(2, 2, [1], [3])
+# G.add_internal_edge(2, 1, [1], [4])
+# G.add_internal_edge(2, 4, [2], [4])
+# G.set_external_edge_weight(0, 2)
+# G.set_external_edge_weight(5, 2)
 
-G.set_external_edge_weight(0, 2)
-G.set_external_edge_weight(5, 2)
+G.add_internal_edges([
+    (0, 0, [12, 13, 14, 15], [0, 1, 2, 3]),
+    (1, 2, [0], [4]),
+    (1, 1, [0], [5]),
+    (1, 3, [1], [5]),
+    (2, 4, [2], [6, 7]),
+    (2, 2, [3], [6, 7]),
+    (2, 5, [3], [8]),
+    (3, 1, [4], [9]),
+    (3, 4, [4], [14]),
+    (3, 2, [5], [9]),
+    (3, 3, [5], [14]),
+    (3, 7, [6], [14]),
+    (3, 2, [6], [10]),
+    (3, 4, [7], [10]),
+    (3, 2, [8], [11]),
+    (4, 3, [9], [12]),
+    (4, 4, [9], [13]),
+    (5, 3, [10], [15]),
+    (5, 5, [11], [15])
+])
+G.set_external_edge_weight(0, 1)
+G.set_external_edge_weight(1, 1)
+G.set_external_edge_weight(6, 1)
+G.set_external_edge_weight(7, 1)
+G.set_external_edge_weight(8, 1)
 
-print(G.minimize_clock_period())
+print(G.minimize_clock_period([0]))
 
 # import time
 # t = time.time()
