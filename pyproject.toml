@@ -15,8 +15,7 @@ keywords = ["hdl", "circuit", "pipelining"]
 requires-python = ">=3.12"
 dependencies = [
     "dill>=0.3.9",
-    "networkx>=3.4.2",
-    "numpy>=2.2.0"
+    "networkx>=3.4.2"
 ]
 
 [tool.setuptools]

@@ -1,4 +1,4 @@
-from nodalhdl.timing.retiming_circuitry import MIDCSolver
+from nodalhdl.timing.retiming import MIDCSolver
 
 
 Nv = 3

@@ -1,13 +1,9 @@
-import uuid
-import weakref
-from typing import List, Set, Tuple
-from dataclasses import dataclass, field
-from functools import total_ordering
-
 import math
 import heapq
 
-import numpy
+from typing import List, Set, Tuple
+from dataclasses import dataclass, field
+from functools import total_ordering
 
 import networkx as nx
 
@@ -396,7 +392,7 @@ class ExtendedCircuit:
                 right = mid - 1
             else:
                 left = mid + 1
-
+        
         return res
 
 
