@@ -180,15 +180,9 @@ class ExtendedCircuit:
         Support:
             1. Solve retiming r for a given clock period c by solving an MILP problem.
             2. Apply retiming r on G to obtain G_r.
-            3. TODO Run (Extended) WD algorithm to obtain D(u, v).
+            3. Run (Extended) WD algorithm to obtain D(u, v).
             4. TODO Run (Extended) CP algorithm to obtain Phi(G).
-            5. TODO Combine (3.), binary search and (1.) to solve clock-period-minimization problem.
-        
-        TODO 允许转为 H Model (用 networkx?), 运行 WD 得到 D, 即 Phi(G_r) 可能范围.
-                H Model 需要所有 e_a --f-> e_b, 也就是条件 16.4 的遍历过程.
-                WD 要运行全源最短路, 使用 Johnson. 但是似乎没有负边, H 的边都是内部边延迟, 所以似乎普通的 |V| 遍 Dijkstra 就行了?
-                    nx 里还有 all_pairs_all_shortest_paths(G, weight='weight', method='dijkstra').
-                    注: weight 应该是 wd(f) = (w(e), -d(f)) for e --f-> ?.
+            5. Combine (3.), binary search and (1.) to solve clock-period-minimization problem.
     """
     EPSILON = 1e-5
     
@@ -341,20 +335,17 @@ class ExtendedCircuit:
             TODO improve performance?
         """
         H = self.build_H(ignore_vertices = [0]) # [NOTICE] ignore f in v0?
-        dists = dict(nx.all_pairs_dijkstra_path_length(H))
-        
-        Ds: Set[int] = set()
+        dists = dict(nx.all_pairs_dijkstra_path_length(H)) # [NOTICE] seems all nonnegative. need Johnson?
         
         D_min = max([f_obj.d for f_obj in self.F]) # Phi(G) >= max{D(v, v) | v in V}, D(v, v) = max{d(f), f in F_v}
-        Ds.add(D_min)
+        Ds: Set[int] = set([D_min])
         
         for u in range(len(self.V)):
             for v in range(len(self.V)):
                 if u == v:
                     continue
                 
-                W_uv = None
-                D_uv = None
+                W_uv, D_uv = None, None
                 for e_a in self.get_vertex_e_outs(u):
                     for e_b in self.get_vertex_e_outs(v):
                         if dists.get(e_a) is None or dists[e_a].get(e_b) is None:
@@ -369,13 +360,33 @@ class ExtendedCircuit:
                         if W_uv is None or W < W_uv or (W == W_uv and D > D_uv):
                             W_uv = W
                             D_uv = D
-                        
-                        # print((D_uv, (u, v), (e_a, e_b), (dists[e_a][e_b].a, dists[e_a][e_b].b)))
                 
                 if D_uv is not None:
                     Ds.add(D_uv)
         
         return sorted(list(Ds))
+    
+    def minimize_clock_period(self): # (5.)
+        """
+            Perform binary search on sorted Ds, check answer by solving retiming.
+            Return Phi(G_r) and the retiming r.
+        """
+        Ds = self.compute_Ds()
+        
+        left, right = 0, len(Ds) - 1
+        res = None
+        while left <= right:
+            mid = (left + right) // 2
+            c = Ds[mid]
+            
+            solution = self.solve_retiming(c)
+            if solution is not False:
+                res = (c, solution)
+                right = mid - 1
+            else:
+                left = mid + 1
+
+        return res
 
 
 # Test
@@ -392,7 +403,7 @@ G.add_internal_edge(2, 4, [2], [4])
 G.set_external_edge_weight(0, 2)
 G.set_external_edge_weight(5, 2)
 
-print(G.compute_Ds())
+print(G.minimize_clock_period())
 
 # import time
 # t = time.time()
