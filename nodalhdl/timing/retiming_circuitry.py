@@ -315,24 +315,67 @@ class ExtendedCircuit:
         for e_obj in self.E:
             e_obj.w = e_obj.w + r[e_obj.v] - r[e_obj.u]
     
-    def build_H(self):
+    def build_H(self, ignore_vertices: List[int] = []):
         """
             Build an auxiliary graph H<E, F, wd> for WD and CP.
             In H, vertices are from E (external edges), edges are from F (internal edges);
             The weight for H edge `e --f-> ?` wd(f) = (w(e), -d(f)).
+            
+            TODO ignore_vertices, 算 WD 似乎可以把输入输出 port 的等效点（一般为 0 号）断掉? 否则容易绕圈.
         """
         H = nx.DiGraph()
-        H_edges = [(e_a, e_b, OrderedPair(self.get_external_edge(e_a).w, -f_obj.d)) for f_obj in self.F for e_a in f_obj.e_ins for e_b in f_obj.e_outs] # all edges e_a --f-> e_b
+        H_edges = [
+            (e_a, e_b, OrderedPair(self.get_external_edge(e_a).w, -f_obj.d))
+            for f_obj in self.F
+            for e_a in f_obj.e_ins
+            for e_b in f_obj.e_outs
+            if f_obj.v not in ignore_vertices
+        ] # all edges e_a --f-> e_b, w/o f in ignore_vertices
         H.add_weighted_edges_from(H_edges)
         return H
     
-    def WD(self): # (3.)
-        H = self.build_H()
+    def compute_Ds(self): # (3.)
+        """
+            Run (Extended) WD algorithm to obtain D(u, v).
+            Return sorted and de-duplicated D-value list.
+            TODO improve performance?
+        """
+        H = self.build_H(ignore_vertices = [0]) # [NOTICE] ignore f in v0?
         dists = dict(nx.all_pairs_dijkstra_path_length(H))
         
-        # dists[e_a][e_b]
+        Ds: Set[int] = set()
         
-        # W = 
+        D_min = max([f_obj.d for f_obj in self.F]) # Phi(G) >= max{D(v, v) | v in V}, D(v, v) = max{d(f), f in F_v}
+        Ds.add(D_min)
+        
+        for u in range(len(self.V)):
+            for v in range(len(self.V)):
+                if u == v:
+                    continue
+                
+                W_uv = None
+                D_uv = None
+                for e_a in self.get_vertex_e_outs(u):
+                    for e_b in self.get_vertex_e_outs(v):
+                        if dists.get(e_a) is None or dists[e_a].get(e_b) is None:
+                            continue
+                            
+                        dist: OrderedPair = dists[e_a][e_b]
+                        W = dist.a
+                        D = max([self.get_internal_edge(f_a).d for f_a in self.get_external_edge(e_a).f_as]) - dist.b
+                        if D <= D_min:
+                            continue
+                        
+                        if W_uv is None or W < W_uv or (W == W_uv and D > D_uv):
+                            W_uv = W
+                            D_uv = D
+                        
+                        # print((D_uv, (u, v), (e_a, e_b), (dists[e_a][e_b].a, dists[e_a][e_b].b)))
+                
+                if D_uv is not None:
+                    Ds.add(D_uv)
+        
+        return sorted(list(Ds))
 
 
 # Test
@@ -349,6 +392,8 @@ G.add_internal_edge(2, 4, [2], [4])
 G.set_external_edge_weight(0, 2)
 G.set_external_edge_weight(5, 2)
 
+print(G.compute_Ds())
+
 # import time
 # t = time.time()
 # r = G.solve_retiming(5)
@@ -359,6 +404,4 @@ G.set_external_edge_weight(5, 2)
 #     [print(f"e_{idx}.w_r = {e_obj.w}") for idx, e_obj in enumerate(G.E)]
 # else:
 #     print("No solution.")
-
-G.WD()
 
