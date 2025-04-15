@@ -92,7 +92,7 @@
 +--------------------------------------------------------------------+
 """
 
-from typing import Dict, List
+from typing import Union, Dict, List
 
 import hashlib
 
@@ -137,7 +137,7 @@ class SignalType(type):
     """
     def __call__(cls, *args, **kwds):
         if not cls.determined:
-            raise TypeError("Undetermined types cannot be instantiated.")
+            raise TypeError("Undetermined types cannot be instantiated")
         else:
             return super().__call__(*args, **kwds)
     
@@ -397,11 +397,18 @@ class Bits(Auto, metaclass = BitsType):
     def to_definition_string(cls):
         return f"Bits[{cls.W}]" if hasattr(cls, 'W') else "Bits"
     
-    def __init__(self, value: List[bool]):
-        if len(value) > self.W:
+    def __init__(self, value: Union[List[bool], str] = []):
+        if isinstance(value, list):
+            if len(value) > self.W:
+                raise SignalTypeInstantiationException # TODO
+            self.value = value + [False] * (self.W - len(value))
+        elif isinstance(value, str):
+            self.value = [bool(int(c)) for c in value[::-1]]
+        else:
             raise SignalTypeInstantiationException # TODO
-        
-        self.value = value + [False] * (self.W - len(value))
+    
+    def __repr__(self):
+        return "b" + "".join([str(int(b)) for b in self.value[::-1]])
 
 Bit = Bits[1]
 Byte = Bits[8]
@@ -411,7 +418,7 @@ class UInt(Bits):
     def to_definition_string(cls):
         return f"UInt[{cls.W}]" if hasattr(cls, 'W') else "UInt"
     
-    def __init__(self, value: int):
+    def __init__(self, value: int = 0):
         self.set_value(value)
     
     def __repr__(self):
@@ -445,7 +452,7 @@ class SInt(Bits):
     def to_definition_string(cls):
         return f"SInt[{cls.W}]" if hasattr(cls, 'W') else "SInt"
     
-    def __init__(self, value: int):
+    def __init__(self, value: int = 0):
         self.set_value(value)
     
     def __repr__(self):
@@ -475,10 +482,6 @@ Int16 = SInt[16]
 Int32 = SInt[32]
 Int64 = SInt[64]
 
-# print(SInt[4](9))
-# print(SInt[3](-2))
-# print(SInt[4](9) - SInt[3](-2))
-
 class FixedPoint(Bits, metaclass = FixedPointType):
     @classmethod
     def to_definition_string(cls):
@@ -492,15 +495,13 @@ class FloatingPoint(Bits, metaclass = FloatingPointType):
 Float = FloatingPoint[8, 23]
 Double = FloatingPoint[11, 52]
 
-class Bundle(Auto, metaclass = BundleType):
-    @classmethod
-    def to_definition_string(cls):
-        return "Bundle[{" + ", ".join([f"\"{k}\": {v.to_definition_string()}" for k, v in cls._bundle_types.items()]) + "}]" if hasattr(cls, '_bundle_types') else "Bundle"
-
 class IOWrapper(Signal, metaclass = IOWrapperType):
     @classmethod
     def to_definition_string(cls):
         return f"IOWrapper[{cls.T.to_definition_string()}]" if hasattr(cls, 'T') else "IOWrapper"
+    
+    def __init__(self):
+        raise SignalTypeInstantiationException("IO wrappers can not be instantiated")
 
 class Input(IOWrapper):
     @classmethod
@@ -512,3 +513,43 @@ class Output(IOWrapper):
     def to_definition_string(cls):
         return f"Output[{cls.T.to_definition_string()}]" if hasattr(cls, 'T') else "Output"
 
+class Bundle(Auto, metaclass = BundleType):
+    @classmethod
+    def to_definition_string(cls):
+        return "Bundle[{" + ", ".join([f"\"{k}\": {v.to_definition_string()}" for k, v in cls._bundle_types.items()]) + "}]" if hasattr(cls, '_bundle_types') else "Bundle"
+
+    def __init__(self, value: dict = {}):
+        self._bundle_objects: Dict[str, Signal] = {}
+        for k, v in self._bundle_types.items():
+            default_value = value.get(k)
+            self._bundle_objects[k] = v(default_value) if default_value is not None else v()
+            setattr(self, k, self._bundle_objects[k])
+    
+    def __repr__(self):
+        return "{" + ", ".join([f"\"{k}\": {str(v)}" for k, v in self._bundle_objects.items()]) + "}"
+
+
+# P = Bundle[{
+#     "a": UInt[4],
+#     "b": Bits[8],
+#     "c": Bundle[{
+#         "x": SInt[3],
+#         "y": SInt[5],
+#         "z": Bundle[{
+#             "n": UInt[8]
+#         }]
+#     }]
+# }]
+
+# p = P({
+#     "a": 20,
+#     "b": "00010010",
+#     "c": {
+#         "x": -5,
+#         "y": -2
+#     }
+# })
+
+# print(p)
+# print(p.b.value)
+# print(p.c.x)
