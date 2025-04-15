@@ -228,6 +228,7 @@ class ExtendedCircuit:
         self.get_external_edge(e).w = w
     
     def add_internal_edge(self, v: int, d: float, e_ins_init: List[int] = [], e_outs_init: List[int] = []):
+        # [NOTICE] 考虑某 (好像可以允许?) 情况: f1.e_ins 中有 e1 无 e2, f2.e_ins 中有 e2 无 e1, f3.e_ins 中同时有 e1 和 e2, 导致 e1 和 e2 的末端连接性矛盾.
         f = len(self.F)
         self.F.append(ExtendedCircuit.InternalEdge(v = v, d = d))
         self.update_internal_edge(f, e_ins_update = e_ins_init, e_outs_update = e_outs_init)
@@ -262,7 +263,7 @@ class ExtendedCircuit:
             Construct mixed-integer difference constraints and solve using MIDCSolver.
             Variable 0 ~ |V| - 1 are integer variables (i.e. r(v)); Variable |V| ~ |V| + |E| - 1 are real variables (i.e. R(e)).
         """
-        c += ExtendedCircuit.EPSILON # ?
+        c += ExtendedCircuit.EPSILON # [NOTICE] ?
         
         solver = MIDCSolver(n = len(self.V) + len(self.E), k = len(self.V))
         
@@ -270,11 +271,22 @@ class ExtendedCircuit:
         R = lambda e: len(self.V) + e
         
         # 16.1  r(u) - R(e) <= -d(f) / c, for f --e-> ?, f in F_u
-        for f_obj in self.F:
-            for e in f_obj.e_outs:
-                e_obj = self.get_external_edge(e)
-                solver.add_constraint(r(e_obj.u), R(e), -f_obj.d / c)
-                # print(f"r{e_obj.u} - R{e} <= {-f_obj.d / c}")
+        for e, e_obj in enumerate(self.E):
+            d_f_max = 0
+            for f in e_obj.f_as:
+                f_obj = self.get_internal_edge(f)
+                d_f_max = max(d_f_max, f_obj.d)
+            solver.add_constraint(r(e_obj.u), R(e), -d_f_max / c)
+            # print(f"r{e_obj.u} - R{e} <= {-d_f_max / c}")
+        # [NOTICE] Modification Notes:
+        #       如下原实现添加了 |F|*|F_E_outs| 条约束,
+        #       约束变量是 r(u) - R(e), 由 e 可确定 u, 故实际只需要 |E| 条约束, 相同的保留 d(f) 最大 (-d(f) / c 最小) 的情况即可.
+        #       下次 commit 删除.
+        # for f_obj in self.F:
+        #     for e in f_obj.e_outs:
+        #         e_obj = self.get_external_edge(e)
+        #         solver.add_constraint(r(e_obj.u), R(e), -f_obj.d / c)
+        #         # print(f"r{e_obj.u} - R{e} <= {-f_obj.d / c}")
         
         # 16.2  R(e) - r(u) <= 1, for u --e-> ?
         for e, e_obj in enumerate(self.E):
