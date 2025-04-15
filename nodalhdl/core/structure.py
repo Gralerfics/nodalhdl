@@ -789,7 +789,7 @@ class Structure:
             if not structure_runtime.deduction_effective: # no change, stop
                 break
     
-    def generation(self, runtime_id: RuntimeId, prefix: str = "root") -> HDLFileModel:
+    def generation(self, runtime_id: RuntimeId, top_module_name: str = "root") -> HDLFileModel: # `top_module_name` is better to be called `prefix` for sub-levels
         """
             Generate HDL file model.
             prefix: e.g. this structure is instanced in somewhere as "bar" under "layer_xxx_foo_", then the prefix should be "layer_xxx_foo_bar_".
@@ -805,10 +805,10 @@ class Structure:
             if self.reusable_hdl is not None:
                 return self.reusable_hdl
             else:
-                prefix = self.unique_name if self.unique_name is not None else self.id[:8]
+                top_module_name = self.unique_name if self.unique_name is not None else self.id[:8]
         
         # create file model and set entity name
-        model = HDLFileModel(f"hdl_{prefix}")
+        model = HDLFileModel(entity_name = f"{top_module_name}", file_name = f"hdl_{top_module_name}")
         
         net_wires: Dict[Net, List[List[str, int], List[List[str, int]]]] = {} # net -> [[driver_wire_name, latency], [[load_wire_name, latency], ...]]
         
@@ -845,7 +845,7 @@ class Structure:
                     # fill net_wires
                     fill_net_wires(port, wire_name = port_wire_name)
                 
-                model.inst_component(sub_inst_name, subs.generation(runtime_id.next(sub_inst_name), prefix + "_" + sub_inst_name), mapping)
+                model.inst_component(sub_inst_name, subs.generation(runtime_id.next(sub_inst_name), top_module_name + "_" + sub_inst_name), mapping)
         
         # build nets according to net_wires
         for net, ((driver_wire_name, driver_latency), loads_info) in net_wires.items():

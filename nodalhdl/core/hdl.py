@@ -69,8 +69,9 @@ class HDLFileModel:
         HDL 文件模型.
         完全对应 HDL 文件内容, 不包含任何判断和校验等措施.
     """
-    def __init__(self, entity_name: str):
-        self.entity_name: str = entity_name # also the file name
+    def __init__(self, entity_name: str, file_name: str = None):
+        self.entity_name: str = entity_name
+        self.file_name: str = file_name if file_name is not None else entity_name
         
         self.global_info: HDLGlobalInfo = HDLGlobalInfo()
         
@@ -195,13 +196,13 @@ class HDLFileModel:
                 if model.raw_suffix is None or model.raw_content is None:
                     raise HDLFileModelException(f"Raw HDL file model should be defined by .set_raw(file_suffix, content)")
                 
-                file_name = model.entity_name + model.raw_suffix
+                file_name = model.file_name + model.raw_suffix
                 if file_name in res.keys():
                     raise HDLFileModelException(f"File model names conflicting: \'{file_name}\'")
                 
                 res[file_name] = model.raw_content
             else:
-                file_name = model.entity_name + ".vhd"
+                file_name = model.file_name + ".vhd"
                 if file_name in res.keys():
                     raise HDLFileModelException(f"File model names conflicting: \'{file_name}\'")
                 
