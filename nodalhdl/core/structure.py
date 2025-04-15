@@ -260,7 +260,8 @@ class Node:
     """
     def _structural_modification(self):
         self.located_structure.clear_runtimes() # clear runtime info
-        self.located_structure.reusable_hdl = None # remove reusable_hdl
+        self.located_structure.reusable_hdl = None
+        self.located_structure.timing_info = None
     
     def set_origin_type(self, signal_type: SignalType, safe_modification: bool = False):
         if self.origin_signal_type is signal_type: # no change
@@ -432,6 +433,7 @@ class Structure:
         self.unique_name: str = unique_name
         
         self.reusable_hdl: HDLFileModel = None # only for reusable structure; destroy when structural information changed
+        self.timing_info: weakref.WeakKeyDictionary[Node, weakref.WeakKeyDictionary[Node, float]] = None # timing info after STA; destroy when structural information changed
         
         self.custom_params = {}
         self.custom_sequential: bool = False # should be asserted to True if there are registers in custom_generation (raw_content)
@@ -537,7 +539,7 @@ class Structure:
     def duplicate(self) -> 'Structure':
         """
             Deep copy of the structure.
-            Reusable substructures under the structure will also be duplicated, with ports_outside those are not under this structure removed.
+            Reusable substructures under the structure will also be duplicated, and certainly not including ports_outside those are not under this new structure.
         """
         s_build_map: Dict[Structure, Structure] = {} # reference structure -> duplicated structure
         
