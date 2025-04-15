@@ -228,7 +228,12 @@ class ExtendedCircuit:
         self.get_external_edge(e).w = w
     
     def add_internal_edge(self, v: int, d: float, e_ins_init: List[int] = [], e_outs_init: List[int] = []):
-        # [NOTICE] 考虑某 (好像可以允许?) 情况: f1.e_ins 中有 e1 无 e2, f2.e_ins 中有 e2 无 e1, f3.e_ins 中同时有 e1 和 e2, 导致 e1 和 e2 的末端连接性矛盾.
+        """
+            Essentially, `internal_edge` here means a bundle of internal edges between all pairs in E_ins x E_outs.
+            When building H and building MIDC, all internal edge (bundles) will be expanded to |E_ins x E_outs| edges (constraints) between external edges.
+            So it is reasonable to see cases like:
+                e1 in f1.e_ins but not in e2.e_ins, e2 in f2.e_ins but not in f1.e_ins, and e1, e2 are all in f3.e_ins.
+        """
         f = len(self.F)
         self.F.append(ExtendedCircuit.InternalEdge(v = v, d = d))
         self.update_internal_edge(f, e_ins_update = e_ins_init, e_outs_update = e_outs_init)
@@ -263,7 +268,7 @@ class ExtendedCircuit:
             Construct mixed-integer difference constraints and solve using MIDCSolver.
             Variable 0 ~ |V| - 1 are integer variables (i.e. r(v)); Variable |V| ~ |V| + |E| - 1 are real variables (i.e. R(e)).
         """
-        c += ExtendedCircuit.EPSILON # [NOTICE] ?
+        c += ExtendedCircuit.EPSILON
         
         solver = MIDCSolver(n = len(self.V) + len(self.E), k = len(self.V))
         
@@ -278,15 +283,6 @@ class ExtendedCircuit:
                 d_f_max = max(d_f_max, f_obj.d)
             solver.add_constraint(r(e_obj.u), R(e), -d_f_max / c)
             # print(f"r{e_obj.u} - R{e} <= {-d_f_max / c}")
-        # [NOTICE] Modification Notes:
-        #       如下原实现添加了 |F|*|F_E_outs| 条约束,
-        #       约束变量是 r(u) - R(e), 由 e 可确定 u, 故实际只需要 |E| 条约束, 相同的保留 d(f) 最大 (-d(f) / c 最小) 的情况即可.
-        #       下次 commit 删除.
-        # for f_obj in self.F:
-        #     for e in f_obj.e_outs:
-        #         e_obj = self.get_external_edge(e)
-        #         solver.add_constraint(r(e_obj.u), R(e), -f_obj.d / c)
-        #         # print(f"r{e_obj.u} - R{e} <= {-f_obj.d / c}")
         
         # 16.2  R(e) - r(u) <= 1, for u --e-> ?
         for e, e_obj in enumerate(self.E):
@@ -303,12 +299,12 @@ class ExtendedCircuit:
             solver.add_constraint(r(u), r(v), w_e)
             # print(f"r{u} - r{v} <= {w_e}")
         
-        # 16.4  R(e_a) - R(e_b) <= w(e_a) - d(f) / c, for e_a --f-> e_b
+        # 16.4  R(e_a) - R(e_b) <= w(e_a) - d(f) / c, for e_a --f-> e_b (The connectivity from e_a to e_b through f)
         for f_obj in self.F:
             for (e_a, e_b) in [(x, y) for x in f_obj.e_ins for y in f_obj.e_outs]:
                 e_a_obj = self.get_external_edge(e_a)
                 
-                # [NOTICE] if e_a is a output edge of an external port vertex, this constraint should be deserted. It considers the delay from tail to head in cycle.
+                # if e_a is a output edge of an external port vertex, this constraint should be deserted. It considers the delay from tail to head in cycle.
                 if e_a_obj.u in external_port_vertices:
                     continue
                 
@@ -340,7 +336,7 @@ class ExtendedCircuit:
             for e_a in f_obj.e_ins
             for e_b in f_obj.e_outs
             if f_obj.v not in external_port_vertices
-        ] # all edges e_a --f-> e_b, [NOTICE] w/o f in external_port_vertices
+        ] # all edges e_a --f-> e_b, w/o f in external_port_vertices
         H.add_weighted_edges_from(H_edges)
         return H
     
@@ -350,7 +346,7 @@ class ExtendedCircuit:
             Return sorted and de-duplicated D-value list.
             TODO improve performance?
         """
-        H = self.build_H(external_port_vertices = external_port_vertices) # [NOTICE] ignore f in v0?
+        H = self.build_H(external_port_vertices = external_port_vertices)
         try:
             dists = dict(nx.all_pairs_dijkstra_path_length(H)) # [NOTICE] seems all nonnegative. need Johnson?
         except Exception:
