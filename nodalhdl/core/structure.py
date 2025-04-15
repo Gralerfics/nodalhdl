@@ -26,13 +26,13 @@ class RuntimeId:
         return f"<RuntimeId: {self.id_str}>"
     
     def _next(self, key: str):
-        next_id_str = str(uuid.uuid5(RuntimeId.NULL_NAMESPACE, self.id_str + "_" + key)).replace('-', '') # TODO 命名空间下生成的 next_id 和 uuid4 生成 id 的潜在冲突
+        next_id_str = str(uuid.uuid5(RuntimeId.NULL_NAMESPACE, self.id_str + "_" + key)).replace('-', '')
         next_id = RuntimeId.get(next_id_str)
         return next_id
     
     @staticmethod
     def create():
-        new_id_str = str(uuid.uuid4()).replace('-', '')
+        new_id_str = str(uuid.uuid5(RuntimeId.NULL_NAMESPACE, str(uuid.uuid4()))).replace('-', '')
         new_id = RuntimeId(new_id_str)
         RuntimeId.id_pool[new_id_str] = new_id
         return new_id
@@ -195,7 +195,7 @@ class Net:
             raise StructureException("Merged net cannot have multiple drivers")
         
         net_h, net_l = (self, other) if len(self) > len(other) else (other, self)
-        for node in net_l.nodes_weak: # [NOTICE] 会不会出现某个 node 被删除但尚未被 GC 掉的问题
+        for node in net_l.nodes_weak:
             net_h._add_node(node) # all nodes' located_net will be set to net_h and net_l will be garbage collected
 
 class Node:
@@ -210,6 +210,7 @@ class Node:
         self.is_port: bool = is_port
         
         self.latency: int = latency # latency, only for ports
+        # [NOTICE] 关于直接串联多个寄存器可能导致的 Hold 违例问题. 应该在前端考虑还是留待后端考虑?
         if self.latency > 0 and not self.is_port:
             raise StructureException("Latency can only be set for ports")
         
@@ -537,7 +538,6 @@ class Structure:
         """
             Deep copy of the structure.
             Reusable substructures under the structure will also be duplicated, with ports_outside those are not under this structure removed.
-            TODO: prevent duplicating substructures and nodes if is_operator?
         """
         s_build_map: Dict[Structure, Structure] = {} # reference structure -> duplicated structure
         
@@ -612,7 +612,6 @@ class Structure:
             After strip the structure can perform apply_runtime().
             `deep`: process reusable substructures if True, False by default. After deep-strip (singletonize), expand() can be performed.
             `deep_to_operators`: if deep is True, deep_to_operators will decide if the operators should be stripped.
-                TODO to be checked.
         """
         res = self.duplicate() if self.instance_number > 1 and (not self.is_reusable or deep) else self
         
@@ -684,8 +683,8 @@ class Structure:
                     non_operator_exists = True
                     
                     # merge subs.ports_inside_flipped and subs.ports_outside
-                    sub_ports_o, sub_ports_i = subs.ports_outside[(self.id, sub_inst_name)].nodes(), subs.ports_inside_flipped.nodes()
-                    for idx in range(len(sub_ports_o)): # [NOTICE] traversing order guaranteed?
+                    sub_ports_o, sub_ports_i = sorted(subs.ports_outside[(self.id, sub_inst_name)].nodes()), sorted(subs.ports_inside_flipped.nodes())
+                    for idx in range(len(sub_ports_o)):
                         sub_port_o, sub_port_i = sub_ports_o[idx][1], sub_ports_i[idx][1]
                         
                         # merge net
@@ -695,7 +694,7 @@ class Structure:
                     # move out the nodes
                     for sub_node in subs.nodes:
                         sub_node.located_net.located_structure_weak = weakref.ref(self)
-                        sub_node.name = sub_inst_name + "_" + sub_node.name # [NOTICE] nodes are not generated in generation(), only provide information in dedution(). so the names do not matter
+                        sub_node.name = sub_inst_name + "_" + sub_node.name # nodes are not generated in generation(), only provide information in dedution(), so the names do not matter
                         self.nodes.add(sub_node)
                         subs.nodes.remove(sub_node)
                     
@@ -949,8 +948,7 @@ class Structure:
     
     @classmethod
     def load_dill(self, file_path: str) -> 'Structure':
-        # TODO traverse the structure and rebuild the SignalType(s)?
-        # TODO 除了 SignalType 这种, 像 arith 这种带 pool 的情况, 读取后 pool 是没有的, 会不会导致对象不一致?
+        # [NOTICE] (1.) traverse the structure and rebuild the SignalType(s)? (2.) 除了 SignalType 这种, 像 arith 这种带 pool 的情况, 读取后 pool 是没有的, 会不会导致对象不一致?
         with open(file_path, "rb") as f:
             return dill.load(f)
 
