@@ -1,4 +1,4 @@
-from .signal import SignalType, IOWrapper, Input, Output, Auto, Bundle
+from .signal import SignalType, BundleType, Auto, IOWrapper, Input, Output, Bundle
 from .hdl import HDLFileModel
 
 import sys
@@ -904,7 +904,7 @@ class Structure:
                 return Node(key, t.flip_io(), is_port = True, located_structure = self) # (1.) io is flipped in ports_inside_flipped, (2.) ports inside are connected with internal nodes/nets, so located_structure is set to self
             elif t.belongs(Bundle):
                 return StructuralNodes({k: _extract(k, v) for k, v in t._bundle_types.items()}) # node_name should be layered
-
+        
         new_port = _extract(name, signal_type)
         self.ports_inside_flipped[name] = new_port
         

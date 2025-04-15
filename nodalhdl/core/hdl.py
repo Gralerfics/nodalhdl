@@ -1,4 +1,4 @@
-from .signal import SignalType, Bundle
+from .signal import SignalType, BundleType, Bundle
 
 from typing import List, Dict, Set, Tuple, Union
 
@@ -11,8 +11,8 @@ class HDLGlobalInfo:
         例如所用到的所有类型, 在 add_component 时会向上级传递, 最终顶层结构生成时会给出单独一个 types.vhd (以 VHDL 为例).
     """
     def __init__(self):
-        self.type_pool: Set[SignalType] = set() # 类型池, 可用于查重
-        self.type_pool_ordered: List[SignalType] = [] # 有序的 type_pool, 以防 HDL 要求顺序声明类型
+        self.type_pool: Set[BundleType] = set() # 类型池, 可用于查重
+        self.type_pool_ordered: List[BundleType] = [] # 有序的 type_pool, 以防 HDL 要求顺序声明类型
     
     def merge(self, other: 'HDLGlobalInfo'):
         """
@@ -55,8 +55,8 @@ class HDLGlobalInfo:
         if t in self.type_pool: # 已经添加过, 同时也说明子类型也添加过
             return
         
-        def _add(t: SignalType):
-            if t.belongs(Bundle): # 只要处理 Bundle 类型
+        def _add(t: BundleType):
+            if t.belongs(Bundle): # [NOTICE]
                 for _, v in t._bundle_types.items(): # 遍历子 Bundle
                     _add(v)
                 self.type_pool.add(t) # 添加该 Bundle 类型

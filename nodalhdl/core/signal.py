@@ -92,8 +92,10 @@
 +--------------------------------------------------------------------+
 """
 
-from typing import Dict, List, Union
+from typing import Dict
+
 import hashlib
+
 
 """ Exceptions """
 class SignalTypeException(Exception): pass
@@ -101,18 +103,14 @@ class SignalTypeException(Exception): pass
 
 """ Metatypes """
 class SignalType(type):
-    def __call__(cls, *args, **kwds):
-        if not cls.determined:
-            raise TypeError("Undetermined types cannot be instantiated.")
-        else:
-            return super().__call__(*args, **kwds)
-    
-    def __repr__(cls): # [NOTICE] used in operator naming, should be valid string
-        return cls.valid_str()
-    
-    determined = False # i.e. width-determined w.r.t. signals
-    io_wrapper_included = False # i.e. whether IO Wrapper is included
-    perfectly_io_wrapped = False # i.e. whether is perfectly IO-wrapped
+    """
+        Reminder:
+            1. Let me call the classes those are, or inherit the classes that use `metaclass = SignalType` STs (signal types).
+            2. STs are classes (also objects in Python).
+            3. The properties defined in SignalType will be inherited as class properties in STs.
+            4. The methods defined in SignalType will be inherited as classmethods in STs, i.e. the first argument is `cls`.
+    """
+    base: 'SignalType'
     
     type_pool = {} # ensuring singularity
     
@@ -123,45 +121,83 @@ class SignalType(type):
                 "base": cls
             })
             cls.type_pool[new_cls_name] = new_cls
-        
         return cls.type_pool.get(new_cls_name)
     
     """
-        有关信号类型关系的方法.
-        以下这些第一个参数为 signal_type 的方法被 Signal 类型和其子类继承后, 第一个参数相当于 self.
+        Class properties.
     """
-    def normalize(signal_type: 'SignalType'):
-        """
-            使用 dill 在不同运行中保存和读取 Structure 后, 读取所得 SignalType 和 .signal 中创建的类型虽然内容相同但不再是同一对象,
-            导致 ==, is, issubclass 等方法判断结果有误, 这里将 SignalType 转字符串后重新求值得到新环境中的 SignalType 对象以解决这个问题.
-            TODO 是否还有其他潜在问题有待发现.
-        """
-        return eval(signal_type.def_str())
+    determined = False # width-determined w.r.t. signals
+    io_wrapper_included = False # whether IO Wrapper is included
+    perfectly_io_wrapped = False # whether is perfectly IO-wrapped
     
-    def equals(signal_type: 'SignalType', other: 'SignalType'):
-        signal_type, other = signal_type.normalize(), other.normalize()
-        
-        return signal_type is other
+    """
+        Instantiation.
+    """
+    def __call__(cls, *args, **kwds):
+        if not cls.determined:
+            raise TypeError("Undetermined types cannot be instantiated.")
+        else:
+            return super().__call__(*args, **kwds)
     
-    def belongs(signal_type: 'SignalType', other: 'SignalType'): # 要求从属于 other, 即比 other 更具体 (子类型) 或等同
-        signal_type, other = signal_type.normalize(), other.normalize()
-        
-        return issubclass(signal_type, other)
+    """
+        Representations.
+    """
+    def to_valid_string(cls):
+        return cls.__name__
     
-    def merges(signal_type: 'SignalType', other: 'SignalType'): # 合并两个信号类型的信息, 去 IO Wrapper
+    def to_definition_string(cls): # eval this string can obtain the ST class
+        return "Signal"
+    
+    def __repr__(cls): # [NOTICE] used in operator naming, should be valid string
+        return cls.to_valid_string()
+    
+    """
+        ST comparison and manipulation.
+    """
+    def normalize(cls: 'SignalType'):
         """
-            IO-ignored.
-            applys 本质上是将二者类型信息合并, 并保留 signal_type 的 IO Wrapper 结构.
-            merges 传入无 IO Wrapper 的 signal_type, 就使其成为单纯的信息合并.
+            After using dill to save and read Structure in different runs, the resulting ST is no longer the same object as the type created in .signal even though the content is the same, leading to errors in ==, is, issubclass, etc.
+            So all places involving the `type_pool` and the class object itself need to be re-eval to the SignalType object in the new environment after converting the SignalType to a string definition.
         """
-        t1 = signal_type.clear_io() if signal_type.io_wrapper_included else signal_type
+        return eval(cls.to_definition_string())
+    
+    def equals(cls: 'SignalType', other: 'SignalType'):
+        """
+            Judge the equivalence.
+            Note that `is` is called, so the STs should be normalized.
+        """
+        cls, other = cls.normalize(), other.normalize()
+        return cls is other
+    
+    def belongs(cls: 'SignalType', other: 'SignalType'):
+        """
+            Whether `cls` belongs to `other`.
+            This also means whether `cls` has more (or same) information that `other`.
+            Note that `issubclass` is called, so the STs should be normalized.
+            
+            P.S. "information":
+                Some STs have more information that others, e.g. UInt[8] is more useful than UInt or Auto.
+                Such kind of relationship can be described by the inheritance relationship.
+        """
+        cls, other = cls.normalize(), other.normalize()
+        return issubclass(cls, other)
+    
+    def merges(cls: 'SignalType', other: 'SignalType'):
+        """
+            Merge the information in `cls` and `other`.
+            `cls` and `other` should have the same structure (ignoring IO wrappers).
+            IO wrappers in both `cls` and `other` will be ignored.
+        """
+        t1 = cls.clear_io() if cls.io_wrapper_included else cls
         t2 = other.clear_io() if other.io_wrapper_included else other
         
         return t1.applys(t2)
     
-    def applys(signal_type: 'SignalType', other: 'SignalType'): # 将 other 的信息应用到 signal_type 上, other 是忽略 IO 的
+    def applys(cls: 'SignalType', other: 'SignalType'):
         """
-            用在需要将无 IO 类型推导结果应用到 port 信号类型上的情况.
+            Apply the information of `other` to `cls`.
+            `cls` and `other` should have the same structure (ignoring IO wrappers).
+            `cls` could have IO wrappers, and the IO wrappers in `other` will be ignored.
         """
         if other.io_wrapper_included:
             other = other.clear_io()
@@ -190,24 +226,26 @@ class SignalType(type):
             else:
                 return None
         
-        res = _apply(signal_type, other)
+        res = _apply(cls, other)
         if res is None:
-            raise SignalTypeException(f"Signal types {signal_type.__name__} and {other.__name__} are conflicting")
+            raise SignalTypeException(f"Signal types {cls.__name__} and {other.__name__} are conflicting")
         
         return res
 
     """
-        有关 IO Wrapper 的方法.
-        Signal type 根据是否有 IO Wrapper 分类:
-            (1.) 完全无 IO Wrapper, 为 Non-IO-wrapped.
-            (2.) 所有信号上溯皆有且仅有一个 IO Wrapper, 称 Perfectly IO-wrapped.
-            (3.) 不完整包裹的, 以及 IO Wrapper 存在嵌套的, 皆为非法.
-        在构建 IOWrapper 和 Bundle 时会逐级检查, 并给 io_wrapper_included 和 perfectly_io_wrapped 属性赋值.
-        
-        flip_io 方法用于翻转 IO Wrapper, 返回翻转后的类型, 并要求输入的信号类型 perfectly_io_wrapped = True.
+        ST methods related to IO wrappers.
+        Classify STs with respect to IO wrappers they include:
+            (1.) Have no IO wrapper, called non-IO-wrapped.
+            (2.) All sub-signals up to the root have one and only one IO wrapper, called perfectly IO-wrapped.
+            (3.) Have any sub-signal that is not wrapped, or nested wrapped, are invalid.
+        This will be checked level by level as STs are built, and `io_wrapper_included` and `perfectly_io_wrapped` will be assigned automatically.
     """
-    def flip_io(signal_type: 'SignalType'): # 递归翻转 IO Wrapper
-        if not signal_type.perfectly_io_wrapped:
+    def flip_io(cls: 'SignalType'):
+        """
+            Recursively flip the IO wrappers under `cls`.
+            `cls` should be perfectly IO-wrapped.
+        """
+        if not cls.perfectly_io_wrapped:
             raise SignalTypeException(f"Imperfect IO-wrapped signal type cannot be flipped")
         
         def _flip(t: SignalType):
@@ -218,21 +256,26 @@ class SignalType(type):
             else: # 一定是 Bundle, 如果是未被包裹的普通信号, 必然通不过 perfectly_io_wrapped 检查
                 return Bundle[{key: _flip(T) for key, T in t._bundle_types.items()}]
         
-        return _flip(signal_type)
+        return _flip(cls)
     
-    def clear_io(signal_type: 'SignalType'):
-        if not signal_type.io_wrapper_included:
-            return signal_type
+    def clear_io(cls: 'SignalType'):
+        """
+            Recursively remove all IO wrappers.
+        """
+        if not cls.io_wrapper_included:
+            return cls
         
-        if signal_type.belongs(Input) or signal_type.belongs(Output):
-            return signal_type.T
-        elif signal_type.belongs(Bundle):
-            return Bundle[{key: T.clear_io() for key, T in signal_type._bundle_types.items()}]
-        else: # 普通信号
-            return signal_type
+        if cls.belongs(Input) or cls.belongs(Output):
+            return cls.T
+        elif cls.belongs(Bundle):
+            return Bundle[{key: T.clear_io() for key, T in cls._bundle_types.items()}]
+        else: # ordinary
+            return cls
 
 class BitsType(SignalType):
-    def __getitem__(cls, item):
+    W: int # not assigned, not exist, only for type-hinting
+    
+    def __getitem__(cls, item) -> 'BitsType':
         if isinstance(item, int):
             width = item
             
@@ -249,7 +292,10 @@ class BitsType(SignalType):
             raise SignalTypeException(f"Invalid parameter(s) \'{item}\' for type {cls.__name__}[<width (int)>]")
 
 class FixedPointType(BitsType):
-    def __getitem__(cls, item):
+    W_int: int
+    W_frac: int
+    
+    def __getitem__(cls, item) -> 'FixedPointType':
         if isinstance(item, tuple) and len(item) == 2 and isinstance(item[0], int) and isinstance(item[1], int):
             integer_width, fraction_width = item
             
@@ -268,7 +314,10 @@ class FixedPointType(BitsType):
             raise SignalTypeException(f"Invalid parameter(s) \'{item}\' for type {cls.__name__}[<integer_width (int)>, <fraction_width (int)>]")
 
 class FloatingPointType(BitsType):
-    def __getitem__(cls, item):
+    W_exp: int
+    W_frac: int
+    
+    def __getitem__(cls, item) -> 'FloatingPointType':
         if isinstance(item, tuple) and len(item) == 2 and isinstance(item[0], int) and isinstance(item[1], int):
             exponent_width, fraction_width = item
             
@@ -287,38 +336,46 @@ class FloatingPointType(BitsType):
             raise SignalTypeException(f"Invalid parameter(s) \'{item}\' for type {cls.__name__}[<exponent_width (int)>, <fraction_width (int)>]")
 
 class IOWrapperType(SignalType):
-    def __getitem__(cls, item):
+    T: SignalType
+    
+    def __getitem__(cls, item) -> 'IOWrapperType':
         if isinstance(item, SignalType):
-            if item.io_wrapper_included: # 不允许 IO Wrapper 套 IO Wrapper
+            T = item
+            
+            if T.io_wrapper_included:
                 raise SignalTypeException(f"Nesting is not allowed for IO Wrappers")
             
             new_cls = cls.instantiate_type(
-                f"{cls.__name__}_{item.__name__}",
+                f"{cls.__name__}_{T.__name__}",
                 {
-                    "T": item
+                    "T": T
                 }
             )
-            new_cls.determined = item.determined # IO Wrapping 后的确定性由内部信号决定
-            new_cls.io_wrapper_included = True # 套上后即包含 IO Wrapper
-            new_cls.perfectly_io_wrapped = True # 内部无 IO Wrapper 故套上后就是最小单位
+            new_cls.determined = item.determined # the determinacy of the wrapper is decided by the wrapped ST
+            new_cls.io_wrapper_included = True # now wrapped
+            new_cls.perfectly_io_wrapped = True # wrap on the root, so perfectly wrapped
             
             return new_cls
         else:
             raise SignalTypeException(f"Invalid parameter(s) \'{item}\' for type {cls.__name__}[<signal_type (SignalType)>]")
 
 class BundleType(SignalType):
-    def __getitem__(cls, item):
+    _bundle_types: Dict[str, SignalType]
+    
+    def __getitem__(cls, item) -> 'BundleType':
         if isinstance(item, dict) and all([isinstance(x, SignalType) for x in item.values()]):
+            bundle_types: dict = item
+            
             new_cls = cls.instantiate_type(
-                f"{cls.__name__}_{hashlib.md5(str(item).encode('utf-8')).hexdigest()}",
+                f"{cls.__name__}_{hashlib.md5(str(bundle_types).encode('utf-8')).hexdigest()}",
                 {
-                    "_bundle_types": item, # 信号名到类型的映射, 维护子信号的名称信息, **item 展开后会和一些内建方法混在一起
-                    **item # 方便直接按索引引用信号类型
+                    "_bundle_types": bundle_types, # signal name -> signal type
+                    **bundle_types # for convenience
                 }
             )
-            new_cls.determined = all([x.determined for x in item.values()]) # 子信号全部确定才确定
-            new_cls.io_wrapper_included = any([x.io_wrapper_included for x in item.values()]) # 子信号中有一个包含 IO Wrapper 就包含
-            new_cls.perfectly_io_wrapped = all([x.perfectly_io_wrapped for x in item.values()]) # 子信号全部完美包裹才完美包裹
+            new_cls.determined = all([x.determined for x in bundle_types.values()]) # determined when all sub-signals are determined
+            new_cls.io_wrapper_included = any([x.io_wrapper_included for x in bundle_types.values()]) # IO wrapped when any sub-signal is IO-wrapped
+            new_cls.perfectly_io_wrapped = all([x.perfectly_io_wrapped for x in bundle_types.values()]) # perfectly wrapped when all sub-signals are perfectly wrapped
             
             return new_cls
         else:
@@ -326,19 +383,16 @@ class BundleType(SignalType):
 
 
 """ Types """
-class Signal(metaclass = SignalType):
-    @classmethod
-    def valid_str(cls):
-        return cls.__name__
+class Signal(metaclass = SignalType): pass
 
 class Auto(Signal):
     @classmethod
-    def def_str(cls):
+    def to_definition_string(cls):
         return "Auto"
 
 class Bits(Auto, metaclass = BitsType):
     @classmethod
-    def def_str(cls):
+    def to_definition_string(cls):
         return f"Bits[{cls.W}]" if hasattr(cls, 'W') else "Bits"
 
 Bit = Bits[1]
@@ -346,7 +400,7 @@ Byte = Bits[8]
 
 class UInt(Bits):
     @classmethod
-    def def_str(cls):
+    def to_definition_string(cls):
         return f"UInt[{cls.W}]" if hasattr(cls, 'W') else "UInt"
 
 UInt8 = UInt[8]
@@ -356,7 +410,7 @@ UInt64 = UInt[64]
 
 class SInt(Bits):
     @classmethod
-    def def_str(cls):
+    def to_definition_string(cls):
         return f"SInt[{cls.W}]" if hasattr(cls, 'W') else "SInt"
 
 Int8 = SInt[8]
@@ -366,12 +420,12 @@ Int64 = SInt[64]
 
 class FixedPoint(Bits, metaclass = FixedPointType):
     @classmethod
-    def def_str(cls):
+    def to_definition_string(cls):
         return f"FixedPoint[{cls.W_int}, {cls.W_frac}]" if hasattr(cls, 'W_int') and hasattr(cls, 'W_frac') else "FixedPoint"
 
 class FloatingPoint(Bits, metaclass = FloatingPointType):
     @classmethod
-    def def_str(cls):
+    def to_definition_string(cls):
         return f"FloatingPoint[{cls.W_exp}, {cls.W_frac}]" if hasattr(cls, 'W_exp') and hasattr(cls, 'W_frac') else "FloatingPoint"
 
 Float = FloatingPoint[8, 23]
@@ -379,77 +433,21 @@ Double = FloatingPoint[11, 52]
 
 class Bundle(Auto, metaclass = BundleType):
     @classmethod
-    def def_str(cls):
-        return "Bundle[{" + ", ".join([f"\"{k}\": {v.def_str()}" for k, v in cls._bundle_types.items()]) + "}]" if hasattr(cls, '_bundle_types') else "Bundle"
+    def to_definition_string(cls):
+        return "Bundle[{" + ", ".join([f"\"{k}\": {v.to_definition_string()}" for k, v in cls._bundle_types.items()]) + "}]" if hasattr(cls, '_bundle_types') else "Bundle"
 
 class IOWrapper(Signal, metaclass = IOWrapperType):
     @classmethod
-    def def_str(cls):
-        return f"IOWrapper[{cls.T.def_str()}]" if hasattr(cls, 'T') else "IOWrapper"
+    def to_definition_string(cls):
+        return f"IOWrapper[{cls.T.to_definition_string()}]" if hasattr(cls, 'T') else "IOWrapper"
 
 class Input(IOWrapper):
     @classmethod
-    def def_str(cls):
-        return f"Input[{cls.T.def_str()}]" if hasattr(cls, 'T') else "Input"
+    def to_definition_string(cls):
+        return f"Input[{cls.T.to_definition_string()}]" if hasattr(cls, 'T') else "Input"
 
 class Output(IOWrapper):
     @classmethod
-    def def_str(cls):
-        return f"Output[{cls.T.def_str()}]" if hasattr(cls, 'T') else "Output"
+    def to_definition_string(cls):
+        return f"Output[{cls.T.to_definition_string()}]" if hasattr(cls, 'T') else "Output"
 
-
-
-# S = Bundle[{
-#     "a": Input[Auto],
-#     "b": Output[UInt[8]],
-#     "c": Auto,
-#     "d": Output[Bundle[{
-#         "t": Float
-#     }]]
-# }]
-
-# T = Bundle[{
-#     "a": Output[Auto],
-#     "b": Output[Bits],
-#     "c": Bundle[{
-#         "x": Input[SInt[3]],
-#         "y": Output[SInt]
-#     }],
-#     "d": Input[Bundle[{
-#         "t": Auto
-#     }]]
-# }]
-
-# P = Bundle[{
-#     "a": Auto,
-#     "b": Bits,
-#     "c": Bundle[{
-#         "x": SInt[3],
-#         "y": SInt
-#     }],
-#     "d": Auto
-# }]
-
-# print(S)
-# print(T)
-# print(S.merges(T))
-# print('---')
-# print(S)
-# print(P)
-# print(S.applys(P))
-
-
-
-# T = Bundle[{
-#     "a": Output[Auto],
-#     "b": Output[Bits],
-#     "c": Bundle[{
-#         "x": Input[SInt[3]],
-#         "y": Output[SInt]
-#     }],
-#     "d": Input[Bundle[{
-#         "t": Auto
-#     }]]
-# }]
-
-# print(eval(T.def_str()))
