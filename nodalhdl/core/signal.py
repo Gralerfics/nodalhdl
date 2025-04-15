@@ -517,7 +517,7 @@ class Bundle(Auto, metaclass = BundleType):
     @classmethod
     def to_definition_string(cls):
         return "Bundle[{" + ", ".join([f"\"{k}\": {v.to_definition_string()}" for k, v in cls._bundle_types.items()]) + "}]" if hasattr(cls, '_bundle_types') else "Bundle"
-
+    
     def __init__(self, value: dict = {}):
         self._bundle_objects: Dict[str, Signal] = {}
         for k, v in self._bundle_types.items():
@@ -528,28 +528,3 @@ class Bundle(Auto, metaclass = BundleType):
     def __repr__(self):
         return "{" + ", ".join([f"\"{k}\": {str(v)}" for k, v in self._bundle_objects.items()]) + "}"
 
-
-# P = Bundle[{
-#     "a": UInt[4],
-#     "b": Bits[8],
-#     "c": Bundle[{
-#         "x": SInt[3],
-#         "y": SInt[5],
-#         "z": Bundle[{
-#             "n": UInt[8]
-#         }]
-#     }]
-# }]
-
-# p = P({
-#     "a": 20,
-#     "b": "00010010",
-#     "c": {
-#         "x": -5,
-#         "y": -2
-#     }
-# })
-
-# print(p)
-# print(p.b.value)
-# print(p.c.x)

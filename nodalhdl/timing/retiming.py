@@ -130,6 +130,10 @@ class MIDCSolver:
 
 @total_ordering
 class OrderedPair:
+    """
+        Used for representing the edge weights in WD algorithm.
+        Define __radd__(OrderedPair, int) to make networkx.all_pairs_dijkstra_path_length support paired weights.
+    """
     def __init__(self, a, b):
         self.a = a
         self.b = b
@@ -233,6 +237,7 @@ class ExtendedCircuit:
             When building H and building MIDC, all internal edge (bundles) will be expanded to |E_ins x E_outs| edges (constraints) between external edges.
             So it is reasonable to see cases like:
                 e1 in f1.e_ins but not in e2.e_ins, e2 in f2.e_ins but not in f1.e_ins, and e1, e2 are all in f3.e_ins.
+            P.S. d = -inf means not connected.
         """
         f = len(self.F)
         self.F.append(ExtendedCircuit.InternalEdge(v = v, d = d))
