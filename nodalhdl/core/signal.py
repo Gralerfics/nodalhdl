@@ -92,13 +92,15 @@
 +--------------------------------------------------------------------+
 """
 
-from typing import Dict
+from typing import Dict, List
 
 import hashlib
 
 
 """ Exceptions """
 class SignalTypeException(Exception): pass
+class SignalTypeInstantiationException(Exception): pass
+class SignalOperationException(Exception): pass
 
 
 """ Metatypes """
@@ -394,6 +396,12 @@ class Bits(Auto, metaclass = BitsType):
     @classmethod
     def to_definition_string(cls):
         return f"Bits[{cls.W}]" if hasattr(cls, 'W') else "Bits"
+    
+    def __init__(self, value: List[bool]):
+        if len(value) > self.W:
+            raise SignalTypeInstantiationException # TODO
+        
+        self.value = value + [False] * (self.W - len(value))
 
 Bit = Bits[1]
 Byte = Bits[8]
@@ -402,6 +410,30 @@ class UInt(Bits):
     @classmethod
     def to_definition_string(cls):
         return f"UInt[{cls.W}]" if hasattr(cls, 'W') else "UInt"
+    
+    def __init__(self, value: int):
+        self.set_value(value)
+    
+    def __repr__(self):
+        return f"{self.value}.U({self.W}.W)"
+    
+    def __add__(self, other):
+        if isinstance(other, UInt):
+            return UInt[max(self.W, other.W)](self.value + other.value)
+        else:
+            raise SignalOperationException # TODO
+    
+    def __sub__(self, other):
+        if isinstance(other, UInt):
+            return UInt[max(self.W, other.W)](self.value - other.value)
+        else:
+            raise SignalOperationException # TODO
+    
+    __radd__ = __add__
+    __rsub__ = __sub__
+    
+    def set_value(self, value: int):
+        self.value = value % (1 << self.W)
 
 UInt8 = UInt[8]
 UInt16 = UInt[16]
@@ -412,11 +444,40 @@ class SInt(Bits):
     @classmethod
     def to_definition_string(cls):
         return f"SInt[{cls.W}]" if hasattr(cls, 'W') else "SInt"
+    
+    def __init__(self, value: int):
+        self.set_value(value)
+    
+    def __repr__(self):
+        return f"{self.value}.S({self.W}.W)"
+    
+    def __add__(self, other):
+        if isinstance(other, SInt):
+            return SInt[max(self.W, other.W)](self.value + other.value)
+        else:
+            raise SignalOperationException # TODO
+    
+    def __sub__(self, other):
+        if isinstance(other, SInt):
+            return SInt[max(self.W, other.W)](self.value - other.value)
+        else:
+            raise SignalOperationException # TODO
+    
+    __radd__ = __add__
+    __rsub__ = __sub__
+    
+    def set_value(self, value: int):
+        half = 1 << self.W - 1
+        self.value = (value + half) % (1 << self.W) - half
 
 Int8 = SInt[8]
 Int16 = SInt[16]
 Int32 = SInt[32]
 Int64 = SInt[64]
+
+# print(SInt[4](9))
+# print(SInt[3](-2))
+# print(SInt[4](9) - SInt[3](-2))
 
 class FixedPoint(Bits, metaclass = FixedPointType):
     @classmethod
