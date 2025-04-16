@@ -325,6 +325,8 @@ print(m2.is_flattened)
 
 print([p.of_structure_inst_name for _, p in m2.get_subs_ports_outside("u1_z_add_12").nodes()])
 
+print([p.layered_name for _, p in m2.ports_inside_flipped.nodes()])
+
 
 print('m2.singletonize.gen ==============================================================================================================')
 
@@ -356,8 +358,8 @@ m2.save_dill("m2.dill")
 print('m2.singletonize.gen (sta) ==============================================================================================================')
 
 
-from nodalhdl.timing.sta import VivadoSTA
+# from nodalhdl.timing.sta import VivadoSTA
 
-sta = VivadoSTA(m2, vivado_executable_path = "vivado.bat")
-sta.analyse()
+# sta = VivadoSTA(m2, vivado_executable_path = "vivado.bat")
+# sta.analyse()
 

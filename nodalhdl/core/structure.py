@@ -207,10 +207,11 @@ class Node:
     """
         Circuit node.
     """
-    def __init__(self, name: str, origin_signal_type: SignalType, is_port: bool, located_structure: 'Structure' = None, located_net: Net = None, latency: int = 0):
+    def __init__(self, name: str, origin_signal_type: SignalType, is_port: bool, located_structure: 'Structure' = None, located_net: Net = None, latency: int = 0, layered_name: str = None):
         # properties
         self.id = str(uuid.uuid4()).replace('-', '')
         self.name: str = name # raw name, no need to be unique. layer information for ports will be added in StructuralNodes.nodes()
+        self.layered_name: str = layered_name if layered_name is not None else name # a.k.a. full name in structural ports
         self.origin_signal_type: SignalType = origin_signal_type # must be set by set_origin_type()
         self.is_port: bool = is_port
         self.latency: int = latency # latency, only for ports
@@ -589,7 +590,7 @@ class Structure:
                     new_net = _trace_net(ref)
                     
                     # duplicate the port under net'
-                    new_port = Node(ref.name, ref.origin_signal_type, is_port = ref.is_port, located_net = new_net, latency = ref.latency)
+                    new_port = Node(ref.name, ref.origin_signal_type, is_port = ref.is_port, located_net = new_net, latency = ref.latency, layered_name = ref.layered_name)
                     return new_port
                 else: # StructuralNodes
                     return StructuralNodes({k: _build_ports(v) for k, v in ref.items()})
@@ -917,16 +918,16 @@ class Structure:
         if not signal_type.perfectly_io_wrapped:
             raise StructureException("Port signal type should be perfectly IO wrapped")
         
-        def _extract(key: str, t: SignalType):
+        def _extract(key: str, t: SignalType, prefix: str = ""):
             """
                 Extract sub-ports with IOWrapper as independent Node objects.
                 The names are the raw names, instead of the full names (with layer information).
                 StructuralNodes().nodes() will add the layer information to the returned full names.
             """
             if t.belongs(IOWrapper):
-                return Node(key, t.flip_io(), is_port = True, located_structure = self) # (1.) io is flipped in ports_inside_flipped, (2.) ports inside are connected with internal nodes/nets, so located_structure is set to self
+                return Node(key, t.flip_io(), is_port = True, located_structure = self, layered_name = prefix + key) # (1.) io is flipped in ports_inside_flipped, (2.) ports inside are connected with internal nodes/nets, so located_structure is set to self
             elif t.belongs(Bundle):
-                return StructuralNodes({k: _extract(k, v) for k, v in t._bundle_types.items()}) # node_name should be layered
+                return StructuralNodes({k: _extract(k, v, prefix = prefix + key + "_") for k, v in t._bundle_types.items()})
 
         new_port = _extract(name, signal_type)
         self.ports_inside_flipped[name] = new_port
@@ -950,7 +951,7 @@ class Structure:
         
         def _create(io: Union[Node, StructuralNodes]):
             if isinstance(io, Node):
-                new_port = Node(io.name, io.origin_signal_type.flip_io(), is_port = True, located_structure = self)
+                new_port = Node(io.name, io.origin_signal_type.flip_io(), is_port = True, located_structure = self, layered_name = io.layered_name)
                 new_port.of_structure_inst_name = inst_name
                 return new_port
             else: # StructuralNodes
