@@ -259,9 +259,7 @@ class Node:
         All runtime information should be cleared, so that any runtime_id that passes through the structure loses its integrity.
     """
     def _structural_modification(self):
-        self.located_structure.clear_runtimes() # clear runtime info
-        self.located_structure.reusable_hdl = None
-        self.located_structure.timing_info = None
+        self.located_structure._structural_modified()
     
     def set_origin_type(self, signal_type: SignalType, safe_modification: bool = False):
         if self.origin_signal_type is signal_type: # no change
@@ -427,18 +425,25 @@ class Structure:
     def clear_runtimes(self):
         self.runtimes.clear()
     
+    def _structural_modified(self):
+        self.clear_runtimes() # clear runtime info
+        self.reusable_hdl = None
+        self.timing_info = None
+    
     def __init__(self, unique_name: str = None):
         # properties
         self.id = str(uuid.uuid4()).replace('-', '')
         self.unique_name: str = unique_name
         
-        self.reusable_hdl: HDLFileModel = None # only for reusable structure; destroy when structural information changed
-        self.timing_info: weakref.WeakKeyDictionary[Node, weakref.WeakKeyDictionary[Node, float]] = None # timing info after STA; destroy when structural information changed
-        
+        # properties (customized params, some for operators)
         self.custom_params = {}
         self.custom_sequential: bool = False # should be asserted to True if there are registers in custom_generation (raw_content)
         self.custom_deduction: callable = None
         self.custom_generation: callable = None
+        
+        # properties (destroy when structural information changed)
+        self.reusable_hdl: HDLFileModel = None # only for reusable structure
+        self.timing_info: Dict[Tuple[str, str], float] = None # timing info after STA, (I-port full name, O-port full name) -> delay
         
         # references (internal structure)
         self.ports_inside_flipped: StructuralNodes = StructuralNodes() # to be connected to internal nodes, IO flipped (EEB)
