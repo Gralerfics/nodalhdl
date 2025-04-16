@@ -321,6 +321,10 @@ print(m2.runtime_info(rid_m2_exp))
 
 print(m2.is_sequential)
 
+print(m2.is_flattened)
+
+print([p.of_structure_inst_name for _, p in m2.get_subs_ports_outside("u1_z_add_12").nodes()])
+
 
 print('m2.singletonize.gen ==============================================================================================================')
 
@@ -345,8 +349,6 @@ m2.save_dill("m2.dill")
 #         load.set_latency(1)
 
 # model = m2.generation(rid_m2_exp)
-
-# print(m2.is_flattened)
 
 # emit_to_files(model.emit_vhdl(), "C:/Workspace/test_project/test_project.srcs/sources_1/new")
 

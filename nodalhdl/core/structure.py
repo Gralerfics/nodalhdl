@@ -213,11 +213,13 @@ class Node:
         self.name: str = name # raw name, no need to be unique. layer information for ports will be added in StructuralNodes.nodes()
         self.origin_signal_type: SignalType = origin_signal_type # must be set by set_origin_type()
         self.is_port: bool = is_port
-        
         self.latency: int = latency # latency, only for ports
         # [NOTICE] 关于直接串联多个寄存器可能导致的 Hold 违例问题. 应该在前端考虑还是留待后端考虑?
         if self.latency > 0 and not self.is_port:
             raise StructureException("Latency can only be set for ports")
+        
+        # properties (for ports in ports_outside)
+        self.of_structure_inst_name: str = None # ports and only ports in ports_outside have this property
         
         # references
         self.located_net: Net = located_net # strong reference to Net
@@ -373,17 +375,22 @@ class StructuralNodes(dict):
             elif isinstance(v, StructuralNodes):
                 v.connect(other[k])
     
-    def nodes(self, prefix: str = "") -> List[Tuple[str, Node]]:
+    def nodes(self, prefix: str = "", filter: str = "all", flipped: bool = False) -> List[Tuple[str, Node]]:
         """
             Return all Node objects in a list with their full names.
             The full name contains the layer information, e.g. "foo_bar_baz".
+            `filter` can be "all", "in" or "out" to filter the ports with the given direction.
+                `flipped` is used with `filter` to indicate that whether the ports' directions are flipped, e.g. in ports_inside_flipped.
         """
+        filter = "in" if flipped and filter == "out" else ("out" if flipped and filter == "in" else filter)
+        
         res = []
         for k, v in self.items():
             if isinstance(v, Node):
-                res.append((prefix + v.name, v))
+                if filter == "all" or (filter == "in" and v.origin_signal_type.belongs(Input)) or (filter == "out" and v.origin_signal_type.belongs(Output)):
+                    res.append((prefix + v.name, v))
             elif isinstance(v, StructuralNodes):
-                res.extend(v.nodes(prefix + k + "_"))
+                res.extend(v.nodes(prefix + k + "_", filter, flipped))
         return res
     
     def update_runtime(self, self_runtime_id: RuntimeId, other: 'StructuralNodes', other_runtime_id: RuntimeId = None):
@@ -612,7 +619,10 @@ class Structure:
                 new_s.substructures[sub_inst_name] = new_subs
                 
                 # new_subs.ports_outside
-                new_subs.ports_outside[(new_s.id, sub_inst_name)] = _build_ports(ref_subs.ports_outside[(ref_s.id, sub_inst_name)])
+                new_subs_ports_outside = _build_ports(ref_subs.ports_outside[(ref_s.id, sub_inst_name)])
+                for _, p in new_subs_ports_outside.nodes():
+                    p.of_structure_inst_name = sub_inst_name
+                new_subs.ports_outside[(new_s.id, sub_inst_name)] = new_subs_ports_outside
             
             return new_s
         
@@ -628,7 +638,7 @@ class Structure:
         res = self.duplicate() if self.instance_number > 1 and (not self.is_reusable or deep) else self
         
         def _strip(s: Structure):
-            for sub_inst_name, subs in dict(s.substructures).items(): # copy the dict to avoid runtime modification
+            for sub_inst_name, subs in dict(s.substructures).items(): # copy the dict to avoid dynamic modification
                 """
                     if subs.instance_number > 1, it might be needed to be stripped, in this case:
                         if not subs.is_reusable, it should be stripped;
@@ -640,7 +650,7 @@ class Structure:
                     # need to strip
                     new_subs = subs.duplicate()
                     
-                    # move ports_outside from (ref_)subs to new_subs
+                    # move ports_outside from (ref_)subs to new_subs (just move, of_structure_inst_name is not changed)
                     new_subs.ports_outside[(s.id, sub_inst_name)] = subs.ports_outside[(s.id, sub_inst_name)]
                     del subs.ports_outside[(s.id, sub_inst_name)]
                     
@@ -719,8 +729,10 @@ class Structure:
                         sub_subs.ports_outside[(self.id, new_inst_name)] = sub_sub_ports_o
                         del sub_subs.ports_outside[(subs.id, sub_sub_inst_name)]
                         
-                        # move out the nets connected to sub_subs's ports_outside
+                        # modify the ports' of_structure_inst_name in ports_outside
+                        # and move out the nets connected to sub_subs's ports_outside
                         for _, p in sub_sub_ports_o.nodes():
+                            p.of_structure_inst_name = new_inst_name
                             p.located_net.located_structure_weak = weakref.ref(self)
                         
                         # move out
@@ -938,7 +950,9 @@ class Structure:
         
         def _create(io: Union[Node, StructuralNodes]):
             if isinstance(io, Node):
-                return Node(io.name, io.origin_signal_type.flip_io(), is_port = True, located_structure = self)
+                new_port = Node(io.name, io.origin_signal_type.flip_io(), is_port = True, located_structure = self)
+                new_port.of_structure_inst_name = inst_name
+                return new_port
             else: # StructuralNodes
                 return StructuralNodes({k: _create(v) for k, v in io.items()})
         
