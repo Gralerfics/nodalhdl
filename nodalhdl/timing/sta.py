@@ -47,28 +47,20 @@ class VivadoSTA(StaticTimingAnalyser):
             self.details: List[Dict] = [] # [{location, delay_type, incr_ns, path_ns, netlist_resources, ...}, ...]
         
         def __repr__(self):
-            return f"TimingPath<{self.source} -> {self.destination}, {self.data_path_delay} (ns), {self.details}>"
+            res = f"TimingPath<{self.source} -> {self.destination}, {self.data_path_delay} (ns), {self.path_type}, [\n"
+            for row in self.details:
+                res += "    " + str(row) + ",\n"
+            return res[:-2] + "\n]>\n"
         
         @staticmethod
         def parse_lines(lines: List[str]):
+            """
+                Fuck Vivado.
+                `-column_style variable_width` used.
+                TODO 暂时默认是仅综合, 所以 Location 字段为空.
+            """
             res = VivadoSTA.TimingPath()
-            
-            headers_name = ["Location", "Delay type", "Incr(ns)", "Path(ns)", "Netlist Resource(s)"]
-            headers_pos = []
-            r_column_left, r_column_right = None, None
-            
-            def get_column_value_in_line(line: str, idx: int):
-                # assert len(headers_name) >= 2
-                if idx == 0:
-                    return line[:headers_pos[1]]
-                elif idx == len(headers_name) - 1:
-                    return line[headers_pos[len(headers_name) - 1]:]
-                else:
-                    l, r = headers_pos[idx], headers_pos[idx + 1] # [l, r)
-                    if r_column_left is not None and r > r_column_left: # includes r-tag column, remove it
-                        r = r_column_left # [NOTICE] 前提是 r 右边一定是最后一列
-                    return line[l:r]
-            
+
             in_table = False
             for line in lines:
                 line = line.rstrip()
@@ -88,36 +80,12 @@ class VivadoSTA(StaticTimingAnalyser):
                 elif line.strip().startswith("Logic Levels:"):
                     res.logic_levels = line.split(":", 1)[1].strip()
                 elif re.match(r"\s*Location\s+Delay type", line):
-                    # obtain the left boundaries of columns
-                    # headers_name = re.split(r'\s{2,}', line.strip()) # [NOTICE] 暂时直接写死这几行了
-                    headers_pos = [line.find(header_name) for header_name in headers_name]
-                    
                     in_table = True
                 elif in_table:
-                    # empty lines
-                    if not line.strip():
+                    # empty lines or splitting line
+                    if not line.strip() or re.match(r"^\s*-{10,}", line):
                         continue
                     
-                    # splitting line "  -------------------------------------------------------------------    -------------------", find position of "r" tags from it
-                    if re.match(r"^\s*-{10,}", line):
-                        r_column_left = line.find("-    -") + 1 # [NOTICE] 一定四个空格吗?
-                        r_column_right = r_column_left + 4
-                        continue
-                    
-                    """
-                        [NOTICE] 存在这样的情况:
-                        :
-                        :    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
-                        :  -------------------------------------------------------------------    -------------------
-                        ...
-                        :                         CARRY4 (Prop_carry4_S[1]_CO[3])
-                        :                                                      0.533     1.772 r  u2_adder/res[0]_INST_0/CO[3]
-                        ...
-                        Delay type 超出右边界导致后面项换行了.
-                        行吧, 暂时特殊判断一下, Fuck Vivado.
-                        看起来每个数据至少会和左边的隔两个空格, 不然就换行? 检查一下列间应该空格的地方有没有字符吧.
-                        TODO 会不会右对齐的数字超过左边然后换行?
-                    """
                     line_entry = {
                         "location": None,
                         "delay_type": None,
@@ -125,32 +93,37 @@ class VivadoSTA(StaticTimingAnalyser):
                         "path_ns": None,
                         "netlist_resources": []
                     }
-
+                    
                     # extract raw info
-                    if line[headers_pos[1] - 2:headers_pos[1]] != "  ": # location 换行
-                        line_entry["location"] = line.strip()
+                    rvs = re.split(r'\s{2,}', line.strip()) # raw_values
+                    if len(rvs) == 4:
+                        # e.g. "                         LUT4 (Prop_lut4_I0_O)        0.317     1.457 r  u1_z_add_123/res[3]_INST_0_i_1/O"
+                        r_tag = False
+                        if rvs[2][-1] == "r":
+                            r_tag = True
+                            rvs[2] = rvs[2][:-2]
+                        
+                        line_entry["delay_type"] = rvs[0]
+                        line_entry["incr_ns"] = float(rvs[1])
+                        line_entry["path_ns"] = float(rvs[2])
+                        line_entry["netlist_resources"].append((r_tag, rvs[3]))
+                    elif len(rvs) == 3:
+                        # e.g. "                         FDCE                                         r  reg_0_d_u1_z_add_123_io_res_reg[3]/D"
+                        line_entry["delay_type"] = rvs[0]
+                        line_entry["netlist_resources"].append((True, rvs[2]))
+                    elif len(rvs) == 2:
+                        # e.g. (1.) "                                                                      r  u1_z_add_123/res[3]_INST_0/I0"
+                        # e.g. (2.) "                         FDCE                                            reg_0_d_u1_z_add_123_io_res_reg[3]/D"
+                        if rvs[0] == "r": # (1.)
+                            line_entry["netlist_resources"].append((True, rvs[1]))
+                        else: # (2.)
+                            line_entry["delay_type"] = rvs[0]
+                            line_entry["netlist_resources"].append((False, rvs[1]))
+                    elif len(rvs) == 1:
+                        # e.g. "                                                                         u1_z_add_123/res[3]_INST_0/I0"
+                        line_entry["netlist_resources"].append((False, rvs[0]))
                     else:
-                        line_entry["location"] = get_column_value_in_line(line, 0)
-                        if line[headers_pos[1] - 2:headers_pos[1]] != "  ":
-                            pass # TODO
-                    
-                    # r tag
-                    if r_column_left is not None and r_column_right is not None and "netlist_resources" in line_entry.keys():
-                        value_str = line[r_column_left:r_column_right].strip()
-                        if value_str == "r":
-                            line_entry["netlist_resources"] = [("r", line_entry["netlist_resources"])]
-                        else:
-                            line_entry["netlist_resources"] = [("", line_entry["netlist_resources"])]
-                    
-                    # incr_ns to float
-                    incr_ns = line_entry.get("incr_ns")
-                    if incr_ns:
-                        line_entry["incr_ns"] = float(incr_ns)
-                    
-                    # path_ns to float
-                    path_ns = line_entry.get("path_ns")
-                    if path_ns:
-                        line_entry["path_ns"] = float(path_ns)
+                        pass # TODO ?
                     
                     # row info
                     if not line_entry["delay_type"]:
@@ -168,7 +141,7 @@ class VivadoSTA(StaticTimingAnalyser):
                         if isinstance(last_nr, list):
                             last_nr.extend(line_entry["netlist_resources"])
                     else:
-                        # New independent row
+                        # new independent row
                         res.details.append(line_entry)
 
             return res
@@ -302,30 +275,30 @@ class VivadoSTA(StaticTimingAnalyser):
         )
     
     def analyse(self):
-        self._create_temporary_workspace()
+        # self._create_temporary_workspace()
         
-        # duplicate a temporary structure, set all latencies to 1, for generating
-        s_dup = self.s.duplicate()
-        for net in s_dup.get_nets():
-            net.driver().set_latency(1)
+        # # duplicate a temporary structure, set all latencies to 1, for generating
+        # s_dup = self.s.duplicate()
+        # for net in s_dup.get_nets():
+        #     net.driver().set_latency(1)
         
-        # deduction and generation
-        s_dup_rid = RuntimeId.create()
-        s_dup.deduction(s_dup_rid)
-        s_dup_model = s_dup.generation(s_dup_rid, top_module_name = self.TMP_TOP_MODULE_NAME)
-        emit_to_files(s_dup_model.emit_vhdl(), os.path.join(self.temporary_workspace_path, self.TMP_SRC_DIR))
+        # # deduction and generation
+        # s_dup_rid = RuntimeId.create()
+        # s_dup.deduction(s_dup_rid)
+        # s_dup_model = s_dup.generation(s_dup_rid, top_module_name = self.TMP_TOP_MODULE_NAME)
+        # emit_to_files(s_dup_model.emit_vhdl(), os.path.join(self.temporary_workspace_path, self.TMP_SRC_DIR))
         
-        # create script and run
-        tcl = self._create_tcl_script_content()
-        self._write_tcl_script_and_run(tcl)
+        # # create script and run
+        # tcl = self._create_tcl_script_content()
+        # self._write_tcl_script_and_run(tcl)
         
         # load parse the results
-        # with open(os.path.join(self.temporary_workspace_path, self.REPORT_FILENAME), "r") as f:
-        #     report_lines = f.readlines()
-        # report = VivadoSTA.TimingReport.parse_lines(report_lines)
+        with open(os.path.join(self.temporary_workspace_path, self.REPORT_FILENAME), "r") as f:
+            report_lines = f.readlines()
+        report = VivadoSTA.TimingReport.parse_lines(report_lines)
         
-        # for p in report.paths:
-        #     print(p)
+        for p in report.paths:
+            print(p)
         
         # process and store timing info
         # TODO
