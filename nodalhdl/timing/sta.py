@@ -54,16 +54,17 @@ class VivadoSTA(StaticTimingAnalyser):
     
     class TimingReport:
         def __init__(self):
-            self.tool_version: str = None
-            self.date: str = None
-            self.host: str = None
-            self.command: str = None
-            self.design: str = None
-            self.device: str = None
-            self.speed_file: str = None
-            self.design_state: str = None
+            # [NOTICE] -no_header used currently
+            # self.tool_version: str = None
+            # self.date: str = None
+            # self.host: str = None
+            # self.command: str = None
+            # self.design: str = None
+            # self.device: str = None
+            # self.speed_file: str = None
+            # self.design_state: str = None
             
-            self.timing_paths: List[VivadoSTA.TimingPath] = [] # [NOTICE] slack?
+            self.paths: List[VivadoSTA.TimingPath] = [] # [NOTICE] slack?
         
         @staticmethod
         def parse_lines(lines: List[str]):
@@ -119,16 +120,34 @@ class VivadoSTA(StaticTimingAnalyser):
         
         # open run
         res += "open_run synth_1\n"
+        res += f"set paths {{}}\n"
         
         # add timing paths
-        res += f"set paths {{}}\n"
-        # for
-            # TODO
-            # res += "set paths [concat $paths $tmp_paths]"
+        for inst_name, subs in self.s.substructures.items():
+            if subs.timing_info is not None: # [NOTICE]
+                continue
+            
+            subs_ports_outside = self.s.get_subs_ports_outside(inst_name)
+            in_ports = subs_ports_outside.nodes(filter = "in")
+            out_ports = subs_ports_outside.nodes(filter = "out")
+            
+            for _, pi in in_ports:
+                if pi.located_net.driver is None or pi.located_net.driver() is None: # NC
+                    continue
+                
+                from_po = pi.located_net.driver()
+                if from_po.of_structure_inst_name: # [NOTICE] Pylance bug? if use `from_po.(...) is not None`, the else-branch will take from_po as None
+                    through_1 = f"reg*d*{from_po.of_structure_inst_name}_io_{from_po.layered_name}*/C"
+                else:
+                    through_1 = f"reg*d*{from_po.layered_name}*/C"
+                
+                for po_full_name, _ in out_ports:
+                    through_2 = f"reg*d*{inst_name}_io_{po_full_name}*/D"
+                    res += f"set paths [concat $paths [get_timing_paths -through [get_pins -hier {through_1}] -through [get_pins -hier {through_2}] -delay_type max -max_paths 1 -nworst 1 -unique_pins]]\n"
         res += "\n"
         
         # report timing
-        res += f"report_timing -file \"{self.REPORT_FILENAME}\" -of_objects $paths\n"
+        res += f"report_timing -file \"{self.REPORT_FILENAME}\" -of_objects $paths -no_header\n"
         res += "\n"
         
         # close project
@@ -157,8 +176,6 @@ class VivadoSTA(StaticTimingAnalyser):
         s_dup = self.s.duplicate()
         for net in s_dup.get_nets():
             net.driver().set_latency(1)
-            for load in net.get_loads():
-                load.set_latency(1)
         
         # deduction and generation
         s_dup_rid = RuntimeId.create()
@@ -173,7 +190,7 @@ class VivadoSTA(StaticTimingAnalyser):
         # load parse the results
         with open(os.path.join(self.temporary_workspace_path, self.REPORT_FILENAME), "r") as f:
             report_lines = f.readlines()
-        report = VivadoSTA.TimingReport.parse(report_lines)
+        report = VivadoSTA.TimingReport.parse_lines(report_lines)
         
         # process and store timing info
         # TODO

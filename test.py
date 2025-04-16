@@ -358,8 +358,8 @@ m2.save_dill("m2.dill")
 print('m2.singletonize.gen (sta) ==============================================================================================================')
 
 
-# from nodalhdl.timing.sta import VivadoSTA
+from nodalhdl.timing.sta import VivadoSTA
 
-# sta = VivadoSTA(m2, vivado_executable_path = "vivado.bat")
-# sta.analyse()
+sta = VivadoSTA(m2, vivado_executable_path = "vivado.bat")
+sta.analyse()
 
