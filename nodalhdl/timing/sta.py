@@ -5,6 +5,8 @@ import subprocess
 import os
 import shutil
 
+import re
+
 from typing import List, Dict
 
 
@@ -44,33 +46,147 @@ class VivadoSTA(StaticTimingAnalyser):
             
             self.details: List[Dict] = [] # [{location, delay_type, incr_ns, path_ns, netlist_resources, ...}, ...]
         
+        def __repr__(self):
+            return f"TimingPath<{self.source} -> {self.destination}, {self.data_path_delay} (ns), {self.details}>"
+        
         @staticmethod
         def parse_lines(lines: List[str]):
             res = VivadoSTA.TimingPath()
+
+            headers_mapping = {"Location": "location", "Delay type": "delay_type", "Incr(ns)": "incr_ns", "Path(ns)": "path_ns", "Netlist Resource(s)": "netlist_resources"}
+            headers_name = ["Location", "Delay type", "Incr(ns)", "Path(ns)", "Netlist Resource(s)"]
+            headers_pos = []
+            r_column_left, r_column_right = None, None
             
-            # TODO
+            def get_column_value_in_line(line: str, idx: int):
+                # assert len(headers_name) >= 2
+                if idx == 0:
+                    return line[:headers_pos[1]]
+                elif idx == len(headers_name) - 1:
+                    return line[headers_pos[len(headers_name) - 1]:]
+                else:
+                    l, r = headers_pos[idx], headers_pos[idx + 1] # [l, r)
+                    if r_column_left is not None and r > r_column_left: # includes r-tag column, remove it
+                        r = r_column_left # [NOTICE] 前提是 r 右边一定是最后一列
+                    return line[l:r]
             
+            in_table = False
+            for line in lines:
+                line = line.rstrip()
+                
+                if line.startswith("Slack:"):
+                    res.slack = line.split(":", 1)[1].strip()
+                elif line.strip().startswith("Source:"):
+                    res.source = line.split(":", 1)[1].strip()
+                elif line.strip().startswith("Destination:"):
+                    res.destination = line.split(":", 1)[1].strip()
+                elif line.strip().startswith("Path Group:"):
+                    res.path_group = line.split(":", 1)[1].strip()
+                elif line.strip().startswith("Path Type:"):
+                    res.path_type = line.split(":", 1)[1].strip()
+                elif line.strip().startswith("Data Path Delay:"):
+                    res.data_path_delay = line.split(":", 1)[1].strip()
+                elif line.strip().startswith("Logic Levels:"):
+                    res.logic_levels = line.split(":", 1)[1].strip()
+                elif re.match(r"\s*Location\s+Delay type", line):
+                    # obtain the left boundaries of columns
+                    # headers_name = re.split(r'\s{2,}', line.strip()) # [NOTICE] 暂时直接写死这几行了
+                    headers_pos = [line.find(header_name) for header_name in headers_name]
+                    
+                    in_table = True
+                elif in_table:
+                    # empty lines
+                    if not line.strip():
+                        continue
+                    
+                    # splitting line "  -------------------------------------------------------------------    -------------------", find position of "r" tags from it
+                    if re.match(r"^\s*-{10,}", line):
+                        r_column_left = line.find("-    -") + 1 # [NOTICE] 一定四个空格吗?
+                        r_column_right = r_column_left + 4
+                        continue
+                    
+                    # extract line info
+                    line_entry = {headers_mapping[headers_name[idx]]: get_column_value_in_line(line, idx).strip() for idx in range(len(headers_name))}
+                    
+                    """
+                        [NOTICE] 存在这样的情况:
+                        :
+                        :    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+                        :  -------------------------------------------------------------------    -------------------
+                        ...
+                        :                         CARRY4 (Prop_carry4_S[1]_CO[3])
+                        :                                                      0.533     1.772 r  u2_adder/res[0]_INST_0/CO[3]
+                        ...
+                        Delay type 超出右边界导致后面项换行了.
+                        行吧, 暂时特殊判断一下, Fuck Vivado.
+                        看起来每个数据至少会和左边的隔两个空格, 不然就换行? 检查一下列间应该空格的地方有没有字符吧.
+                    """
+                    if "Inc"
+                    
+                    if r_column_left is not None and r_column_right is not None and "netlist_resources" in line_entry.keys(): # r tag
+                        value_str = line[r_column_left:r_column_right].strip()
+                        if value_str == "r":
+                            line_entry["netlist_resources"] = [("r", line_entry["netlist_resources"])]
+                        else:
+                            line_entry["netlist_resources"] = [("", line_entry["netlist_resources"])]
+                    
+                    incr_ns = line_entry.get("incr_ns")
+                    if incr_ns:
+                        line_entry["incr_ns"] = float(incr_ns)
+                    
+                    path_ns = line_entry.get("path_ns")
+                    if path_ns:
+                        line_entry["path_ns"] = float(path_ns)
+                    
+                    # row info
+                    if not line_entry["delay_type"]:
+                        # related to previous lines, extend previous row's information
+                        assert len(res.details) > 0
+                        row = res.details[-1]
+                        
+                        #
+                        if 
+                        
+                        # extend netlist_resources
+                        last_nr = row.get("netlist_resources")
+                        if isinstance(last_nr, list):
+                            last_nr.extend(line_entry["netlist_resources"])
+                    else:
+                        # New independent row
+                        res.details.append(line_entry)
+
             return res
     
     class TimingReport:
         def __init__(self):
             # [NOTICE] -no_header used currently
-            # self.tool_version: str = None
-            # self.date: str = None
-            # self.host: str = None
-            # self.command: str = None
-            # self.design: str = None
-            # self.device: str = None
-            # self.speed_file: str = None
-            # self.design_state: str = None
+            self.tool_version: str = None
+            self.date: str = None
+            self.host: str = None
+            self.command: str = None
+            self.design: str = None
+            self.device: str = None
+            self.speed_file: str = None
+            self.design_state: str = None
             
-            self.paths: List[VivadoSTA.TimingPath] = [] # [NOTICE] slack?
-        
+            self.paths: List[VivadoSTA.TimingPath] = []
+
         @staticmethod
         def parse_lines(lines: List[str]):
             res = VivadoSTA.TimingReport()
-            
-            # TODO
+
+            path_lines = []
+            for line in lines:
+                if line.strip().startswith("Slack:"): # [NOTICE] slack?
+                    if path_lines:
+                        res.paths.append(VivadoSTA.TimingPath.parse_lines(path_lines))
+                        path_lines.clear()
+                path_lines.append(line)
+
+            # the remained one
+            if path_lines:
+                path = VivadoSTA.TimingPath.parse_lines(path_lines)
+                res.paths.append(path)
             
             return res
     
@@ -170,27 +286,30 @@ class VivadoSTA(StaticTimingAnalyser):
         )
     
     def analyse(self):
-        self._create_temporary_workspace()
+        # self._create_temporary_workspace()
         
-        # duplicate a temporary structure, set all latencies to 1, for generating
-        s_dup = self.s.duplicate()
-        for net in s_dup.get_nets():
-            net.driver().set_latency(1)
+        # # duplicate a temporary structure, set all latencies to 1, for generating
+        # s_dup = self.s.duplicate()
+        # for net in s_dup.get_nets():
+        #     net.driver().set_latency(1)
         
-        # deduction and generation
-        s_dup_rid = RuntimeId.create()
-        s_dup.deduction(s_dup_rid)
-        s_dup_model = s_dup.generation(s_dup_rid, top_module_name = self.TMP_TOP_MODULE_NAME)
-        emit_to_files(s_dup_model.emit_vhdl(), os.path.join(self.temporary_workspace_path, self.TMP_SRC_DIR))
+        # # deduction and generation
+        # s_dup_rid = RuntimeId.create()
+        # s_dup.deduction(s_dup_rid)
+        # s_dup_model = s_dup.generation(s_dup_rid, top_module_name = self.TMP_TOP_MODULE_NAME)
+        # emit_to_files(s_dup_model.emit_vhdl(), os.path.join(self.temporary_workspace_path, self.TMP_SRC_DIR))
         
-        # create script and run
-        tcl = self._create_tcl_script_content()
-        self._write_tcl_script_and_run(tcl)
+        # # create script and run
+        # tcl = self._create_tcl_script_content()
+        # self._write_tcl_script_and_run(tcl)
         
         # load parse the results
         with open(os.path.join(self.temporary_workspace_path, self.REPORT_FILENAME), "r") as f:
             report_lines = f.readlines()
         report = VivadoSTA.TimingReport.parse_lines(report_lines)
+        
+        # for p in report.paths:
+        #     print(p)
         
         # process and store timing info
         # TODO
