@@ -1,5 +1,8 @@
 from .signal import SignalType, BundleType, Bundle
 
+import os
+import shutil
+
 from typing import List, Dict, Set, Tuple, Union
 
 
@@ -272,12 +275,11 @@ class HDLFileModel:
         self.raw_content = content
 
 
-import os
-def write_to_files(d: Dict[str, str], path: str): # TODO Temprary
-    if not os.path.exists(path):
-        os.makedirs(path)
+def emit_to_files(emitted: Dict[str, str], target_folder_path: str): # TODO Temprary
+    shutil.rmtree(target_folder_path)
+    os.makedirs(target_folder_path, exist_ok = True)
     
-    for filename, content in d.items():
-        with open(path + "/" + filename, "w") as f:
+    for filename, content in emitted.items():
+        with open(target_folder_path + "/" + filename, "w") as f:
             f.write(content)
 

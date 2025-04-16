@@ -239,13 +239,11 @@ print(m3.runtime_info(rid_m3))
 print('m2.gen ==============================================================================================================')
 
 
-from nodalhdl.core.hdl import write_to_files
-import shutil
+from nodalhdl.core.hdl import emit_to_files
 
 model = m2.generation(rid_m2)
 
-shutil.rmtree("C:/Workspace/test_project/test_project.srcs/sources_1/new")
-write_to_files(model.emit_vhdl(), "C:/Workspace/test_project/test_project.srcs/sources_1/new")
+emit_to_files(model.emit_vhdl(), "C:/Workspace/test_project/test_project.srcs/sources_1/new")
 
 
 print('m2.dup ==============================================================================================================')
@@ -307,8 +305,7 @@ print('m2.singletonize.gen =====================================================
 
 model = m2.generation(rid_m2_sin)
 
-shutil.rmtree("C:/Workspace/test_project/test_project.srcs/sources_1/new")
-write_to_files(model.emit_vhdl(), "C:/Workspace/test_project/test_project.srcs/sources_1/new")
+emit_to_files(model.emit_vhdl(), "C:/Workspace/test_project/test_project.srcs/sources_1/new")
 
 
 print('m2.singletonize.expand ==============================================================================================================')
@@ -330,8 +327,7 @@ print('m2.singletonize.gen =====================================================
 
 model = m2.generation(rid_m2_exp)
 
-shutil.rmtree("C:/Workspace/test_project/test_project.srcs/sources_1/new")
-write_to_files(model.emit_vhdl(), "C:/Workspace/test_project/test_project.srcs/sources_1/new")
+emit_to_files(model.emit_vhdl(), "C:/Workspace/test_project/test_project.srcs/sources_1/new")
 
 
 print('m2 persistence ==============================================================================================================')
@@ -352,6 +348,5 @@ model = m2.generation(rid_m2_exp)
 
 print(m2.is_flattened)
 
-shutil.rmtree("C:/Workspace/test_project/test_project.srcs/sources_1/new")
-write_to_files(model.emit_vhdl(), "C:/Workspace/test_project/test_project.srcs/sources_1/new")
+emit_to_files(model.emit_vhdl(), "C:/Workspace/test_project/test_project.srcs/sources_1/new")
 
