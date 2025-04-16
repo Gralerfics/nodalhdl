@@ -336,17 +336,26 @@ print('m2 persistence ==========================================================
 m2.save_dill("m2.dill")
 
 
-print('m2.singletonize.gen (test latencies) ==============================================================================================================')
+# print('m2.singletonize.gen (test latencies) ==============================================================================================================')
 
 
-for net in m2.get_nets():
-    net.driver().set_latency(1)
-    for idx, load in enumerate(net.get_loads()):
-        load.set_latency(1)
+# for net in m2.get_nets():
+#     net.driver().set_latency(1)
+#     for idx, load in enumerate(net.get_loads()):
+#         load.set_latency(1)
 
-model = m2.generation(rid_m2_exp)
+# model = m2.generation(rid_m2_exp)
 
-print(m2.is_flattened)
+# print(m2.is_flattened)
 
-emit_to_files(model.emit_vhdl(), "C:/Workspace/test_project/test_project.srcs/sources_1/new")
+# emit_to_files(model.emit_vhdl(), "C:/Workspace/test_project/test_project.srcs/sources_1/new")
+
+
+print('m2.singletonize.gen (sta) ==============================================================================================================')
+
+
+from nodalhdl.timing.sta import VivadoSTA
+
+sta = VivadoSTA(m2, vivado_executable_path = "vivado.bat")
+sta.analyse()
 

@@ -9,6 +9,8 @@ from typing import List, Dict, Set, Tuple, Union
 
 
 """ Id """
+class RuntimeIdException(Exception): pass
+
 class RuntimeId:
     """
         RuntimeId.get(id_str): runtime_id
@@ -18,9 +20,12 @@ class RuntimeId:
     
     id_pool: weakref.WeakValueDictionary[str, 'RuntimeId'] = weakref.WeakValueDictionary()
     
-    def __init__(self, id_str: str):
+    def __init__(self, id_str: str = None):
+        if id_str is None:
+            raise RuntimeIdException("Please create a runtime id object using RuntimeId.create()")
+        
         self.id_str: str = id_str
-        self.nexts: Dict[str, RuntimeId] = {} # ensure the next ids are referenced by their previous id
+        self.nexts: Dict[str, RuntimeId] = {} # ensure the next ids are referenced by their previous id, or they might be GCed
     
     def __repr__(self):
         return f"<RuntimeId: {self.id_str}>"
