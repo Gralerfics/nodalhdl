@@ -275,11 +275,12 @@ class HDLFileModel:
         self.raw_content = content
 
 
-def emit_to_files(emitted: Dict[str, str], target_folder_path: str): # TODO Temprary
-    shutil.rmtree(target_folder_path)
+def emit_to_files(emitted: Dict[str, str], target_folder_path: str):
+    if os.path.exists(target_folder_path):
+        shutil.rmtree(target_folder_path)
     os.makedirs(target_folder_path, exist_ok = True)
     
     for filename, content in emitted.items():
-        with open(target_folder_path + "/" + filename, "w") as f:
+        with open(os.path.join(target_folder_path, filename), "w") as f:
             f.write(content)
 
