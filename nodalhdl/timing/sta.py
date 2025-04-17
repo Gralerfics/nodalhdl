@@ -18,17 +18,11 @@ class StaticTimingAnalyser:
         Static timing analyser, accept only flattened structures.
         Run analyse() to do timing analysis and save the timing info into all first-level substructures' timing_info.
     """
-    def __init__(self, s: Structure):
-        if not s.is_flattened:
-            raise STAException("Should be a flattened structure")
-        self.s = s
+    def __init__(self):
+        pass
     
-    @property
-    def is_timing_info_complete(self):
-        return all([subs.timing_info is not None for subs in self.s.substructures.values()])
-    
-    """ @override """
-    def analyse(self) -> None: pass
+    def analyse(s: Structure) -> None:
+        pass # to be override
 
 
 class VivadoSTA(StaticTimingAnalyser):
@@ -179,9 +173,7 @@ class VivadoSTA(StaticTimingAnalyser):
             
             return res
     
-    def __init__(self, s: Structure, part_name: str = "xc7a200tfbg484-1", temporary_workspace_path: str = ".vivado_sta", vivado_executable_path: str = "vivado"):
-        super().__init__(s)
-        
+    def __init__(self, part_name: str = "xc7a200tfbg484-1", temporary_workspace_path: str = ".vivado_sta", vivado_executable_path: str = "vivado"):
         self.part_name = part_name
         self.temporary_workspace_path = os.path.abspath(temporary_workspace_path)
         self.vivado_executable_path = vivado_executable_path
@@ -211,12 +203,12 @@ class VivadoSTA(StaticTimingAnalyser):
             text = True
         )
     
-    def analyse(self, skip_emitting_and_script_running: bool = False): # skip_emitting_and_script_running only for debugging
+    def analyse(self, s: Structure, skip_emitting_and_script_running: bool = False): # skip_emitting_and_script_running only for debugging
         if not skip_emitting_and_script_running:
             self._create_temporary_workspace()
             
             # duplicate a temporary structure, set all latencies to 1, for generating
-            s_dup = self.s.duplicate()
+            s_dup = s.duplicate()
             for net in s_dup.get_nets():
                 net.driver().set_latency(1)
             
@@ -256,12 +248,12 @@ class VivadoSTA(StaticTimingAnalyser):
         
         #  - add timing paths
         added_paths: List[Tuple] = [] # [(inst_name, pi_full_name, po_full_name, ), ]
-        for inst_name, subs in self.s.substructures.items():
+        for inst_name, subs in s.substructures.items():
             if subs.timing_info is not None: # [NOTICE] 分析过的结构不用再分析
                 continue
             subs.timing_info = {} # [NOTICE] 这次分析中已经计划分析的结构不用重复分析
             
-            subs_ports_outside = self.s.get_subs_ports_outside(inst_name)
+            subs_ports_outside = s.get_subs_ports_outside(inst_name)
             in_ports = subs_ports_outside.nodes(filter = "in")
             out_ports = subs_ports_outside.nodes(filter = "out")
             
@@ -324,9 +316,9 @@ class VivadoSTA(StaticTimingAnalyser):
             
             # store into structure
             inst_name, pi_full_name, po_full_name = added_paths[added_paths_ptr][0:3]
-            if self.s.substructures[inst_name].timing_info is None:
-                self.s.substructures[inst_name].timing_info = {}
-            self.s.substructures[inst_name].timing_info[(pi_full_name, po_full_name)] = delay
+            if s.substructures[inst_name].timing_info is None:
+                s.substructures[inst_name].timing_info = {}
+            s.substructures[inst_name].timing_info[(pi_full_name, po_full_name)] = delay
             
             # next added path
             added_paths_ptr += 1

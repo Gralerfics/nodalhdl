@@ -2,8 +2,14 @@ from ..core.structure import Structure
 from .retiming import ExtendedCircuit
 
 
-pass # TODO
+class RetimingException(Exception): pass
 
+
+def retiming(s: Structure):
+    if not s.is_flattened or not s.is_flatly_timed:
+        raise RetimingException("Only flattened and timing-analysed structures can be retimed")
+    
+    pass
 
 
 """

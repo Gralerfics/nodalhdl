@@ -513,6 +513,10 @@ class Structure:
     @property
     def is_flattened(self):
         return all([subs.is_operator for subs in self.substructures.values()])
+    
+    @property
+    def is_flatly_timed(self):
+        return all([subs.timing_info is not None for subs in self.substructures.values()])
 
     def is_runtime_integrate(self, runtime_id: RuntimeId):
         """
