@@ -355,18 +355,21 @@ m2.save_dill("m2.dill")
 # emit_to_files(model.emit_vhdl(), "C:/Workspace/test_project/test_project.srcs/sources_1/new")
 
 
-print('m2.singletonize.gen (sta) ==============================================================================================================')
+print('m2.singletonize (sta) ==============================================================================================================')
 
 
 from nodalhdl.timing.sta import VivadoSTA
 
-sta = VivadoSTA(m2, vivado_executable_path = "vivado.bat")
-sta.analyse()
+sta = VivadoSTA(m2, part_name = "xc7a200tfbg484-1", vivado_executable_path = "vivado.bat")
+# sta.analyse()
+sta.analyse(skip_emitting_and_script_running = True)
 
-print(m2.substructures["u1_z_add_12"].timing_info)
-print(m2.substructures["u1_z_add_123"].timing_info)
-print(m2.substructures["u1_y"].timing_info)
-print(m2.substructures["u2_adder"].timing_info)
-print(m2.substructures["u3"].timing_info)
-print(m2.substructures["u4"].timing_info)
+for k, v in m2.substructures.items():
+    print(f"{k}: {v.timing_info}")
+
+
+print('m2.singletonize (pipelining) ==============================================================================================================')
+
+
+
 
