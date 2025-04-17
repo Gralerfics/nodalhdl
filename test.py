@@ -371,5 +371,7 @@ for k, v in m2.substructures.items():
 print('m2.singletonize (pipelining) ==============================================================================================================')
 
 
+from nodalhdl.timing.pipelining import to_extended_circuit, retiming, pipelining
 
+G = to_extended_circuit(m2)
 

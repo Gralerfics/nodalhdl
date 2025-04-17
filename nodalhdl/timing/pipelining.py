@@ -1,14 +1,75 @@
-from ..core.structure import Structure
+from ..core.structure import Structure, Node
 from .retiming import ExtendedCircuit
+
+from typing import Union, Dict, List, Tuple
 
 
 class RetimingException(Exception): pass
 
 
-def retiming(s: Structure):
+def to_extended_circuit(s: Structure):
+    """
+        The structure `s` should be flattened and timing-analysed.
+    """
     if not s.is_flattened or not s.is_flatly_timed:
-        raise RetimingException("Only flattened and timing-analysed structures can be retimed")
+        raise RetimingException("Only flattened and timing-analysed structures can be converted")
     
+    G = ExtendedCircuit()
+    
+    # external edges
+    external_edges_map: Dict[Node, int] = {}
+    external_edge_idx = 0
+    for net in s.get_nets():
+        driver_latency = net.driver().latency
+        
+        # each driver -> load pair indicates an external edge
+        for load in net.get_loads():
+            external_edges_map[load] = external_edge_idx
+            G.set_external_edge_weight(external_edge_idx, driver_latency + load.latency)
+            external_edge_idx += 1
+
+    # vertex 0 (ports-equivalent-vertex)
+    e_ins_0 = [external_edges_map[po] for _, po in s.ports_inside_flipped.nodes(filter = "out", flipped = True)] # e_ins_0 are all the output ports' edges
+    e_outs_0 = [external_edges_map[pi_load] for _, pi in s.ports_inside_flipped.nodes(filter = "in", flipped = True) for pi_load in pi.located_net.get_loads()] # e_outs_0 ...
+    G.add_internal_edge(0, 0.0, e_ins_0, e_outs_0)
+
+    # vertices
+    internal_edges_list: List[Tuple[int, float, List[int], List[int]]] = []
+    for idx, (subs_inst_name, subs) in enumerate(s.substructures.items()):
+        vertex_idx = idx + 1 # 1 ~ N
+        
+        subs_ports_outside = s.get_subs_ports_outside(subs_inst_name)
+        in_ports = subs_ports_outside.nodes(filter = "in")
+        out_ports = subs_ports_outside.nodes(filter = "out") # TODO 加个功能让一次能两个一起返回了吧
+        
+        for pi_full_name, pi in in_ports:
+            for po_full_name, po in out_ports:
+                delay = subs.timing_info.get((pi_full_name, po_full_name))
+                if delay is not None:
+                    e_ins = [external_edges_map[pi]]
+                    e_outs = [external_edges_map[po_load] for po_load in po.located_net.get_loads()]
+                    internal_edges_list.append((vertex_idx, delay, e_ins, e_outs))
+    
+    G.add_internal_edges(internal_edges_list)
+    
+    return G
+
+
+def retiming(s: Structure, period: Union[float, str] = "min"):
+    """
+        Retiming.
+        The structure `s` should be flattened and timing-analysed.
+        `period`: target clock period (ns), use "min" to perform clock-period-minimization.
+    """
+    G = to_extended_circuit(s)
+    
+    pass # TODO
+
+
+def pipelining(s: Structure): # , TODO
+    """
+        Pipelining.
+    """
     pass
 
 
