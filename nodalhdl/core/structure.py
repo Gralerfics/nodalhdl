@@ -158,6 +158,22 @@ class Net:
         
         self.driver().set_latency(0)
     
+    def transform_loads_latency_to_driver(self):
+        """
+            Move the latency to the drivers as more as possible.
+            This minimizes the number of registers. (But in fact, registers on different loads in the same net might be optimized by most of the synthesizers.
+        """
+        if self.driver() is None:
+            return
+        
+        loads = self.get_loads()
+        loads_max_common_latency = min([load.latency for load in loads])
+        for load in loads:
+            load.set_latency(load.latency - loads_max_common_latency)
+
+        driver = self.driver()
+        driver.set_latency(driver.latency + loads_max_common_latency)
+    
     """
         The following actions (add_node, separate_node and merge) may change the structural information.
         They should not be called by the user directly, but by the Node object.
