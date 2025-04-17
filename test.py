@@ -363,3 +363,10 @@ from nodalhdl.timing.sta import VivadoSTA
 sta = VivadoSTA(m2, vivado_executable_path = "vivado.bat")
 sta.analyse()
 
+print(m2.substructures["u1_z_add_12"].timing_info)
+print(m2.substructures["u1_z_add_123"].timing_info)
+print(m2.substructures["u1_y"].timing_info)
+print(m2.substructures["u2_adder"].timing_info)
+print(m2.substructures["u3"].timing_info)
+print(m2.substructures["u4"].timing_info)
+
