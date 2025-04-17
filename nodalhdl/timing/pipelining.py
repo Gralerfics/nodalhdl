@@ -58,7 +58,11 @@ def to_extended_circuit(s: Structure):
     return G, vertices_map, external_edges_map
 
 def apply_retiming_to_structure(s: Structure, r: List[int], vertices_map: Dict[str, int]):
-    pass
+    # apply 0
+    
+    # apply 1 ~ |V| - 1
+    
+    pass # TODO
 
 def retiming(s: Structure, period: Union[float, str] = "min"):
     """
@@ -75,18 +79,31 @@ def retiming(s: Structure, period: Union[float, str] = "min"):
         if not r:
             return False
     
+    print(V_map) # TODO to be removed
+    print(r, Phi_Gr) # TODO to be removed
+    
     apply_retiming_to_structure(s, G, V_map)
 
-def pipelining(s: Structure): # , TODO
+def pipelining(s: Structure, levels: int = None, period: float = None):
     """
         Pipelining.
-        TODO
+        要么给 levels，要么给预期时钟周期。前者直接加，后者可能需要估算。至少给一个。
     """
     if s.is_sequential:
         raise PipeliningException("Only combinational structures can be pipelined")
     
-    pass
-
+    if (levels is not None and period is not None) or (levels is None and period is None):
+        raise PipeliningException("One and only one of `levels` and `period` should be provided")
+    
+    if levels is not None:
+        # add registers on all the input ports
+        for _, pi in s.ports_inside_flipped.nodes(filter = "in", flipped = True):
+            pi.set_latency(levels)
+        
+        # retiming
+        retiming(s, period = "min")
+    else: # period is not None
+        pass # TODO
 
 """
     TODO

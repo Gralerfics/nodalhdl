@@ -373,5 +373,5 @@ print('m2.singletonize (pipelining) ============================================
 
 from nodalhdl.timing.pipelining import to_extended_circuit, retiming, pipelining
 
-G = to_extended_circuit(m2)
+pipelining(m2, 2)
 
