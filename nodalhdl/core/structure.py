@@ -234,6 +234,9 @@ class Node:
                 raise StructureException(f"located_structure is needed when located_net is not provided")
             Net(located_structure)._add_node(self) # add_node() will update runtime signal type, so no need to be called after assigning origin_signal_type
     
+    def __repr__(self):
+        return f"Node<{self.name} ({self.layered_name}), {self.origin_signal_type.base}, {self.of_structure_inst_name}>"
+    
     @property
     def is_originally_determined(self):
         return self.origin_signal_type.determined
@@ -383,12 +386,12 @@ class StructuralNodes(dict):
             `filter` can be "all", "in" or "out" to filter the ports with the given direction.
                 `flipped` is used with `filter` to indicate that whether the ports' directions are flipped, e.g. in ports_inside_flipped.
         """
-        filter = "in" if flipped and filter == "out" else ("out" if flipped and filter == "in" else filter)
+        real_filter = "in" if flipped and filter == "out" else ("out" if flipped and filter == "in" else filter)
         
         res = []
         for k, v in self.items():
             if isinstance(v, Node):
-                if filter == "all" or (filter == "in" and v.origin_signal_type.belongs(Input)) or (filter == "out" and v.origin_signal_type.belongs(Output)):
+                if real_filter == "all" or (real_filter == "in" and v.origin_signal_type.belongs(Input)) or (real_filter == "out" and v.origin_signal_type.belongs(Output)):
                     res.append((prefix + v.name, v))
             elif isinstance(v, StructuralNodes):
                 res.extend(v.nodes(prefix + k + "_", filter, flipped))
