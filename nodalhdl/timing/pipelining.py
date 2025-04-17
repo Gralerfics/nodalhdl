@@ -5,6 +5,7 @@ from typing import Union, Dict, List, Tuple
 
 
 class RetimingException(Exception): pass
+class PipeliningException(Exception): pass
 
 
 def to_extended_circuit(s: Structure):
@@ -34,9 +35,11 @@ def to_extended_circuit(s: Structure):
     G.add_internal_edge(0, 0.0, e_ins_0, e_outs_0)
 
     # vertices
+    vertices_map: Dict[str, int] = {}
     internal_edges_list: List[Tuple[int, float, List[int], List[int]]] = []
     for idx, (subs_inst_name, subs) in enumerate(s.substructures.items()):
         vertex_idx = idx + 1 # 1 ~ N
+        vertices_map[subs_inst_name] = vertex_idx
         
         subs_ports_outside = s.get_subs_ports_outside(subs_inst_name)
         in_ports = subs_ports_outside.nodes(filter = "in")
@@ -52,8 +55,10 @@ def to_extended_circuit(s: Structure):
     
     G.add_internal_edges(internal_edges_list)
     
-    return G
+    return G, vertices_map, external_edges_map
 
+def apply_retiming_to_structure(s: Structure, r: List[int], vertices_map: Dict[str, int]):
+    pass
 
 def retiming(s: Structure, period: Union[float, str] = "min"):
     """
@@ -61,15 +66,25 @@ def retiming(s: Structure, period: Union[float, str] = "min"):
         The structure `s` should be flattened and timing-analysed.
         `period`: target clock period (ns), use "min" to perform clock-period-minimization.
     """
-    G = to_extended_circuit(s)
+    G, V_map, E_map = to_extended_circuit(s)
     
-    pass # TODO
-
+    if period == "min":
+        Phi_Gr, r = G.minimize_clock_period(external_port_vertices = [0])
+    else: # number
+        r = G.solve_retiming(period, external_port_vertices = [0])
+        if not r:
+            return False
+    
+    apply_retiming_to_structure(s, G, V_map)
 
 def pipelining(s: Structure): # , TODO
     """
         Pipelining.
+        TODO
     """
+    if s.is_sequential:
+        raise PipeliningException("Only combinational structures can be pipelined")
+    
     pass
 
 
