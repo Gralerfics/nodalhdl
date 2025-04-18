@@ -6,6 +6,8 @@ from typing import Dict
 
 
 class ArgsOperatorMeta(type):
+    pool: Dict[str, Structure] = {}
+    
     def __getitem__(cls, args):
         s = cls.setup(*args)
         
@@ -30,8 +32,6 @@ class ArgsOperatorMeta(type):
 
 
 class ArgsOperator(metaclass = ArgsOperatorMeta):
-    pool: Dict[str, Structure] = {}
-    
     @staticmethod
     def setup(*args) -> Structure: return Structure()
     
