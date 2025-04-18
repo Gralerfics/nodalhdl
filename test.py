@@ -393,7 +393,7 @@ def AddChain(n: int, t: SignalType) -> Structure:
     
     adder: list[StructureProxy] = []
     for idx in range(n - 1):
-        adder.append(s.add_substructure(f"adder{idx}", Add[t, t])) # Add[UInt[4], UInt[4]])) # 这里用 Add[Auto, Auto（还是t来着）] 会在 generation 报错 Auto 没有 .W TODO TODO TODO TODO TODO 记得修 TODO ？？？为什么又没事了
+        adder.append(s.add_substructure(f"adder{idx}", Add[t, t]))
         
         s.connect(adder[-2].IO.res if idx > 0 else i[0], adder[-1].IO.op1)
         s.connect(i[idx + 1], adder[-1].IO.op2)
@@ -403,19 +403,19 @@ def AddChain(n: int, t: SignalType) -> Structure:
     return s
 
 t = time.time()
-m4 = AddChain(100, UInt[6])
+m4 = AddChain(100, UInt[4])
 print(time.time() - t)
 
-rid = RuntimeId.create()
-m4.deduction(rid)
-print(m4.runtime_info(rid))
+# rid = RuntimeId.create()
+# m4.deduction(rid)
+# print(m4.runtime_info(rid))
 
 sta = VivadoSTA(part_name = "xc7a200tfbg484-1", temporary_workspace_path = ".vivado_sta_m4", vivado_executable_path = "vivado.bat")
 sta.analyse(m4)
 # sta.analyse(m4, skip_emitting_and_script_running = True)
 
 t = time.time()
-pipelining(m4, 10) # TODO 加低精度选项
+pipelining(m4, 10)
 print(time.time() - t)
 
 # for net in m4.get_nets():
