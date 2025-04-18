@@ -408,6 +408,9 @@ class ExtendedCircuit:
         
         return res
 
+class ExtendedCircuitLowPrecision(ExtendedCircuit):
+    pass # TODO 把延迟乘 1000 变整数直接 BF 的 “低” 精度模型, 好吧明明不低
+
 
 # Test
 if __name__ == '__main__':

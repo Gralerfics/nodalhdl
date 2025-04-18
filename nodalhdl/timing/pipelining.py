@@ -73,9 +73,6 @@ def retiming(s: Structure, period: Union[float, str] = "min"):
         if not r:
             return False
     
-    print(V_map) # TODO to be removed
-    print(r, Phi_Gr) # TODO to be removed
-    
     # apply the retiming to the structure
     for load in E_map.keys():
         driver = load.located_net.driver()

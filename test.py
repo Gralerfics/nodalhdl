@@ -1,7 +1,13 @@
 from nodalhdl.core.signal import UInt, SInt, Bits, Bit, Float, Bundle, Input, Output, Auto, SignalType
-from nodalhdl.core.structure import Structure, RuntimeId
+from nodalhdl.core.structure import Structure, RuntimeId, StructureProxy
 from nodalhdl.basic.arith import Add, GetAttribute
 from nodalhdl.core.hdl import HDLFileModel
+from nodalhdl.timing.sta import VivadoSTA
+from nodalhdl.timing.pipelining import pipelining
+
+from typing import List
+
+import time
 
 # import gc
 # import inspect
@@ -358,8 +364,6 @@ m2.save_dill("m2.dill")
 print('m2.singletonize (sta) ==============================================================================================================')
 
 
-from nodalhdl.timing.sta import VivadoSTA
-
 sta = VivadoSTA(part_name = "xc7a200tfbg484-1", vivado_executable_path = "vivado.bat")
 # sta.analyse(m2)
 sta.analyse(m2, skip_emitting_and_script_running = True)
@@ -371,11 +375,46 @@ for k, v in m2.substructures.items():
 print('m2.singletonize (pipelining) ==============================================================================================================')
 
 
-from nodalhdl.timing.pipelining import pipelining
-
 pipelining(m2, 2)
 
-for net in m2.get_nets():
-    for load in net.get_loads():
-        print(net.driver(), "--", net.driver().latency + load.latency, "->", load)
+# for net in m2.get_nets():
+#     for load in net.get_loads():
+#         print(net.driver(), "--", net.driver().latency + load.latency, "->", load)
+
+
+print('m4 ==============================================================================================================')
+
+
+def AddChain(n: int, t: SignalType) -> Structure:
+    s = Structure()
+    
+    i = [s.add_port(f"i{idx}", Input[t]) for idx in range(n)]
+    o = s.add_port("o", Output[Auto])
+    
+    adder: list[StructureProxy] = []
+    for idx in range(n - 1):
+        adder.append(s.add_substructure(f"adder{idx}", Add[UInt[4], UInt[4]])) # 这里用 Add[Auto, Auto] 会在 generation 报错 Auto 没有 .W TODO TODO TODO TODO TODO 记得修
+        
+        s.connect(adder[-2].IO.res if idx > 0 else i[0], adder[-1].IO.op1)
+        s.connect(i[idx + 1], adder[-1].IO.op2)
+    
+    s.connect(adder[-1].IO.res, o)
+
+    return s
+
+t = time.time()
+m4 = AddChain(100, UInt[4])
+print(time.time() - t)
+
+sta = VivadoSTA(part_name = "xc7a200tfbg484-1", temporary_workspace_path = ".vivado_sta_m4", vivado_executable_path = "vivado.bat")
+sta.analyse(m4)
+# sta.analyse(m4, skip_emitting_and_script_running = True)
+
+t = time.time()
+pipelining(m4, 10) # TODO 加低精度选项
+print(time.time() - t)
+
+# for net in m4.get_nets():
+#     for load in net.get_loads():
+#         print(net.driver(), "--", net.driver().latency + load.latency, "->", load)
 

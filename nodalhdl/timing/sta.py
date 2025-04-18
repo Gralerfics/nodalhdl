@@ -244,9 +244,10 @@ class VivadoSTA(StaticTimingAnalyser):
         
         #  - open run
         tcl += "open_run synth_1\n"
-        tcl += f"set paths {{}}\n"
+        tcl += "\n"
         
         #  - add timing paths
+        tcl += f"set paths {{}}\n"
         added_paths: List[Tuple] = [] # [(inst_name, pi_full_name, po_full_name, ), ]
         for inst_name, subs in s.substructures.items():
             if subs.timing_info is not None: # [NOTICE] 分析过的结构不用再分析
@@ -279,6 +280,8 @@ class VivadoSTA(StaticTimingAnalyser):
         tcl += "\n"
         
         #  - report timing
+        if len(added_paths) == 0:
+            tcl += "# " # no paths need to analysis, comment the report_timing command
         tcl += f"report_timing -file \"{self.REPORT_FILENAME}\" -of_objects $paths -no_header -column_style variable_width\n"
         tcl += "\n"
         
@@ -286,40 +289,41 @@ class VivadoSTA(StaticTimingAnalyser):
         tcl += "close_project\n"
         tcl += "exit\n"
         
-        # run the script
-        if not skip_emitting_and_script_running:
-            self._write_tcl_script_and_run(tcl)
-        
-        # load parse the results
-        with open(os.path.join(self.temporary_workspace_path, self.REPORT_FILENAME), "r") as f:
-            report_lines = f.readlines()
-        report = VivadoSTA.TimingReport.parse_lines(report_lines)
-        
-        # process and store timing info (TODO 理论上没问题, 或者 added_paths 里面存为 Dict[(desc_1, desc_2): (inst_name, pi_full_name, po_full_name)]? 这样要求 desc_x 可以直接由 src/dest 还原.)
-        added_paths_ptr = 0
-        for idx, p in enumerate(report.paths):
-            while p.source.find(added_paths[added_paths_ptr][3]) < 0 or p.destination.find(added_paths[added_paths_ptr][4]) < 0: # skip this added path
+        if len(added_paths) > 0:
+            # run the script
+            if not skip_emitting_and_script_running:
+                self._write_tcl_script_and_run(tcl)
+            
+            # load parse the results
+            with open(os.path.join(self.temporary_workspace_path, self.REPORT_FILENAME), "r") as f:
+                report_lines = f.readlines()
+            report = VivadoSTA.TimingReport.parse_lines(report_lines)
+            
+            # process and store timing info (TODO 理论上没问题, 或者 added_paths 里面存为 Dict[(desc_1, desc_2): (inst_name, pi_full_name, po_full_name)]? 这样要求 desc_x 可以直接由 src/dest 还原.)
+            added_paths_ptr = 0
+            for idx, p in enumerate(report.paths):
+                while p.source.find(added_paths[added_paths_ptr][3]) < 0 or p.destination.find(added_paths[added_paths_ptr][4]) < 0: # skip this added path
+                    added_paths_ptr += 1
+                
+                # extract logic delays
+                """
+                    [NOTICE]
+                    在这里, 时序路径报告的表格, 第一条一定是 FDCE/C, 第二条一定是 FDCE/Q, 第三条一定是这个寄存器连到组合逻辑入口的 net, 最后一条一定是下一个 FDCE/D.
+                    舍去以上四条, 其余即所需要的延时.
+                    这里可以遍历其余条目, 累加 incr_ns, 便于避开可能的 None; 或若能保证倒数第二条 (应该是组合逻辑出口连到下一个 FDCE 的 net, incr_ns = 0.0) 的 path_ns 不为 None, 可直接用其减去第三条的 path_ns.
+                    这里暂采用后者.
+                """
+                if len(p.details) <= 4:
+                    delay = 0.0
+                else:
+                    delay = p.details[-2]["path_ns"] - p.details[2]["path_ns"]
+                
+                # store into structure
+                inst_name, pi_full_name, po_full_name = added_paths[added_paths_ptr][0:3]
+                if s.substructures[inst_name].timing_info is None:
+                    s.substructures[inst_name].timing_info = {}
+                s.substructures[inst_name].timing_info[(pi_full_name, po_full_name)] = delay
+                
+                # next added path
                 added_paths_ptr += 1
-            
-            # extract logic delays
-            """
-                [NOTICE]
-                在这里, 时序路径报告的表格, 第一条一定是 FDCE/C, 第二条一定是 FDCE/Q, 第三条一定是这个寄存器连到组合逻辑入口的 net, 最后一条一定是下一个 FDCE/D.
-                舍去以上四条, 其余即所需要的延时.
-                这里可以遍历其余条目, 累加 incr_ns, 便于避开可能的 None; 或若能保证倒数第二条 (应该是组合逻辑出口连到下一个 FDCE 的 net, incr_ns = 0.0) 的 path_ns 不为 None, 可直接用其减去第三条的 path_ns.
-                这里暂采用后者.
-            """
-            if len(p.details) <= 4:
-                delay = 0.0
-            else:
-                delay = p.details[-2]["path_ns"] - p.details[2]["path_ns"]
-            
-            # store into structure
-            inst_name, pi_full_name, po_full_name = added_paths[added_paths_ptr][0:3]
-            if s.substructures[inst_name].timing_info is None:
-                s.substructures[inst_name].timing_info = {}
-            s.substructures[inst_name].timing_info[(pi_full_name, po_full_name)] = delay
-            
-            # next added path
-            added_paths_ptr += 1
 
