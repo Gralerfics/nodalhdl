@@ -158,7 +158,7 @@ class Net:
         
         self.driver().set_latency(0)
     
-    def transform_loads_latency_to_driver(self):
+    def transform_to_best_distribution(self):
         """
             Move the latency to the drivers as more as possible.
             This minimizes the number of registers. (But in fact, registers on different loads in the same net might be optimized by most of the synthesizers.
@@ -171,8 +171,7 @@ class Net:
         for load in loads:
             load.set_latency(load.latency - loads_max_common_latency)
 
-        driver = self.driver()
-        driver.set_latency(driver.latency + loads_max_common_latency)
+        self.driver().set_latency(self.driver().latency + loads_max_common_latency)
     
     """
         The following actions (add_node, separate_node and merge) may change the structural information.
@@ -355,6 +354,9 @@ class Node:
         if not self.is_port:
             raise StructureException("Cannot set latency for non-port node")
         self.latency = latency
+    
+    def incr_latency(self, incr: int):
+        self.set_latency(self.latency + incr)
 
 class StructuralNodes(dict):
     def __init__(self, d: dict = {}):
