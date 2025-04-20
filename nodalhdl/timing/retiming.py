@@ -352,10 +352,12 @@ class ExtendedCircuit:
             TODO improve performance?
         """
         H = self.build_H(external_port_vertices = external_port_vertices)
+        
         try:
-            dists = dict(nx.all_pairs_dijkstra_path_length(H)) # [NOTICE] seems all nonnegative. need Johnson?
+            # dists = dict(nx.all_pairs_dijkstra_path_length(H, weight = "weight")) # [NOTICE] seems cannot use Dijkstra sometimes.
+            dists = dict(nx.all_pairs_bellman_ford_path_length(H, weight = "weight"))
         except Exception:
-            raise Exception("There is something wrong with the circuit structure")
+            raise # Exception("There is something wrong with the circuit structure")
         
         D_min = max([f_obj.d for f_obj in self.F]) # Phi(G) >= max{D(v, v) | v in V}, D(v, v) = max{d(f), f in F_v}
         Ds: Set[int] = set([D_min])
@@ -409,6 +411,35 @@ class ExtendedCircuit:
         return res
 
 
+class SimpleCircuit:
+    """
+        Simple circuit model with uniform functional element delays.
+        Support:
+            1. Solve retiming r for a given clock period c use FEAS algorithm.
+            2. Apply retiming r on G to obtain G_r.
+            3. Run WD algorithm to obtain D(u, v).
+            4. TODO Run CP algorithm to obtain Phi(G).
+            5. Combine (3.), binary search and (1.) to solve clock-period-minimization problem.
+    """
+    EPSILON = 1e-5
+    
+    """ Constructing """
+    pass # TODO
+    
+    """ Tasks """
+    def solve_retiming(self, c: float, external_port_vertices: List[int] = [0]): # (1.)
+        pass # TODO
+    
+    def apply_retiming(self, r: List[int]): # (2.)
+        pass # TODO
+    
+    def compute_Ds(self, external_port_vertices: List[int] = [0]): # (3.)
+        pass # TODO
+    
+    def minimize_clock_period(self, external_port_vertices: List[int] = [0]): # (5.)
+        pass # TODO
+
+
 # Test
 if __name__ == '__main__':
     G = ExtendedCircuit()
@@ -444,11 +475,16 @@ if __name__ == '__main__':
         (5, 0.3, [10], [15]),
         (5, 0.5, [11], [15])
     ])
+    # G.set_external_edge_weight(0, 1)
+    # G.set_external_edge_weight(1, 1)
+    # G.set_external_edge_weight(6, 1)
+    # G.set_external_edge_weight(7, 1)
+    # G.set_external_edge_weight(8, 1)
+    
     G.set_external_edge_weight(0, 1)
     G.set_external_edge_weight(1, 1)
-    G.set_external_edge_weight(6, 1)
-    G.set_external_edge_weight(7, 1)
-    G.set_external_edge_weight(8, 1)
+    G.set_external_edge_weight(2, 1)
+    G.set_external_edge_weight(3, 1)
 
     print(G.minimize_clock_period([0]))
 

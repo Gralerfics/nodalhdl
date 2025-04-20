@@ -293,7 +293,7 @@ class VivadoSTA(StaticTimingAnalyser):
             # run the script
             if not skip_emitting_and_script_running:
                 self._write_tcl_script_and_run(tcl)
-            
+
             # load parse the results
             with open(os.path.join(self.temporary_workspace_path, self.REPORT_FILENAME), "r") as f:
                 report_lines = f.readlines()
@@ -323,6 +323,7 @@ class VivadoSTA(StaticTimingAnalyser):
                 if s.substructures[inst_name].timing_info is None:
                     s.substructures[inst_name].timing_info = {}
                 s.substructures[inst_name].timing_info[(pi_full_name, po_full_name)] = delay
+                s.substructures[inst_name].timing_info[('_simple_in', '_simple_out')] = max(delay, s.substructures[inst_name].timing_info.get(('_simple_in', '_simple_out'), 0))
                 
                 # next added path
                 added_paths_ptr += 1

@@ -403,7 +403,7 @@ def AddChain(n: int, t: SignalType) -> Structure:
     return s
 
 t = time.time()
-m4 = AddChain(100, UInt[4])
+m4 = AddChain(200, UInt[4])
 print(time.time() - t)
 
 # rid = RuntimeId.create()

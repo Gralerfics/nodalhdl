@@ -477,7 +477,7 @@ class Structure:
         
         # properties (destroy when structural information changed)
         self.reusable_hdl: HDLFileModel = None # only for reusable structure
-        self.timing_info: Dict[Tuple[str, str], float] = None # timing info after STA, (I-port full name, O-port full name) -> delay
+        self.timing_info: Dict[Tuple[str, str], float] = None # timing info after STA, (I-port full name, O-port full name) -> delay; ('_simple_in', '_simple_out') -> the max delay among all internal paths
         
         # references (internal structure)
         self.ports_inside_flipped: StructuralNodes = StructuralNodes() # to be connected to internal nodes, IO flipped (EEB)
