@@ -343,7 +343,7 @@ class ExtendedCircuit:
             for e_b in f_obj.e_outs
             if f_obj.v not in external_port_vertices
         ] # all edges e_a --f-> e_b, w/o f in external_port_vertices
-        H.add_weighted_edges_from(H_edges)
+        H.add_weighted_edges_from(H_edges, weight = "weight")
         return H
     
     def compute_Ds(self, external_port_vertices: List[int] = [0]): # (3.)
@@ -361,7 +361,7 @@ class ExtendedCircuit:
             raise # Exception("There is something wrong with the circuit structure")
         
         D_min = max([f_obj.d for f_obj in self.F]) # Phi(G) >= max{D(v, v) | v in V}, D(v, v) = max{d(f), f in F_v}
-        Ds: Set[int] = set([D_min])
+        Ds: Set = set([D_min])
         
         for u in range(len(self.V)):
             for v in range(len(self.V)):
@@ -418,9 +418,9 @@ class SimpleCircuit:
         Support:
             1. Solve retiming r for a given clock period c use FEAS algorithm.
             2. Apply retiming r on G to obtain G_r.
-            3. TODO Run WD algorithm to obtain D(u, v).
+            3. Run WD algorithm to obtain D(u, v).
             4. Run CP algorithm to obtain Phi(G).
-            5. TODO Combine (3.), binary search and (1.) to solve clock-period-minimization problem.
+            5. Combine (3.), binary search and (1.) to solve clock-period-minimization problem.
     """
     EPSILON = 1e-5
     
@@ -508,7 +508,37 @@ class SimpleCircuit:
             edge.w = edge.w + r[edge.v] - r[edge.u]
     
     def compute_Ds(self): # , external_port_vertices: List[int] = [0]): # (3.)
-        pass # TODO
+        """
+            Run WD algorithm to obtain D(u, v).
+            Return sorted and de-duplicated D-value list.
+            `G_prime`: reweighted G, `u --e--> ?`.weight = (w(e), -d(u)).
+        """
+        G_prime = nx.DiGraph()
+        G_prime_edges = [(edge.u, edge.v, OrderedPair(edge.w, -self.V[edge.u].d)) for edge in self.E]
+        G_prime.add_weighted_edges_from(G_prime_edges, weight = "weight")
+        
+        try:
+            # [NOTICE] Johnson?
+            dists = dict(nx.all_pairs_bellman_ford_path_length(G_prime, weight = "weight"))
+        except Exception:
+            raise
+        
+        D_min = max([vertex.d for vertex in self.V])
+        Ds: Set = set([D_min])
+        
+        for u in range(self.n):
+            for v in range(self.n):
+                if u == v:
+                    continue
+                
+                dist: OrderedPair = dists[u][v]
+                # W_uv = dist.a
+                D_uv = self.V[v].d - dist.b
+                
+                if D_uv >= D_min:
+                    Ds.add(D_uv)
+        
+        return sorted(list(Ds))
     
     def compute_clock_period(self): # , external_port_vertices: List[int] = [0]): # (4.)
         """
@@ -618,6 +648,8 @@ if __name__ == '__main__':
         (6, 7, 0),
         (7, 0, 0)
     ])
+
+    print(G.compute_Ds())
 
     import time
     t = time.time()
