@@ -375,7 +375,7 @@ for k, v in m2.substructures.items():
 print('m2.singletonize (pipelining) ==============================================================================================================')
 
 
-pipelining(m2, 2, model = "simple") # , model = "extended")
+print("Phi_Gr", pipelining(m2, 2, model = "simple")) # , model = "extended"))
 
 # for net in m2.get_nets():
 #     for load in net.get_loads():
@@ -415,7 +415,7 @@ sta.analyse(m4)
 # sta.analyse(m4, skip_emitting_and_script_running = True)
 
 t = time.time()
-pipelining(m4, 10, model = "simple") # , model = "extended")
+print("Phi_Gr", pipelining(m4, 10, model = "simple")) # , model = "extended"))
 print(time.time() - t)
 
 # for net in m4.get_nets():

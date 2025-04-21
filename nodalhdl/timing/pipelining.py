@@ -135,6 +135,8 @@ def retiming(s: Structure, period: Union[float, str] = "min", model = "simple"):
     
     for net in s.get_nets():
         net.transform_to_best_distribution()
+    
+    return Phi_Gr
 
 
 def pipelining(s: Structure, levels: int = None, period: float = None, model = "simple"):

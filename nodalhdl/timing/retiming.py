@@ -3,7 +3,6 @@ import heapq
 
 from typing import List, Set, Tuple
 from dataclasses import dataclass, field
-from functools import total_ordering
 
 import networkx as nx
 
@@ -126,51 +125,6 @@ class MIDCSolver:
         # recover the results
         x = [y[v] + r[v] for v in range(self.n)]
         return x
-
-
-@total_ordering
-class OrderedPair:
-    """
-        Used for representing the edge weights in WD algorithm.
-        Define __radd__(OrderedPair, int) to make networkx.all_pairs_dijkstra_path_length support paired weights.
-    """
-    def __init__(self, a, b):
-        self.a = a
-        self.b = b
-    
-    def __add__(self, other):
-        if isinstance(other, OrderedPair):
-            return OrderedPair(self.a + other.a, self.b + other.b)
-        elif isinstance(other, (int, float)):
-            return OrderedPair(self.a + other, self.b + other)
-        return NotImplemented
-    
-    def __sub__(self, other):
-        if isinstance(other, OrderedPair):
-            return OrderedPair(self.a - other.a, self.b - other.b)
-        elif isinstance(other, (int, float)):
-            return OrderedPair(self.a - other, self.b - other)
-        return NotImplemented
-    
-    __radd__ = __add__
-    __rsub__ = __sub__
-    
-    def __eq__(self, other):
-        if isinstance(other, OrderedPair):
-            return (self.a, self.b) == (other.a, other.b)
-        elif isinstance(other, (int, float)):
-            return self.a == other
-        return False
-    
-    def __lt__(self, other):
-        if isinstance(other, OrderedPair):
-            return (self.a, self.b) < (other.a, other.b)
-        elif isinstance(other, (int, float)):
-            return self.a < other
-        return NotImplemented
-    
-    def __repr__(self):
-        return f"({self.a}, {self.b})"
 
 
 class ExtendedCircuit:
@@ -329,34 +283,29 @@ class ExtendedCircuit:
         for e_obj in self.E:
             e_obj.w = e_obj.w + r[e_obj.v] - r[e_obj.u]
     
-    def build_H(self, external_port_vertices: List[int] = [0]):
+    def compute_Ds(self, external_port_vertices: List[int] = [0]): # (3.)
         """
-            Build an auxiliary graph H<E, F, wd> for WD and CP.
-            In H, vertices are from E (external edges), edges are from F (internal edges);
-            The weight for H edge `e --f-> ?` wd(f) = (w(e), -d(f)).
+            Run (Extended) WD algorithm to obtain D(u, v).
+            Return sorted and de-duplicated D-value list.
+            `H`: an auxiliary graph H<E, F, wd> for WD and CP.
+                In H, vertices are from E (external edges), edges are from F (internal edges);
+                The weight for H edge `e --f-> ?` wd(f) = (w(e), -d(f)), represented as a number: w(e) * C + C - d(f).
         """
+        C = sum([f_obj.d for f_obj in self.F]) + 1 # see SimpleCircuit/compute_Ds
+        
         H = nx.DiGraph()
         H_edges = [
-            (e_a, e_b, OrderedPair(self.get_external_edge(e_a).w, -f_obj.d))
+            # (e_a, e_b, OrderedPair(self.get_external_edge(e_a).w, -f_obj.d))
+            (e_a, e_b, self.get_external_edge(e_a).w * C + C - f_obj.d)
             for f_obj in self.F
             for e_a in f_obj.e_ins
             for e_b in f_obj.e_outs
             if f_obj.v not in external_port_vertices
         ] # all edges e_a --f-> e_b, w/o f in external_port_vertices
         H.add_weighted_edges_from(H_edges, weight = "weight")
-        return H
-    
-    def compute_Ds(self, external_port_vertices: List[int] = [0]): # (3.)
-        """
-            Run (Extended) WD algorithm to obtain D(u, v).
-            Return sorted and de-duplicated D-value list.
-            TODO ceil_delay.
-        """
-        H = self.build_H(external_port_vertices = external_port_vertices)
         
         try:
-            # dists = dict(nx.all_pairs_dijkstra_path_length(H, weight = "weight")) # [NOTICE] seems cannot use Dijkstra sometimes.
-            dists = dict(nx.all_pairs_bellman_ford_path_length(H, weight = "weight"))
+            dists = dict(nx.all_pairs_dijkstra_path_length(H, weight = "weight"))
         except Exception:
             raise # Exception("There is something wrong with the circuit structure")
         
@@ -374,9 +323,9 @@ class ExtendedCircuit:
                         if e_a == e_b or dists.get(e_a) is None or dists[e_a].get(e_b) is None:
                             continue
                         
-                        dist: OrderedPair = dists[e_a][e_b]
-                        W = dist.a
-                        D = max([self.get_internal_edge(f_a).d for f_a in self.get_external_edge(e_a).f_as]) - dist.b
+                        dist: float = dists[e_a][e_b]
+                        W = dist // C
+                        D = max([self.get_internal_edge(f_a).d for f_a in self.get_external_edge(e_a).f_as]) + (W + 1) * C - dist # y = dist - (W + 1) * C
                         if D <= D_min:
                             continue
                         
@@ -511,12 +460,12 @@ class SimpleCircuit:
         """
             Run WD algorithm to obtain D(u, v).
             Return sorted and de-duplicated D-value list.
-            `G_prime`: reweighted G, `u --e--> ?`.weight = w(e) * C + C - d(u).
+            `G_prime`: reweighted G, `u --e--> ?`.weight = (w(e), -d(u)), represented as a number: w(e) * C + C - d(u).
         """
-        ceil_delay = sum([vertex.d for vertex in self.V]) + 1 # to avoid path_delay = ceil_delay, leading to the error in dist // ceil_delay
+        C = sum([vertex.d for vertex in self.V]) + 1 # to avoid path_delay = C, leading to the error in dist // C
         
         G_prime = nx.DiGraph()
-        G_prime_edges = [(edge.u, edge.v, edge.w * ceil_delay + ceil_delay - self.V[edge.u].d) for edge in self.E]
+        G_prime_edges = [(edge.u, edge.v, edge.w * C + C - self.V[edge.u].d) for edge in self.E]
         G_prime.add_weighted_edges_from(G_prime_edges, weight = "weight")
         
         try:
@@ -533,8 +482,8 @@ class SimpleCircuit:
                     continue
                 
                 dist: float = dists[u][v]
-                W_uv = dist // ceil_delay
-                D_uv = self.V[v].d + (W_uv + 1) * ceil_delay - dist # y = dist - (W_uv + 1) * ceil_delay
+                W_uv = dist // C
+                D_uv = self.V[v].d + (W_uv + 1) * C - dist # y = dist - (W_uv + 1) * C
                 
                 if D_uv >= D_min:
                     Ds.add(D_uv)
