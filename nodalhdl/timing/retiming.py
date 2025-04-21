@@ -334,6 +334,7 @@ class ExtendedCircuit:
             Build an auxiliary graph H<E, F, wd> for WD and CP.
             In H, vertices are from E (external edges), edges are from F (internal edges);
             The weight for H edge `e --f-> ?` wd(f) = (w(e), -d(f)).
+            TODO ceil_delay
         """
         H = nx.DiGraph()
         H_edges = [
@@ -513,13 +514,16 @@ class SimpleCircuit:
             Return sorted and de-duplicated D-value list.
             `G_prime`: reweighted G, `u --e--> ?`.weight = (w(e), -d(u)).
         """
+        ceil_delay = sum([vertex.d for vertex in self.V]) + 1 # + SimpleCircuit.EPSILON # to avoid path_delay = ceil_delay, leading to the error in dist // ceil_delay
+        
         G_prime = nx.DiGraph()
-        G_prime_edges = [(edge.u, edge.v, OrderedPair(edge.w, -self.V[edge.u].d)) for edge in self.E]
+        # G_prime_edges = [(edge.u, edge.v, OrderedPair(edge.w, -self.V[edge.u].d)) for edge in self.E]
+        G_prime_edges = [(edge.u, edge.v, edge.w * ceil_delay + ceil_delay - self.V[edge.u].d) for edge in self.E]
         G_prime.add_weighted_edges_from(G_prime_edges, weight = "weight")
         
         try:
-            # dists = dict(nx.all_pairs_dijkstra_path_length(G_prime, weight = "weight")) # [NOTICE] seems cannot use Dijkstra sometimes.
-            dists = dict(nx.all_pairs_bellman_ford_path_length(G_prime, weight = "weight"))
+            dists = dict(nx.all_pairs_dijkstra_path_length(G_prime, weight = "weight")) # [NOTICE] seems cannot use Dijkstra sometimes.
+            # dists = dict(nx.all_pairs_bellman_ford_path_length(G_prime, weight = "weight"))
         except Exception:
             raise
         
@@ -531,9 +535,13 @@ class SimpleCircuit:
                 if u == v:
                     continue
                 
-                dist: OrderedPair = dists[u][v]
-                # W_uv = dist.a
-                D_uv = self.V[v].d - dist.b
+                # dist: OrderedPair = dists[u][v]
+                # # W_uv = dist.a
+                # D_uv = self.V[v].d - dist.b
+                
+                dist: float = dists[u][v]
+                W_uv = dist // ceil_delay
+                D_uv = self.V[v].d + (W_uv + 1) * ceil_delay - dist # y = dist - (W_uv + 1) * ceil_delay
                 
                 if D_uv >= D_min:
                     Ds.add(D_uv)

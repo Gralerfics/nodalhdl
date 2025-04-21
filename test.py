@@ -403,7 +403,7 @@ def AddChain(n: int, t: SignalType) -> Structure:
     return s
 
 t = time.time()
-m4 = AddChain(100, UInt[4])
+m4 = AddChain(200, UInt[4])
 print(time.time() - t)
 
 # rid = RuntimeId.create()
@@ -415,7 +415,7 @@ sta.analyse(m4)
 # sta.analyse(m4, skip_emitting_and_script_running = True)
 
 t = time.time()
-pipelining(m4, 10, model = "simple") # , model = "extended")
+pipelining(m4, 10, model = "extended") # , model = "extended") simple
 print(time.time() - t)
 
 # for net in m4.get_nets():
