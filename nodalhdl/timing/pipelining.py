@@ -58,33 +58,42 @@ def to_extended_circuit(s: Structure):
     return G, vertices_map, external_edges_map
 
 
-def retiming(s: Structure, period: Union[float, str] = "min"):
+def to_simple_circuit(s: Structure):
+    pass # TODO
+
+
+def retiming(s: Structure, period: Union[float, str] = "min", model = "simple"):
     """
         Retiming.
         The structure `s` should be flattened and timing-analysed.
         `period`: target clock period (ns), use "min" to perform clock-period-minimization.
     """
-    G, V_map, E_map = to_extended_circuit(s)
-    
-    if period == "min":
-        Phi_Gr, r = G.minimize_clock_period(external_port_vertices = [0])
-    else: # number
-        r = G.solve_retiming(period, external_port_vertices = [0])
-        if not r:
-            return False
-    
-    # apply the retiming to the structure
-    for load in E_map.keys():
-        driver = load.located_net.driver()
-        u = V_map[driver.of_structure_inst_name] if driver.of_structure_inst_name is not None else 0
-        v = V_map[load.of_structure_inst_name] if load.of_structure_inst_name is not None else 0
-        load.incr_latency(r[v] - r[u])
-    
-    for net in s.get_nets():
-        net.transform_to_best_distribution()
+    if model == "extended":
+        G, V_map, E_map = to_extended_circuit(s)
+        
+        if period == "min":
+            Phi_Gr, r = G.minimize_clock_period(external_port_vertices = [0])
+        else: # number
+            r = G.solve_retiming(period, external_port_vertices = [0])
+            if not r:
+                return False
+        
+        # apply the retiming to the structure
+        for load in E_map.keys():
+            driver = load.located_net.driver()
+            u = V_map[driver.of_structure_inst_name] if driver.of_structure_inst_name is not None else 0
+            v = V_map[load.of_structure_inst_name] if load.of_structure_inst_name is not None else 0
+            load.incr_latency(r[v] - r[u])
+        
+        for net in s.get_nets():
+            net.transform_to_best_distribution()
+    elif model == "simple":
+        pass # TODO
+    else:
+        raise RetimingException(f"Unsupported circuit model type \'{model}\'")
 
 
-def pipelining(s: Structure, levels: int = None, period: float = None):
+def pipelining(s: Structure, levels: int = None, period: float = None, model = "simple"):
     """
         Pipelining.
         要么给 levels，要么给预期时钟周期。前者直接加，后者可能需要估算。至少给一个。
@@ -101,7 +110,7 @@ def pipelining(s: Structure, levels: int = None, period: float = None):
             pi.set_latency(levels)
         
         # retiming
-        retiming(s, period = "min")
+        retiming(s, period = "min", model = model)
     else: # period is not None
         pass # TODO
 

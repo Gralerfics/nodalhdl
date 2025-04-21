@@ -172,6 +172,7 @@ class OrderedPair:
     def __repr__(self):
         return f"({self.a}, {self.b})"
 
+
 class ExtendedCircuit:
     """
         Extended circuit model allowing nonuniform functional element delays.
@@ -417,85 +418,216 @@ class SimpleCircuit:
         Support:
             1. Solve retiming r for a given clock period c use FEAS algorithm.
             2. Apply retiming r on G to obtain G_r.
-            3. Run WD algorithm to obtain D(u, v).
-            4. TODO Run CP algorithm to obtain Phi(G).
-            5. Combine (3.), binary search and (1.) to solve clock-period-minimization problem.
+            3. TODO Run WD algorithm to obtain D(u, v).
+            4. Run CP algorithm to obtain Phi(G).
+            5. TODO Combine (3.), binary search and (1.) to solve clock-period-minimization problem.
     """
     EPSILON = 1e-5
     
+    @dataclass
+    class VertexInfo:
+        d: float
+        head: int = -1 # first edge ID
+    
+    @dataclass
+    class EdgeInfo:
+        u: int # start vertex ID
+        v: int # end vertex ID
+        w: int # weight
+        next: int # next edge ID, -1 as EndOfList
+    
+    def __init__(self):
+        self.V: List[SimpleCircuit.VertexInfo] = []
+        self.E: List[SimpleCircuit.EdgeInfo] = []
+    
+    @property
+    def n(self):
+        return len(self.V)
+    
+    @property
+    def m(self):
+        return len(self.E)
+    
+    def deepcopy(self) -> 'SimpleCircuit':
+        res = SimpleCircuit()
+        res.V = [SimpleCircuit.VertexInfo(d = vertex.d, head = vertex.head) for vertex in self.V]
+        res.E = [SimpleCircuit.EdgeInfo(u = edge.u, v = edge.v, w = edge.w, next = edge.next) for edge in self.E]
+        return res
+    
     """ Constructing """
-    pass # TODO
+    def add_vertex(self, d: float):
+        self.V.append(SimpleCircuit.VertexInfo(d = d))
+    
+    def add_vertices(self, d_list: List[float]):
+        self.V.extend([SimpleCircuit.VertexInfo(d = d) for d in d_list])
+    
+    def add_edge(self, u: int, v: int, w: int):
+        e = self.m
+        self.E.append(SimpleCircuit.EdgeInfo(
+            u = u,
+            v = v,
+            w = w,
+            next = self.V[u].head
+        ))
+        self.V[u].head = e
+    
+    def add_edges(self, info: List[Tuple]):
+        for entry in info:
+            self.add_edge(*entry)
     
     """ Tasks """
-    def solve_retiming(self, c: float, external_port_vertices: List[int] = [0]): # (1.)
-        pass # TODO
+    def solve_retiming(self, c: float): # , external_port_vertices: List[int] = [0]): # (1.)
+        """
+            FEAS algorithm, compute the retiming r on given clock period c.
+            Return a legal r if feasible, or return False.
+        """
+        r = [0] * self.n
+        
+        for _ in range(self.n - 1):
+            G_r = self.deepcopy()
+            G_r.apply_retiming(r)
+            
+            _, delta = G_r.compute_clock_period()
+            
+            for idx in range(G_r.n):
+                if delta[idx] > c:
+                    r[idx] += 1
+        
+        G_r = self.deepcopy()
+        G_r.apply_retiming(r)
+        Phi_Gr, _ = G_r.compute_clock_period()
+        
+        return r if Phi_Gr <= c else False
     
     def apply_retiming(self, r: List[int]): # (2.)
+        """
+            Apply the retiming r on the graph.
+            Equation (2): w_r(e) = w(e) + r(v) - r(u).
+        """
+        for edge in self.E:
+            edge.w = edge.w + r[edge.v] - r[edge.u]
+    
+    def compute_Ds(self): # , external_port_vertices: List[int] = [0]): # (3.)
         pass # TODO
     
-    def compute_Ds(self, external_port_vertices: List[int] = [0]): # (3.)
-        pass # TODO
+    def compute_clock_period(self): # , external_port_vertices: List[int] = [0]): # (4.)
+        """
+            Compute the minimum clock period without retiming by performing topological sorting.
+            `delta[v]`: the max delay through zero-weight path end on v.
+        """
+        in_degrees: List[int] = [0] * self.n
+        visited: List[bool] = [False] * self.n
+        delta: List[int] = [vertex.d for vertex in self.V]
+        
+        # compute the in-degrees, ignoring the edges with non-zero weight
+        for edge in self.E:
+            if edge.w == 0:
+                in_degrees[edge.v] += 1
+        
+        q: List[int] = [idx for idx, in_deg in enumerate(in_degrees) if in_deg == 0]
+        while q:
+            u = q.pop()
+            visited[u] = True
+            
+            e = self.V[u].head
+            while e != -1:
+                if self.E[e].w == 0: # only zero weight edges are in G_0
+                    v = self.E[e].v
+                    if visited[v]:
+                        raise Exception("Circle(s) exist(s)")
+                    
+                    # decrease v's in-degree, enqueue if zero
+                    in_degrees[v] -= 1
+                    if in_degrees[v] == 0:
+                        q.append(v)
+                    
+                    # update delta[v]
+                    delta[v] = max(delta[v], self.V[v].d + delta[u])
+                
+                e = self.E[e].next
+        
+        return max(delta), delta
     
-    def minimize_clock_period(self, external_port_vertices: List[int] = [0]): # (5.)
+    def minimize_clock_period(self): # , external_port_vertices: List[int] = [0]): # (5.)
         pass # TODO
 
 
 # Test
 if __name__ == '__main__':
-    G = ExtendedCircuit()
+    # G = ExtendedCircuit()
 
-    # G.add_internal_edge(0, 0, [3, 4], [0, 5])
-    # G.add_internal_edge(1, 2, [0], [1])
-    # G.add_internal_edge(1, 3, [0], [2])
-    # G.add_internal_edge(1, 5, [5], [2])
-    # G.add_internal_edge(2, 2, [1], [3])
-    # G.add_internal_edge(2, 1, [1], [4])
-    # G.add_internal_edge(2, 4, [2], [4])
-    # G.set_external_edge_weight(0, 2)
-    # G.set_external_edge_weight(5, 2)
+    # # G.add_internal_edge(0, 0, [3, 4], [0, 5])
+    # # G.add_internal_edge(1, 2, [0], [1])
+    # # G.add_internal_edge(1, 3, [0], [2])
+    # # G.add_internal_edge(1, 5, [5], [2])
+    # # G.add_internal_edge(2, 2, [1], [3])
+    # # G.add_internal_edge(2, 1, [1], [4])
+    # # G.add_internal_edge(2, 4, [2], [4])
+    # # G.set_external_edge_weight(0, 2)
+    # # G.set_external_edge_weight(5, 2)
 
-    G.add_internal_edges([
-        (0, 0.0, [12, 13, 14, 15], [0, 1, 2, 3]),
-        (1, 0.2, [0], [4]),
-        (1, 0.1, [0], [5]),
-        (1, 0.3, [1], [5]),
-        (2, 0.4, [2], [6, 7]),
-        (2, 0.2, [3], [6, 7]),
-        (2, 0.5, [3], [8]),
-        (3, 0.1, [4], [9]),
-        (3, 0.4, [4], [14]),
-        (3, 0.2, [5], [9]),
-        (3, 0.3, [5], [14]),
-        (3, 0.7, [6], [14]),
-        (3, 0.2, [6], [10]),
-        (3, 0.4, [7], [10]),
-        (3, 0.2, [8], [11]),
-        (4, 0.3, [9], [12]),
-        (4, 0.4, [9], [13]),
-        (5, 0.3, [10], [15]),
-        (5, 0.5, [11], [15])
-    ])
+    # G.add_internal_edges([
+    #     (0, 0.0, [12, 13, 14, 15], [0, 1, 2, 3]),
+    #     (1, 0.2, [0], [4]),
+    #     (1, 0.1, [0], [5]),
+    #     (1, 0.3, [1], [5]),
+    #     (2, 0.4, [2], [6, 7]),
+    #     (2, 0.2, [3], [6, 7]),
+    #     (2, 0.5, [3], [8]),
+    #     (3, 0.1, [4], [9]),
+    #     (3, 0.4, [4], [14]),
+    #     (3, 0.2, [5], [9]),
+    #     (3, 0.3, [5], [14]),
+    #     (3, 0.7, [6], [14]),
+    #     (3, 0.2, [6], [10]),
+    #     (3, 0.4, [7], [10]),
+    #     (3, 0.2, [8], [11]),
+    #     (4, 0.3, [9], [12]),
+    #     (4, 0.4, [9], [13]),
+    #     (5, 0.3, [10], [15]),
+    #     (5, 0.5, [11], [15])
+    # ])
+    # # G.set_external_edge_weight(0, 1)
+    # # G.set_external_edge_weight(1, 1)
+    # # G.set_external_edge_weight(6, 1)
+    # # G.set_external_edge_weight(7, 1)
+    # # G.set_external_edge_weight(8, 1)
+    
     # G.set_external_edge_weight(0, 1)
     # G.set_external_edge_weight(1, 1)
-    # G.set_external_edge_weight(6, 1)
-    # G.set_external_edge_weight(7, 1)
-    # G.set_external_edge_weight(8, 1)
+    # G.set_external_edge_weight(2, 1)
+    # G.set_external_edge_weight(3, 1)
+
+    # print(G.minimize_clock_period([0]))
+
+
+
+    G = SimpleCircuit()
     
-    G.set_external_edge_weight(0, 1)
-    G.set_external_edge_weight(1, 1)
-    G.set_external_edge_weight(2, 1)
-    G.set_external_edge_weight(3, 1)
+    G.add_vertices([0, 3, 3, 3, 3, 7, 7, 7])
+    G.add_edges([
+        (0, 1, 1),
+        (1, 7, 0),
+        (1, 2, 1),
+        (2, 6, 0),
+        (2, 3, 1),
+        (3, 5, 0),
+        (3, 4, 1),
+        (4, 5, 0),
+        (5, 6, 0),
+        (6, 7, 0),
+        (7, 0, 0)
+    ])
 
-    print(G.minimize_clock_period([0]))
-
-    # import time
-    # t = time.time()
-    # r = G.solve_retiming(5)
-    # print(time.time() - t)
-    # if r:
-    #     print("r:", r)
-    #     G.apply_retiming(r)
-    #     [print(f"e_{idx}.w_r = {e_obj.w}") for idx, e_obj in enumerate(G.E)]
-    # else:
-    #     print("No solution.")
+    import time
+    t = time.time()
+    r = G.solve_retiming(13)
+    print(time.time() - t)
+    
+    if r:
+        print("r:", r)
+        G.apply_retiming(r)
+        [print(f"e_{idx}.w_r = {e_obj.w}") for idx, e_obj in enumerate(G.E)]
+    else:
+        print("No solution.")
 
