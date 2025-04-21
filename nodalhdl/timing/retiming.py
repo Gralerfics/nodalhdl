@@ -579,7 +579,26 @@ class SimpleCircuit:
         return max(delta), delta
     
     def minimize_clock_period(self): # , external_port_vertices: List[int] = [0]): # (5.)
-        pass # TODO
+        """
+            Perform binary search on sorted Ds, check answer by solving retiming.
+            Return Phi(G_r) and the retiming r.
+        """
+        Ds = self.compute_Ds() # (external_port_vertices = external_port_vertices)
+        
+        left, right = 0, len(Ds) - 1
+        res = None
+        while left <= right: # TODO [, )
+            mid = (left + right) // 2
+            c = Ds[mid]
+            
+            solution = self.solve_retiming(c) # , external_port_vertices = external_port_vertices)
+            if solution is not False:
+                res = (c, solution)
+                right = mid - 1
+            else:
+                left = mid + 1
+        
+        return res
 
 
 # Test
@@ -648,18 +667,18 @@ if __name__ == '__main__':
         (6, 7, 0),
         (7, 0, 0)
     ])
-
-    print(G.compute_Ds())
-
-    import time
-    t = time.time()
-    r = G.solve_retiming(13)
-    print(time.time() - t)
     
-    if r:
-        print("r:", r)
-        G.apply_retiming(r)
-        [print(f"e_{idx}.w_r = {e_obj.w}") for idx, e_obj in enumerate(G.E)]
-    else:
-        print("No solution.")
+    print(G.minimize_clock_period())
+
+    # import time
+    # t = time.time()
+    # r = G.solve_retiming(13)
+    # print(time.time() - t)
+    
+    # if r:
+    #     print("r:", r)
+    #     G.apply_retiming(r)
+    #     [print(f"e_{idx}.w_r = {e_obj.w}") for idx, e_obj in enumerate(G.E)]
+    # else:
+    #     print("No solution.")
 
