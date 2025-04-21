@@ -1,5 +1,5 @@
 from ..core.structure import Structure, Node
-from .retiming import ExtendedCircuit
+from .retiming import ExtendedCircuit, SimpleCircuit
 
 from typing import Union, Dict, List, Tuple
 
@@ -59,7 +59,44 @@ def to_extended_circuit(s: Structure):
 
 
 def to_simple_circuit(s: Structure):
-    pass # TODO
+    """
+        The structure `s` should be flattened and timing-analysed.
+    """
+    if not s.is_flattened or not s.is_flatly_timed:
+        raise RetimingException("Only flattened and timing-analysed structures can be converted")
+    
+    G = SimpleCircuit()
+    
+    # vertices
+    G.add_vertex(0.0) # vertex 0
+    
+    vertices_map: Dict[str, int] = {}
+    for idx, (subs_inst_name, subs) in enumerate(s.substructures.items()):
+        vertex_idx = idx + 1 # 1 ~ N
+        vertices_map[subs_inst_name] = vertex_idx
+        G.add_vertex(subs.timing_info.get(('_simple_in', '_simple_out'), 0.0))
+    
+    # edges
+    edges_map: Dict[Node, int] = {}
+    edge_idx = 0
+    edges_list: List[Tuple[int, int, int]] = []
+    
+    for net in s.get_nets():
+        driver = net.driver()
+        
+        # each driver -> load pair indicates an edge
+        for load in net.get_loads():
+            edges_map[load] = edge_idx
+            
+            u = vertices_map[driver.of_structure_inst_name] if driver.of_structure_inst_name is not None else 0
+            v = vertices_map[load.of_structure_inst_name] if load.of_structure_inst_name is not None else 0
+            edges_list.append((u, v, driver.latency + load.latency))
+            
+            edge_idx += 1
+    
+    G.add_edges(edges_list)
+    
+    return G, vertices_map, edges_map
 
 
 def retiming(s: Structure, period: Union[float, str] = "min", model = "simple"):
@@ -77,26 +114,32 @@ def retiming(s: Structure, period: Union[float, str] = "min", model = "simple"):
             r = G.solve_retiming(period, external_port_vertices = [0])
             if not r:
                 return False
-        
-        # apply the retiming to the structure
-        for load in E_map.keys():
-            driver = load.located_net.driver()
-            u = V_map[driver.of_structure_inst_name] if driver.of_structure_inst_name is not None else 0
-            v = V_map[load.of_structure_inst_name] if load.of_structure_inst_name is not None else 0
-            load.incr_latency(r[v] - r[u])
-        
-        for net in s.get_nets():
-            net.transform_to_best_distribution()
     elif model == "simple":
-        pass # TODO
+        G, V_map, E_map = to_simple_circuit(s)
+
+        if period == "min":
+            Phi_Gr, r = G.minimize_clock_period()
+        else: # number
+            r = G.solve_retiming(period)
+            if not r:
+                return False
     else:
         raise RetimingException(f"Unsupported circuit model type \'{model}\'")
+    
+    # apply the retiming to the structure
+    for load in E_map.keys():
+        driver = load.located_net.driver()
+        u = V_map[driver.of_structure_inst_name] if driver.of_structure_inst_name is not None else 0
+        v = V_map[load.of_structure_inst_name] if load.of_structure_inst_name is not None else 0
+        load.incr_latency(r[v] - r[u])
+    
+    for net in s.get_nets():
+        net.transform_to_best_distribution()
 
 
 def pipelining(s: Structure, levels: int = None, period: float = None, model = "simple"):
     """
         Pipelining.
-        要么给 levels，要么给预期时钟周期。前者直接加，后者可能需要估算。至少给一个。
     """
     if s.is_sequential:
         raise PipeliningException("Only combinational structures can be pipelined")
@@ -110,14 +153,18 @@ def pipelining(s: Structure, levels: int = None, period: float = None, model = "
             pi.set_latency(levels)
         
         # retiming
-        retiming(s, period = "min", model = model)
+        return retiming(s, period = "min", model = model)
     else: # period is not None
+        # estimate? binary search?
         pass # TODO
+        
+        # retiming
+        # return retiming(s, period = TODO, model = model)
 
 """
     pipelining 的话 structure 必须是 not is_sequential 的,
         也就是前面的单纯 retiming 可以允许 sequential, 所以运行 sta 前不能直接去原来的上面改 latency.
-        话说论文里提到个什么来着, 忘了, 晚点看下.
+        话说论文里提到个什么来着 (关于 pipelining), 忘了, 晚点看下.
     每个输入端口要插入相同数量的寄存器,
         这个数量除了用户设定, 怎么自动计算?
             比如时序报告中同时跑一个顶层模块输入到输出的最大路径 (要得到这个又不能插寄存器, 或者在跑下面那行的过程中通过模块的延迟累加起来), 除以预期时钟周期, 再去掉一些寄存器延迟;

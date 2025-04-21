@@ -518,7 +518,7 @@ class SimpleCircuit:
         G_prime.add_weighted_edges_from(G_prime_edges, weight = "weight")
         
         try:
-            # [NOTICE] Johnson?
+            # dists = dict(nx.all_pairs_dijkstra_path_length(G_prime, weight = "weight")) # [NOTICE] seems cannot use Dijkstra sometimes.
             dists = dict(nx.all_pairs_bellman_ford_path_length(G_prime, weight = "weight"))
         except Exception:
             raise
@@ -592,6 +592,7 @@ class SimpleCircuit:
             c = Ds[mid]
             
             solution = self.solve_retiming(c) # , external_port_vertices = external_port_vertices)
+            
             if solution is not False:
                 res = (c, solution)
                 right = mid - 1
