@@ -334,7 +334,6 @@ class ExtendedCircuit:
             Build an auxiliary graph H<E, F, wd> for WD and CP.
             In H, vertices are from E (external edges), edges are from F (internal edges);
             The weight for H edge `e --f-> ?` wd(f) = (w(e), -d(f)).
-            TODO ceil_delay
         """
         H = nx.DiGraph()
         H_edges = [
@@ -351,7 +350,7 @@ class ExtendedCircuit:
         """
             Run (Extended) WD algorithm to obtain D(u, v).
             Return sorted and de-duplicated D-value list.
-            TODO improve performance?
+            TODO ceil_delay.
         """
         H = self.build_H(external_port_vertices = external_port_vertices)
         
@@ -399,7 +398,7 @@ class ExtendedCircuit:
         
         left, right = 0, len(Ds) - 1
         res = None
-        while left <= right: # TODO [, )
+        while left <= right: # [NOTICE] change to [, )
             mid = (left + right) // 2
             c = Ds[mid]
             
@@ -512,18 +511,16 @@ class SimpleCircuit:
         """
             Run WD algorithm to obtain D(u, v).
             Return sorted and de-duplicated D-value list.
-            `G_prime`: reweighted G, `u --e--> ?`.weight = (w(e), -d(u)).
+            `G_prime`: reweighted G, `u --e--> ?`.weight = w(e) * C + C - d(u).
         """
-        ceil_delay = sum([vertex.d for vertex in self.V]) + 1 # + SimpleCircuit.EPSILON # to avoid path_delay = ceil_delay, leading to the error in dist // ceil_delay
+        ceil_delay = sum([vertex.d for vertex in self.V]) + 1 # to avoid path_delay = ceil_delay, leading to the error in dist // ceil_delay
         
         G_prime = nx.DiGraph()
-        # G_prime_edges = [(edge.u, edge.v, OrderedPair(edge.w, -self.V[edge.u].d)) for edge in self.E]
         G_prime_edges = [(edge.u, edge.v, edge.w * ceil_delay + ceil_delay - self.V[edge.u].d) for edge in self.E]
         G_prime.add_weighted_edges_from(G_prime_edges, weight = "weight")
         
         try:
-            dists = dict(nx.all_pairs_dijkstra_path_length(G_prime, weight = "weight")) # [NOTICE] seems cannot use Dijkstra sometimes.
-            # dists = dict(nx.all_pairs_bellman_ford_path_length(G_prime, weight = "weight"))
+            dists = dict(nx.all_pairs_dijkstra_path_length(G_prime, weight = "weight"))
         except Exception:
             raise
         
@@ -534,10 +531,6 @@ class SimpleCircuit:
             for v in range(self.n):
                 if u == v:
                     continue
-                
-                # dist: OrderedPair = dists[u][v]
-                # # W_uv = dist.a
-                # D_uv = self.V[v].d - dist.b
                 
                 dist: float = dists[u][v]
                 W_uv = dist // ceil_delay
@@ -595,7 +588,7 @@ class SimpleCircuit:
         
         left, right = 0, len(Ds) - 1
         res = None
-        while left <= right: # TODO [, )
+        while left <= right: # [NOTICE] change to [, )
             mid = (left + right) // 2
             c = Ds[mid]
             

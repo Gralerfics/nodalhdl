@@ -415,7 +415,7 @@ sta.analyse(m4)
 # sta.analyse(m4, skip_emitting_and_script_running = True)
 
 t = time.time()
-pipelining(m4, 10, model = "extended") # , model = "extended") simple
+pipelining(m4, 10, model = "simple") # , model = "extended")
 print(time.time() - t)
 
 # for net in m4.get_nets():
