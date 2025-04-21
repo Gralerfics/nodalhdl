@@ -396,16 +396,16 @@ class ExtendedCircuit:
         """
         Ds = self.compute_Ds(external_port_vertices = external_port_vertices)
         
-        left, right = 0, len(Ds) - 1
+        left, right = 0, len(Ds)
         res = None
-        while left <= right: # [NOTICE] change to [, )
+        while left < right:
             mid = (left + right) // 2
             c = Ds[mid]
             
             solution = self.solve_retiming(c, external_port_vertices = external_port_vertices)
             if solution is not False:
                 res = (c, solution)
-                right = mid - 1
+                right = mid
             else:
                 left = mid + 1
         
@@ -586,17 +586,16 @@ class SimpleCircuit:
         """
         Ds = self.compute_Ds() # (external_port_vertices = external_port_vertices)
         
-        left, right = 0, len(Ds) - 1
+        left, right = 0, len(Ds)
         res = None
-        while left <= right: # [NOTICE] change to [, )
+        while left < right:
             mid = (left + right) // 2
             c = Ds[mid]
             
             solution = self.solve_retiming(c) # , external_port_vertices = external_port_vertices)
-            
             if solution is not False:
                 res = (c, solution)
-                right = mid - 1
+                right = mid
             else:
                 left = mid + 1
         
