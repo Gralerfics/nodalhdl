@@ -167,6 +167,9 @@ class Net:
             return
         
         loads = self.get_loads()
+        if len(loads) == 0:
+            return
+        
         loads_max_common_latency = min([load.latency for load in loads])
         for load in loads:
             load.set_latency(load.latency - loads_max_common_latency)
@@ -469,8 +472,10 @@ class Structure:
         self.id = str(uuid.uuid4()).replace('-', '')
         self.unique_name: str = unique_name
         
-        # properties (customized params, some for operators)
+        # properties (customized params, for all)
         self.custom_params = {}
+        
+        # properties (customized params, for operators)
         self.custom_sequential: bool = False # should be asserted to True if there are registers in custom_generation (raw_content)
         self.custom_deduction: callable = None
         self.custom_generation: callable = None
