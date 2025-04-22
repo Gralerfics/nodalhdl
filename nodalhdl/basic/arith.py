@@ -1,4 +1,4 @@
-from ..core.signal import SignalType, UInt, SInt, Input, Output, Auto, Bundle
+from ..core.signal import SignalType, BundleType, UInt, SInt, Input, Output, Auto, Bundle 
 from ..core.structure import Structure, RuntimeId, StructureGenerationException, IOProxy
 from ..core.hdl import HDLFileModel
 
@@ -136,27 +136,53 @@ end architecture;
         )
 
 
-class GetAttribute(ArgsOperator):
+class Decomposition(ArgsOperator):
+    """
+        Decomposition[type]: all shallow members
+        Decomposition[type, [<keys_0>], ...]: selected members
+    """
     @staticmethod
     def setup(*args) -> Structure:
-        ti, to = args[0], args[0]
-        for key in args[1]:
-            to = to._bundle_types[key]
+        out_nums = len(args) - 1
+        assert out_nums >= 0
+        
+        ti: BundleType = args[0]
+        to = []
+        paths = args[1:]
+        
+        if out_nums == 0:
+            keys = ti._bundle_types.keys()
+            out_nums = len(keys)
+            paths = [[key] for key in keys]
+        
+        for path in paths:
+            if isinstance(path, list) or isinstance(path, tuple):
+                t = ti
+                for key in path:
+                    t = t._bundle_types[key]
+                to.append(t)
+            else: # str
+                to.append(ti._bundle_types[path])
         
         s = Structure()
         
         s.add_port("i", Input[ti])
-        s.add_port("o", Output[to])
+        for idx, t in enumerate(to):
+            s.add_port(f"o{idx}", Output[t])
         
-        s.custom_params["path"] = args[1]
+        s.custom_params["paths"] = paths
+        s.custom_params["to"] = to
         
         return s
     
     @staticmethod
     def generation(s: Structure, h: HDLFileModel, io: IOProxy):
-        ti, to = io.i.type, io.o.type
+        ti, to = io.i.type, s.custom_params["to"]
         
         f = lambda t: t.__name__ if t.belongs(Bundle) else f"std_logic_vector({t.W - 1} downto 0)"
+        
+        port_str = ";\n".join([f"        o{idx}: out {f(t)}" for idx, t in enumerate(to)])
+        assign_str = "\n".join([f"    o{idx} <= i.{'.'.join(s.custom_params["paths"][idx])};" for idx in range(len(to))])
         
         h.set_raw(".vhd",
 f"""\
@@ -168,18 +194,18 @@ use work.types.all;
 entity {h.entity_name} is
     port (
         i: in {f(ti)};
-        o: out {f(to)}
+{port_str}
     );
 end entity;
 
 architecture Behavioral of {h.entity_name} is
 begin
-    o <= i.{'.'.join(s.custom_params["path"])};
+{assign_str}
 end architecture;
 """
         )
     
     @classmethod
     def naming(cls, *args):
-        return f"{cls.__name__}_{args[0].__name__[7:15]}_{'_'.join(map(str, args[1]))}"
+        return f"{cls.__name__}_{args[0].__name__[7:15]}_{"_".join(["_".join(map(str, path)) for path in args[1:]])}"
 

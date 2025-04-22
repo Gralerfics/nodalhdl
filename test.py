@@ -1,6 +1,6 @@
 from nodalhdl.core.signal import UInt, SInt, Bits, Bit, Float, Bundle, Input, Output, Auto, SignalType
 from nodalhdl.core.structure import Structure, RuntimeId, StructureProxy
-from nodalhdl.basic.arith import Add, GetAttribute
+from nodalhdl.basic.arith import Add, Decomposition
 from nodalhdl.core.hdl import HDLFileModel
 from nodalhdl.timing.sta import VivadoSTA
 from nodalhdl.timing.pipelining import pipelining
@@ -170,7 +170,7 @@ def M2() -> Structure:
     u1 = s.add_substructure("u1", m1)
     # u1.IO.o.set_latency(1) # for latency expansion test
     u2 = s.add_substructure("u2", addw)
-    u3 = s.add_substructure("u3", GetAttribute[B_t, ("xy", "y")])
+    u3 = s.add_substructure("u3", Decomposition[B_t, ("xy", "y"), "z"])
     
     s.connect(t, u1.IO.t)
     s.connect(a, u1.IO.a)
@@ -184,7 +184,7 @@ def M2() -> Structure:
     
     # s.connect(Bi, Bo)
     s.connect(Bi, u3.IO.i)
-    s.connect(u3.IO.o, Bo)
+    s.connect(u3.IO.o0, Bo)
     Bi.set_latency(0)#2)
 
     return s
@@ -403,7 +403,7 @@ def AddChain(n: int, t: SignalType) -> Structure:
     return s
 
 t = time.time()
-m4 = AddChain(200, UInt[4])
+m4 = AddChain(100, UInt[4])
 print(time.time() - t)
 
 # rid = RuntimeId.create()
@@ -416,7 +416,7 @@ sta.analyse(m4)
 
 t = time.time()
 print("Phi_Gr", pipelining(m4, 10, model = "simple")) # , model = "extended"))
-print(time.time() - t)
+print(time.time() - t) # `AddChain(1000, UInt[4]), simple model` for about 21.45s
 
 # for net in m4.get_nets():
 #     for load in net.get_loads():
