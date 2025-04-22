@@ -273,7 +273,7 @@ class VivadoSTA(StaticTimingAnalyser):
                     desc_2 = f"{inst_name}_io_{po_full_name}"
                     through_2 = f"reg*d*{desc_2}*/D"
                     
-                    tcl += f"set paths [concat $paths [get_timing_paths -through [get_pins -hier {through_1}] -through [get_pins -hier {through_2}] -delay_type max -max_paths 1 -nworst 1 -unique_pins]]\n"
+                    tcl += f"catch {{ set paths [concat $paths [get_timing_paths -through [get_pins -hier {through_1}] -through [get_pins -hier {through_2}] -delay_type max -max_paths 1 -nworst 1 -unique_pins]] }}\n"
 
                     # record keys for the instance, I-port and O-port for storing
                     added_paths.append((inst_name, pi_full_name, po_full_name, desc_1, desc_2)) # desc_x for checking if the timing path exists in the report, or it should be skipped
