@@ -478,7 +478,7 @@ class SimpleCircuit:
         
         for u in range(self.n):
             for v in range(self.n):
-                if u == v:
+                if u == v or dists.get(u) is None or dists[u].get(v) is None:
                     continue
                 
                 dist: float = dists[u][v]

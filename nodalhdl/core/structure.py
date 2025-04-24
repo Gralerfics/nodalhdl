@@ -456,6 +456,7 @@ class Structure:
             # properties
             self.id_weak: weakref.ReferenceType[RuntimeId] = weakref.ref(runtime_id)
             self.deduction_effective: bool = False
+            self.timing_info: Dict[Tuple[str, str], float] = None # timing info after STA, (I-port full name, O-port full name) -> delay; ('_simple_in', '_simple_out') -> the max delay among all internal paths
             
             # references
             self.attach_structure: weakref.ReferenceType[Structure] = weakref.ref(attach_structure) # the structure this runtime is attached to
@@ -476,7 +477,6 @@ class Structure:
     def _structural_modified(self):
         self.clear_runtimes() # clear runtime info
         self.reusable_hdl = None
-        self.timing_info = None
     
     def __init__(self, unique_name: str = None):
         # properties
@@ -493,7 +493,6 @@ class Structure:
         
         # properties (destroy when structural information changed)
         self.reusable_hdl: HDLFileModel = None # only for reusable structure
-        self.timing_info: Dict[Tuple[str, str], float] = None # timing info after STA, (I-port full name, O-port full name) -> delay; ('_simple_in', '_simple_out') -> the max delay among all internal paths
         
         # references (internal structure)
         self.ports_inside_flipped: StructuralNodes = StructuralNodes() # to be connected to internal nodes, IO flipped (EEB)
@@ -550,10 +549,6 @@ class Structure:
     @property
     def is_flattened(self):
         return all([subs.is_operator for subs in self.substructures.values()])
-    
-    @property
-    def is_flatly_timed(self):
-        return all([subs.timing_info is not None for subs in self.substructures.values()])
 
     def is_runtime_integrate(self, runtime_id: RuntimeId):
         """

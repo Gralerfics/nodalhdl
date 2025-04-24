@@ -1,4 +1,4 @@
-from ..core.structure import Structure, Node
+from ..core.structure import RuntimeId, Structure, Node
 from .retiming import ExtendedCircuit, SimpleCircuit
 
 from typing import Union, Dict, List, Tuple
@@ -8,7 +8,7 @@ class RetimingException(Exception): pass
 class PipeliningException(Exception): pass
 
 
-def to_extended_circuit(s: Structure):
+def to_extended_circuit(s: Structure, root_runtime_id: RuntimeId):
     """
         The structure `s` should be flattened and timing-analysed.
     """
@@ -47,9 +47,10 @@ def to_extended_circuit(s: Structure):
         in_ports = subs_ports_outside.nodes(filter = "in")
         out_ports = subs_ports_outside.nodes(filter = "out") # TODO 加个功能让一次能两个一起返回了吧
         
+        timing_info = subs.get_runtime(root_runtime_id.next(subs_inst_name)).timing_info
         for pi_full_name, pi in in_ports:
             for po_full_name, po in out_ports:
-                delay = subs.timing_info.get((pi_full_name, po_full_name))
+                delay = timing_info.get((pi_full_name, po_full_name))
                 if delay is not None:
                     e_ins = [external_edges_map[pi]]
                     e_outs = [external_edges_map[po_load] for po_load in po.located_net.get_loads()]
@@ -60,11 +61,11 @@ def to_extended_circuit(s: Structure):
     return G, vertices_map, external_edges_map
 
 
-def to_simple_circuit(s: Structure):
+def to_simple_circuit(s: Structure, root_runtime_id: RuntimeId):
     """
         The structure `s` should be flattened and timing-analysed.
     """
-    if not s.is_flattened or not s.is_flatly_timed:
+    if not s.is_flattened: # or not s.is_flatly_timed: TODO
         raise RetimingException("Only flattened and timing-analysed structures can be converted")
     
     G = SimpleCircuit()
@@ -76,7 +77,9 @@ def to_simple_circuit(s: Structure):
     for idx, (subs_inst_name, subs) in enumerate(s.substructures.items()):
         vertex_idx = idx + 1 # 1 ~ N
         vertices_map[subs_inst_name] = vertex_idx
-        G.add_vertex(subs.timing_info.get(('_simple_in', '_simple_out'), 0.0))
+        
+        timing_info = subs.get_runtime(root_runtime_id.next(subs_inst_name)).timing_info
+        G.add_vertex(timing_info.get(('_simple_in', '_simple_out'), 0.0) if timing_info is not None else 0.0)
     
     # edges
     edges_map: Dict[Node, int] = {}
@@ -103,14 +106,14 @@ def to_simple_circuit(s: Structure):
     return G, vertices_map, edges_map
 
 
-def retiming(s: Structure, period: Union[float, str] = "min", model = "simple"):
+def retiming(s: Structure, root_runtime_id: RuntimeId, period: Union[float, str] = "min", model = "simple"):
     """
         Retiming.
         The structure `s` should be flattened and timing-analysed.
         `period`: target clock period (ns), use "min" to perform clock-period-minimization.
     """
     if model == "extended":
-        G, V_map, E_map = to_extended_circuit(s)
+        G, V_map, E_map = to_extended_circuit(s, root_runtime_id)
         
         if period == "min":
             Phi_Gr, r = G.minimize_clock_period(external_port_vertices = [0])
@@ -119,7 +122,7 @@ def retiming(s: Structure, period: Union[float, str] = "min", model = "simple"):
             if not r:
                 return False
     elif model == "simple":
-        G, V_map, E_map = to_simple_circuit(s)
+        G, V_map, E_map = to_simple_circuit(s, root_runtime_id)
 
         if period == "min":
             Phi_Gr, r = G.minimize_clock_period()
@@ -143,7 +146,7 @@ def retiming(s: Structure, period: Union[float, str] = "min", model = "simple"):
     return Phi_Gr
 
 
-def pipelining(s: Structure, levels: int = None, period: float = None, model = "simple"):
+def pipelining(s: Structure, root_runtime_id: RuntimeId, levels: int = None, period: float = None, model = "simple"):
     """
         Pipelining.
     """
@@ -159,13 +162,13 @@ def pipelining(s: Structure, levels: int = None, period: float = None, model = "
             pi.set_latency(levels)
         
         # retiming
-        return retiming(s, period = "min", model = model)
+        return retiming(s, root_runtime_id, period = "min", model = model)
     else: # period is not None
         # estimate? binary search?
         pass # TODO
         
         # retiming
-        # return retiming(s, period = TODO, model = model)
+        # return retiming(s, root_runtime_id, period = TODO, model = model)
 
 """
     pipelining 的话 structure 必须是 not is_sequential 的,

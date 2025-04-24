@@ -365,19 +365,19 @@ print('m2.singletonize (sta) ===================================================
 
 
 sta = VivadoSTA(part_name = "xc7a200tfbg484-1", vivado_executable_path = "vivado.bat")
-# sta.analyse(m2)
-sta.analyse(m2, skip_emitting_and_script_running = True)
+# sta.analyse(m2, rid_m2_exp)
+sta.analyse(m2, rid_m2_exp, skip_emitting_and_script_running = True)
 
-for k, v in m2.substructures.items():
-    print(f"{k}: {v.timing_info}")
+for subs_inst_name, subs in m2.substructures.items():
+    print(f"{subs_inst_name}: {subs.get_runtime(rid_m2_exp.next(subs_inst_name)).timing_info}")
 
-print(m2.is_flatly_timed)
+# print(m2.is_flatly_timed)
 
 
 print('m2.singletonize (pipelining) ==============================================================================================================')
 
 
-print("Phi_Gr", pipelining(m2, 2, model = "simple")) # , model = "extended"))
+print("Phi_Gr", pipelining(m2, rid_m2_exp, 2, model = "simple")) # , model = "extended"))
 
 # for net in m2.get_nets():
 #     for load in net.get_loads():
@@ -408,16 +408,19 @@ t = time.time()
 m4 = AddChain(100, UInt[4])
 print(time.time() - t)
 
-# rid = RuntimeId.create()
-# m4.deduction(rid)
-# print(m4.runtime_info(rid))
+rid_m4 = RuntimeId.create()
+m4.deduction(rid_m4)
+# print(m4.runtime_info(rid_m4))
 
 sta = VivadoSTA(part_name = "xc7a200tfbg484-1", temporary_workspace_path = ".vivado_sta_m4", vivado_executable_path = "vivado.bat")
-# sta.analyse(m4)
-sta.analyse(m4, skip_emitting_and_script_running = True)
+# sta.analyse(m4, rid_m4)
+sta.analyse(m4, rid_m4, skip_emitting_and_script_running = True)
+
+# for k, v in m4.substructures.items():
+#     print(f"{k}: {v.get_runtime(rid_m4.next(k)).timing_info}")
 
 t = time.time()
-print("Phi_Gr", pipelining(m4, 10, model = "simple")) # , model = "extended"))
+print("Phi_Gr", pipelining(m4, rid_m4, 10, model = "simple")) # , model = "extended"))
 print(time.time() - t) # `AddChain(1000, UInt[4]), simple model` for about 21.45s
 
 # for net in m4.get_nets():

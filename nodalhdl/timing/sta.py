@@ -21,7 +21,7 @@ class StaticTimingAnalyser:
     def __init__(self):
         pass
     
-    def analyse(s: Structure) -> None:
+    def analyse(s: Structure, root_runtime_id: RuntimeId) -> None:
         pass # to be override
 
 
@@ -190,11 +190,12 @@ class VivadoSTA(StaticTimingAnalyser):
             shutil.rmtree(self.temporary_workspace_path)
         os.makedirs(self.temporary_workspace_path, exist_ok = True)
     
-    def _write_tcl_script_and_run(self, tcl_script_str: str):
+    def _write_tcl_script(self, tcl_script_str: str):
         tcl_script_path = os.path.join(self.temporary_workspace_path, self.TCL_SCRIPT_NAME)
         with open(tcl_script_path, "w") as f:
             f.write(tcl_script_str)
-        
+    
+    def _run_tcl_script(self):
         feedback = subprocess.run(
             [self.vivado_executable_path, "-mode", "batch", "-source", self.TCL_SCRIPT_NAME],
             cwd = self.temporary_workspace_path,
@@ -203,7 +204,7 @@ class VivadoSTA(StaticTimingAnalyser):
             text = True
         )
     
-    def analyse(self, s: Structure, skip_emitting_and_script_running: bool = False): # skip_emitting_and_script_running only for debugging
+    def analyse(self, s: Structure, root_runtime_id: RuntimeId, skip_emitting_and_script_running: bool = False): # skip_emitting_and_script_running only for debugging
         if not skip_emitting_and_script_running:
             self._create_temporary_workspace()
             
@@ -250,12 +251,14 @@ class VivadoSTA(StaticTimingAnalyser):
         #  - add timing paths
         tcl += f"set paths {{}}\n"
         added_paths: List[Tuple] = [] # [(inst_name, pi_full_name, po_full_name, ), ]
-        for inst_name, subs in s.substructures.items():
-            if subs.timing_info is not None: # [NOTICE] 分析过的结构不用再分析 TODO [Important] 一个问题, 例如大量同结构加法模块, 其中有一个只有一个输入, 另一个输入 NC, 就导致其综合后直接变成了导线, timing 和其他同结构模块实质上不一样.
-                continue
-            subs.timing_info = {} # [NOTICE] 本次分析中已经加入计划的结构不用重复分析
+        for subs_inst_name, subs in s.substructures.items():
+            subs.get_runtime(root_runtime_id.next(subs_inst_name)).timing_info = {}
+            # if subs.timing_info is not None: # [NOTICE] 分析过的结构不用再分析 ?
+            #     # TODO [Important] 一个问题, 不同的输入可能导致相同模块时序不同, 例如常数输入和 NC 的情况. 这种情况下再跳过的话会导致以偏概全
+            #     continue
+            # subs.timing_info = {} # [NOTICE] 已经加入计划的结构不用重复分析
             
-            subs_ports_outside = s.get_subs_ports_outside(inst_name)
+            subs_ports_outside = s.get_subs_ports_outside(subs_inst_name)
             in_ports = subs_ports_outside.nodes(filter = "in")
             out_ports = subs_ports_outside.nodes(filter = "out")
             
@@ -271,13 +274,13 @@ class VivadoSTA(StaticTimingAnalyser):
                 through_1 = f"reg*d*{desc_1}*/C"
                 
                 for po_full_name, _ in out_ports:
-                    desc_2 = f"{inst_name}_io_{po_full_name}"
+                    desc_2 = f"{subs_inst_name}_io_{po_full_name}"
                     through_2 = f"reg*d*{desc_2}*/D"
                     
                     tcl += f"catch {{ set paths [concat $paths [get_timing_paths -through [get_pins -hier {through_1}] -through [get_pins -hier {through_2}] -delay_type max -max_paths 1 -nworst 1 -unique_pins]] }}\n"
 
                     # record keys for the instance, I-port and O-port for storing
-                    added_paths.append((inst_name, pi_full_name, po_full_name, desc_1, desc_2)) # desc_x for checking if the timing path exists in the report, or it should be skipped
+                    added_paths.append((subs_inst_name, pi_full_name, po_full_name, desc_1, desc_2)) # desc_x for checking if the timing path exists in the report, or it should be skipped
         tcl += "\n"
         
         #  - report timing
@@ -290,10 +293,13 @@ class VivadoSTA(StaticTimingAnalyser):
         tcl += "close_project\n"
         tcl += "exit\n"
         
+        # write the script
+        self._write_tcl_script(tcl)
+        
         if len(added_paths) > 0:
             # run the script
             if not skip_emitting_and_script_running:
-                self._write_tcl_script_and_run(tcl)
+                self._run_tcl_script()
 
             # load parse the results
             with open(os.path.join(self.temporary_workspace_path, self.REPORT_FILENAME), "r") as f:
@@ -320,11 +326,12 @@ class VivadoSTA(StaticTimingAnalyser):
                     delay = p.details[-2]["path_ns"] - p.details[2]["path_ns"]
                 
                 # store into structure
-                inst_name, pi_full_name, po_full_name = added_paths[added_paths_ptr][0:3]
-                if s.substructures[inst_name].timing_info is None:
-                    s.substructures[inst_name].timing_info = {}
-                s.substructures[inst_name].timing_info[(pi_full_name, po_full_name)] = delay
-                s.substructures[inst_name].timing_info[('_simple_in', '_simple_out')] = max(delay, s.substructures[inst_name].timing_info.get(('_simple_in', '_simple_out'), 0))
+                subs_inst_name, pi_full_name, po_full_name = added_paths[added_paths_ptr][0:3]
+                runtime = s.substructures[subs_inst_name].get_runtime(root_runtime_id.next(subs_inst_name))
+                if runtime.timing_info is None:
+                    runtime.timing_info = {}
+                runtime.timing_info[(pi_full_name, po_full_name)] = delay
+                runtime.timing_info[('_simple_in', '_simple_out')] = max(delay, runtime.timing_info.get(('_simple_in', '_simple_out'), 0))
                 
                 # next added path
                 added_paths_ptr += 1
