@@ -1,6 +1,8 @@
-from ..core.signal import SignalType, BundleType, UInt, SInt, Input, Output, Auto, Bundle 
+from ..core.signal import SignalType, BundleType, Signal, Bits, UInt, SInt, Input, Output, Auto, Bundle
 from ..core.structure import Structure, RuntimeId, StructureGenerationException, IOProxy
 from ..core.hdl import HDLFileModel
+
+import hashlib
 
 from typing import Dict
 
@@ -9,6 +11,9 @@ class ArgsOperatorMeta(type):
     pool: Dict[str, Structure] = {}
     
     def __getitem__(cls, args):
+        if not isinstance(args, list) and not isinstance(args, tuple):
+            args = [args]
+        
         s = cls.setup(*args)
         
         s.custom_deduction = cls.deduction
@@ -175,6 +180,8 @@ class Decomposition(ArgsOperator):
         
         return s
     
+    # TODO deduction
+    
     @staticmethod
     def generation(s: Structure, h: HDLFileModel, io: IOProxy):
         ti, to = io.i.type, s.custom_params["to"]
@@ -216,4 +223,75 @@ class Composition(ArgsOperator):
         Composition[type, [<keys_0>], ...]: selected members
     """
     pass # TODO
+
+
+class Constant(ArgsOperator):
+    """
+        Constant[signal_0, ...]
+        TODO to be tested
+    """
+    @staticmethod
+    def setup(*args) -> Structure:
+        assert all([isinstance(arg, Signal) for arg in args])
+        
+        s = Structure()
+        
+        for idx, signal in enumerate(args):
+            s.add_port(f"c{idx}", Output[type(signal)])
+        
+        s.custom_params["constants"] = args
+        
+        return s
+    
+    @staticmethod
+    def deduction(s: Structure, io: IOProxy):
+        for idx, c in enumerate(s.custom_params["constants"]):
+            port = io.__getattr__(f"c{idx}")
+            port.update(type(c))
+    
+    @staticmethod
+    def generation(s: Structure, h: HDLFileModel, io: IOProxy):
+        constants = s.custom_params["constants"]
+        
+        f = lambda t: t.__name__ if t.belongs(Bundle) else f"std_logic_vector({t.W - 1} downto 0)"
+        
+        port_str = ";\n".join([f"        c{idx}: out {f(type(c))}" for idx, c in enumerate(constants)])
+        
+        def _assign(sub_wire_name: str, c: Signal):
+            res = ""
+            if isinstance(c, Bundle):
+                for k, v in c._bundle_objects.items():
+                    res += _assign(sub_wire_name + "." + k, v)
+            elif isinstance(c, Bits):
+                res += f"    {sub_wire_name} <= \"{c.to_bits_string()}\";\n"
+            return res
+        
+        assign_str = ""
+        for idx, c in enumerate(constants):
+            assign_str += _assign(f"c{idx}", c)
+        assign_str = assign_str[:-1]
+
+        h.set_raw(".vhd",
+f"""\
+library IEEE;
+use IEEE.std_logic_1164.all;
+use IEEE.numeric_std.all;
+use work.types.all;
+
+entity {h.entity_name} is
+    port (
+{port_str}
+    );
+end entity;
+
+architecture Behavioral of {h.entity_name} is
+begin
+{assign_str}
+end architecture;
+"""
+        )
+    
+    @classmethod
+    def naming(cls, *args):
+        return f"{cls.__name__}_{'_'.join([hashlib.md5(str(arg).encode('utf-8')).hexdigest()[:8] for arg in args])}" # [NOTICE] use valid string
 

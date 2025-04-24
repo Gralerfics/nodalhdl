@@ -1,6 +1,6 @@
 from nodalhdl.core.signal import UInt, SInt, Bits, Bit, Float, Bundle, Input, Output, Auto, SignalType
 from nodalhdl.core.structure import Structure, RuntimeId, StructureProxy
-from nodalhdl.basic.arith import IntAdd, Decomposition
+from nodalhdl.basic.arith import IntAdd, Constant, Decomposition
 from nodalhdl.core.hdl import HDLFileModel
 from nodalhdl.timing.sta import VivadoSTA
 from nodalhdl.timing.pipelining import pipelining
@@ -155,7 +155,8 @@ def M2() -> Structure:
     s.connect(u4.IO.res, ti.y.b)
     """ Test structural ports End """
     
-    t = s.add_port("t", Input[UInt[4]])
+    # t = s.add_port("t", Input[UInt[4]])
+    
     a = s.add_port("a", Input[UInt[4]])
     b = s.add_port("b", Input[UInt[4]])
     c = s.add_port("c", Input[UInt[4]])
@@ -165,11 +166,15 @@ def M2() -> Structure:
     Bi = s.add_port("Bi", Input[B_t])
     Bo = s.add_port("Bo", Output[Auto])
     
+    const = s.add_substructure("const", Constant[UInt[4](10)])
+    
     u1 = s.add_substructure("u1", m1)
     u2 = s.add_substructure("u2", addw)
     u3 = s.add_substructure("u3", Decomposition[B_t, ("xy", "y"), "z"])
     
-    s.connect(t, u1.IO.t)
+    # s.connect(t, u1.IO.t)
+    s.connect(const.IO.c0, u1.IO.t)
+    
     s.connect(a, u1.IO.a)
     s.connect(b, u1.IO.b)
     s.connect(c, u1.IO.c)
@@ -360,11 +365,13 @@ print('m2.singletonize (sta) ===================================================
 
 
 sta = VivadoSTA(part_name = "xc7a200tfbg484-1", vivado_executable_path = "vivado.bat")
-sta.analyse(m2)
-# sta.analyse(m2, skip_emitting_and_script_running = True)
+# sta.analyse(m2)
+sta.analyse(m2, skip_emitting_and_script_running = True)
 
 for k, v in m2.substructures.items():
     print(f"{k}: {v.timing_info}")
+
+print(m2.is_flatly_timed)
 
 
 print('m2.singletonize (pipelining) ==============================================================================================================')
@@ -406,8 +413,8 @@ print(time.time() - t)
 # print(m4.runtime_info(rid))
 
 sta = VivadoSTA(part_name = "xc7a200tfbg484-1", temporary_workspace_path = ".vivado_sta_m4", vivado_executable_path = "vivado.bat")
-sta.analyse(m4)
-# sta.analyse(m4, skip_emitting_and_script_running = True)
+# sta.analyse(m4)
+sta.analyse(m4, skip_emitting_and_script_running = True)
 
 t = time.time()
 print("Phi_Gr", pipelining(m4, 10, model = "simple")) # , model = "extended"))
