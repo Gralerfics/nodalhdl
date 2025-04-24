@@ -362,8 +362,8 @@ print('m2.singletonize (sta) ===================================================
 
 
 sta = VivadoSTA(part_name = "xc7a200tfbg484-1", vivado_executable_path = "vivado.bat")
-sta.analyse(m2)
-# sta.analyse(m2, skip_emitting_and_script_running = True)
+# sta.analyse(m2)
+sta.analyse(m2, skip_emitting_and_script_running = True)
 
 for k, v in m2.substructures.items():
     print(f"{k}: {v.timing_info}")
