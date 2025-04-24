@@ -45,7 +45,7 @@ class ArgsOperator(metaclass = ArgsOperatorMeta):
     def naming(cls, *args): return f"{cls.__name__}_{'_'.join(map(str, args))}" # [NOTICE] use valid string
 
 
-class Add(ArgsOperator):
+class IntAdd(ArgsOperator):
     @staticmethod
     def setup(*args) -> Structure:
         s = Structure()
@@ -101,7 +101,7 @@ end architecture;
         )
 
 
-class Subtract(Add):
+class IntSubtract(IntAdd):
     @staticmethod
     def generation(s: Structure, h: HDLFileModel, io: IOProxy):
         t1, t2, tr = io.op1.type, io.op2.type, io.res.type
@@ -138,7 +138,7 @@ end architecture;
 
 class Decomposition(ArgsOperator):
     """
-        Decomposition[type]: all shallow members
+        Decomposition[type]: all shallow members TODO to be tested
         Decomposition[type, [<keys_0>], ...]: selected members
     """
     @staticmethod
@@ -208,4 +208,12 @@ end architecture;
     @classmethod
     def naming(cls, *args):
         return f"{cls.__name__}_{args[0].__name__[7:15]}_{"_".join(["_".join(map(str, path)) for path in args[1:]])}"
+
+
+class Composition(ArgsOperator):
+    """
+        Composition[type]: all shallow members
+        Composition[type, [<keys_0>], ...]: selected members
+    """
+    pass # TODO
 
