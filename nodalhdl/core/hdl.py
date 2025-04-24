@@ -84,7 +84,6 @@ class HDLFileModel:
         self.components: Dict[str, HDLFileModel] = {} # Dict[组件名, 组件对应文件模型]
         self.inst_comps: Dict[str, Tuple[str, Dict[str, str]]] = {} # Dict[实例名, (组件名, Dict[组件端口名, 实例端口名])]
         self.signals: Dict[str, SignalType] = {} # Dict[信号名, 信号类型]
-        self.constants: Dict[str, Signal] = {} # Dict[信号名, 信号值], 不是对应 VHDL 中的 constant, 而是添加信号 constant_<...> 到 signal, 并添加赋值到 assignments, 专设 constants 为了去重
         self.assignments: List[Tuple[str, str]] = [] # List[Tuple[目标信号, 源信号]]
         self.registers: Set[Tuple[str, str, SignalType]] = set() # Set[<reg_next_name>, <reg_name>, <signal_type>], <signal_type> for initial value generation
         
@@ -270,26 +269,6 @@ class HDLFileModel:
     
     def add_assignment(self, target: str, value: str):
         self.assignments.append((target, value))
-    
-    def add_constant(self, constant: Signal):
-        wire_name = f"constant_{hashlib.md5(str(constant).encode('utf-8')).hexdigest()}" # str(uuid.uuid5(uuid.UUID('00000000-0000-0000-0000-000000000000'), str(uuid.uuid4()))).replace('-', '')
-        if self.constants.get(wire_name) is not None:
-            return wire_name
-        self.constants[wire_name] = constant
-        
-        t = type(constant)
-        self.add_signal(wire_name, t)
-        
-        def _assign(sub_wire_name: str, t: Signal):
-            if isinstance(t, Bundle):
-                for k, v in t._bundle_objects.items():
-                    _assign(sub_wire_name + "." + k, v)
-            elif isinstance(t, Bits):
-                self.add_assignment(sub_wire_name, f"\"{t.to_bits_string()}\"")
-        
-        _assign(wire_name, t)
-        
-        return wire_name
     
     def set_raw(self, file_suffix: str, content: str):
         self.raw = True

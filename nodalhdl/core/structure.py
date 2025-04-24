@@ -129,7 +129,6 @@ class Net:
         
         # related to driver
         self.driver: weakref.ReferenceType[Node] = None # driver node (also in nodes_weak) or None, should be only one, originlly Output; others are loads
-        self.constant: Signal = None # auto maintained
         
         # runtime
         self.runtimes: weakref.WeakKeyDictionary[RuntimeId, Net.Runtime] = weakref.WeakKeyDictionary()
@@ -142,12 +141,7 @@ class Net:
     
     @property
     def has_driver(self):
-        # [NOTICE] 理论上常数赋值也算驱动, 不过这里不将它和 port driver 混淆
         return self.driver is not None and self.driver() is not None
-    
-    @property
-    def is_driven(self):
-        return self.has_driver or self.constant is not None
     
     """
         Latency management.
@@ -197,14 +191,9 @@ class Net:
             return
         
         if node.is_driver: # driver
-            if self.is_driven:
-                raise StructureException("Net cannot have multiple drivers or constants")
+            if self.has_driver:
+                raise StructureException("Net cannot have multiple drivers")
             self.driver = weakref.ref(node)
-        
-        if node.constant is not None: # constant driver
-            if self.is_driven:
-                raise StructureException("Net cannot have multiple drivers or constants")
-            self.constant = node.constant
         
         self.nodes_weak.add(node)
         node.located_net = self
@@ -221,9 +210,6 @@ class Net:
         if self.has_driver and self.driver() is node: # driver is removed
             self.driver = None
         
-        if node.constant is not None:
-            self.constant = None
-        
         self.nodes_weak.remove(node)
         Net(self.located_structure_weak())._add_node(node)
     
@@ -234,8 +220,8 @@ class Net:
         if self.located_structure_weak() is not other.located_structure_weak():
             raise StructureException("Cannot merge nets from different structures")
         
-        if self.is_driven and other.is_driven:
-            raise StructureException("Merged net cannot have multiple drivers or constants")
+        if self.has_driver and other.has_driver:
+            raise StructureException("Merged net cannot have multiple drivers")
         
         net_h, net_l = (self, other) if len(self) > len(other) else (other, self)
         for node in net_l.nodes_weak:
@@ -245,14 +231,13 @@ class Node:
     """
         Circuit node.
     """
-    def __init__(self, name: str, origin_signal_type: SignalType, is_port: bool, located_structure: 'Structure' = None, located_net: Net = None, latency: int = 0, layered_name: str = None, constant: Signal = None):
+    def __init__(self, name: str, origin_signal_type: SignalType, is_port: bool, located_structure: 'Structure' = None, located_net: Net = None, latency: int = 0, layered_name: str = None):
         # properties
         self.id = str(uuid.uuid4()).replace('-', '')
         self.name: str = name # raw name, no need to be unique. layer information for ports will be added in StructuralNodes.nodes()
         self.layered_name: str = layered_name if layered_name is not None else name # a.k.a. full name in structural ports
         self.origin_signal_type: SignalType = origin_signal_type # must be set by set_origin_type()
         self.is_port: bool = is_port
-        self.constant: Signal = None
         self.latency: int = latency # latency, only for ports
         # [NOTICE] 关于直接串联多个寄存器可能导致的 Hold 违例问题. 应该在前端考虑还是留待后端考虑?
         if self.latency > 0 and not self.is_port:
@@ -272,9 +257,6 @@ class Node:
             if located_structure is None:
                 raise StructureException(f"located_structure is needed when located_net is not provided")
             Net(located_structure)._add_node(self) # add_node() will update runtime signal type, so no need to be called after assigning origin_signal_type
-        
-        if constant is not None:
-            self.set_constant(constant)
     
     def __repr__(self):
         return f"Node<{self.name} ({self.layered_name}), {self.origin_signal_type.base}, {self.of_structure_inst_name}>"
@@ -308,19 +290,6 @@ class Node:
             Update the runtime type of the located net by merging. (IO-ignored)
         """
         self.located_net.get_runtime(runtime_id).merge_type(signal_type)
-
-    def set_constant(self, c: Signal):
-        # [NOTICE] 该操作只会检验是否符合 origin_type (可否 merge type) 而不会改变 origin_type, 所以不改变结构信息; 不改变 origin_type 的考虑是如果从一个 constant 更换到另一个, 无法回退上一次的更改.
-        net = self.located_net
-        if net.has_driver:
-            raise StructureException("Net with a driver can not be constantly assigned")
-        
-        try:
-            type(c).merges(self.origin_signal_type)
-        except SignalTypeException:
-            raise StructureException("Constant type conflicts with the origin type")
-        
-        self.constant = c
     
     """
         The following actions (set_origin_type, merge, separate and delete) may change the structural information,
@@ -335,9 +304,6 @@ class Node:
         # [NOTICE] 去掉 safe_modification? apply_runtime 时可以最后用 rid 再重新跑一遍 deduction 来恢复其有效性.
         if self.origin_signal_type is signal_type: # no change
             return
-
-        if self.constant is not None and signal_type.belongs(Output):
-            raise StructureException("The node has been constantly drived")
         
         self.origin_signal_type = signal_type
         
@@ -361,7 +327,7 @@ class Node:
         
         # add equivalent node (reserve original signal type info)
         equiv_node_type = other.origin_signal_type.merges(other.origin_signal_type)
-        equiv_node = Node(equiv_node_name, equiv_node_type, is_port = False, located_net = self.located_net, constant = self.constant if self.constant is not None else other.constant)
+        equiv_node = Node(equiv_node_name, equiv_node_type, is_port = False, located_net = self.located_net)
         self.located_structure.nodes.add(equiv_node)
 
         # latency setting
@@ -665,7 +631,7 @@ class Structure:
                     new_net = _trace_net(ref)
                     
                     # duplicate the port under net'
-                    new_port = Node(ref.name, ref.origin_signal_type, is_port = ref.is_port, located_net = new_net, latency = ref.latency, layered_name = ref.layered_name, constant = ref.constant)
+                    new_port = Node(ref.name, ref.origin_signal_type, is_port = ref.is_port, located_net = new_net, latency = ref.latency, layered_name = ref.layered_name)
                     return new_port
                 else: # StructuralNodes
                     return StructuralNodes({k: _build_ports(v) for k, v in ref.items()})
@@ -679,7 +645,7 @@ class Structure:
                 new_net = _trace_net(ref_node)
                 
                 # duplicate the node under net'
-                new_node = Node(ref_node.name, ref_node.origin_signal_type, is_port = ref_node.is_port, located_net = new_net, latency = ref_node.latency, constant = ref_node.constant)
+                new_node = Node(ref_node.name, ref_node.origin_signal_type, is_port = ref_node.is_port, located_net = new_net, latency = ref_node.latency)
                 new_s.nodes.add(new_node)
             
             # substructures
@@ -982,13 +948,6 @@ class Structure:
                         end_wire_name --> load_wire_name
                     """
                     model.add_assignment(load_wire_name, end_wire_name)
-            elif net.constant is not None: # constant driver
-                # constant (driver)
-                constant_wire_name = model.add_constant(net.constant)
-                
-                # loads
-                for idx, (load_wire_name, load_latency) in enumerate(loads_info):
-                    model.add_assignment(load_wire_name, constant_wire_name)
             else: # no driver, n/c
                 pass
         

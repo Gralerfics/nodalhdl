@@ -155,7 +155,7 @@ def M2() -> Structure:
     s.connect(u4.IO.res, ti.y.b)
     """ Test structural ports End """
     
-    # t = s.add_port("t", Input[UInt[4]])
+    t = s.add_port("t", Input[UInt[4]])
     a = s.add_port("a", Input[UInt[4]])
     b = s.add_port("b", Input[UInt[4]])
     c = s.add_port("c", Input[UInt[4]])
@@ -169,9 +169,7 @@ def M2() -> Structure:
     u2 = s.add_substructure("u2", addw)
     u3 = s.add_substructure("u3", Decomposition[B_t, ("xy", "y"), "z"])
     
-    # s.connect(t, u1.IO.t)
-    u1.IO.t.set_constant(UInt[4](10))    
-    
+    s.connect(t, u1.IO.t)
     s.connect(a, u1.IO.a)
     s.connect(b, u1.IO.b)
     s.connect(c, u1.IO.c)
@@ -362,8 +360,8 @@ print('m2.singletonize (sta) ===================================================
 
 
 sta = VivadoSTA(part_name = "xc7a200tfbg484-1", vivado_executable_path = "vivado.bat")
-# sta.analyse(m2)
-sta.analyse(m2, skip_emitting_and_script_running = True)
+sta.analyse(m2)
+# sta.analyse(m2, skip_emitting_and_script_running = True)
 
 for k, v in m2.substructures.items():
     print(f"{k}: {v.timing_info}")
