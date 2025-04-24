@@ -1,6 +1,6 @@
 from nodalhdl.core.signal import UInt, SInt, Bits, Bit, Float, Bundle, Input, Output, Auto, SignalType
 from nodalhdl.core.structure import Structure, RuntimeId, StructureProxy
-from nodalhdl.basic.arith import Add, Decomposition
+from nodalhdl.basic.arith import IntAdd, Decomposition
 from nodalhdl.core.hdl import HDLFileModel
 from nodalhdl.timing.sta import VivadoSTA
 from nodalhdl.timing.pipelining import pipelining
@@ -24,8 +24,8 @@ def AddU4U4U4() -> Structure:
     op3 = s.add_port("op3", Input[UInt[4]])
     res = s.add_port("res", Output[Auto])
     
-    add_12 = s.add_substructure("add_12", Add[UInt[4], UInt[4]])
-    add_123 = s.add_substructure("add_123", Add[UInt[4], UInt[4]])
+    add_12 = s.add_substructure("add_12", IntAdd[UInt[4], UInt[4]])
+    add_123 = s.add_substructure("add_123", IntAdd[UInt[4], UInt[4]])
     
     s.connect(op1, add_12.IO.op1)
     s.connect(op2, add_12.IO.op2)
@@ -79,10 +79,8 @@ def M1() -> Structure:
     c = s.add_port("c", Input[UInt[4]])
     o = s.add_port("o", Output[Auto])
     
-    # o.set_latency(2) # for latency expansion test
-    
     x = s.add_substructure("x", keeper_u4_0clk)
-    y = s.add_substructure("y", Add[UInt[4], UInt[4]])
+    y = s.add_substructure("y", IntAdd[UInt[4], UInt[4]])
     z = s.add_substructure("z", add_u4_u4_u4)
     
     s.connect(t, x.IO.i)
@@ -105,7 +103,7 @@ m1 = M1()
 print('addw ==============================================================================================================')
 
 
-add_auto_auto = Add[Auto, Auto]
+add_auto_auto = IntAdd[Auto, Auto]
 
 def AddWrapper(t1: SignalType, t2: SignalType) -> Structure:
     s = Structure()
@@ -157,7 +155,7 @@ def M2() -> Structure:
     s.connect(u4.IO.res, ti.y.b)
     """ Test structural ports End """
     
-    t = s.add_port("t", Input[UInt[4]])
+    # t = s.add_port("t", Input[UInt[4]])
     a = s.add_port("a", Input[UInt[4]])
     b = s.add_port("b", Input[UInt[4]])
     c = s.add_port("c", Input[UInt[4]])
@@ -168,11 +166,12 @@ def M2() -> Structure:
     Bo = s.add_port("Bo", Output[Auto])
     
     u1 = s.add_substructure("u1", m1)
-    # u1.IO.o.set_latency(1) # for latency expansion test
     u2 = s.add_substructure("u2", addw)
     u3 = s.add_substructure("u3", Decomposition[B_t, ("xy", "y"), "z"])
     
-    s.connect(t, u1.IO.t)
+    # s.connect(t, u1.IO.t)
+    u1.IO.t.set_constant(UInt[4](10))    
+    
     s.connect(a, u1.IO.a)
     s.connect(b, u1.IO.b)
     s.connect(c, u1.IO.c)
@@ -182,10 +181,8 @@ def M2() -> Structure:
     
     s.connect(u1.IO.o, u1o)
     
-    # s.connect(Bi, Bo)
     s.connect(Bi, u3.IO.i)
     s.connect(u3.IO.o0, Bo)
-    Bi.set_latency(0)#2)
 
     return s
 
@@ -214,7 +211,7 @@ def M3() -> Structure:
     
     p = s.add_substructure("p", addw)
     q = s.add_substructure("q", add_auto_auto)
-    r = s.add_substructure("r", Add[UInt[4], UInt[4]])
+    r = s.add_substructure("r", IntAdd[UInt[4], UInt[4]])
     
     Nipq = s.add_node("Nipq", Auto)
     s.connect(ipq, Nipq)
@@ -365,8 +362,8 @@ print('m2.singletonize (sta) ===================================================
 
 
 sta = VivadoSTA(part_name = "xc7a200tfbg484-1", vivado_executable_path = "vivado.bat")
-# sta.analyse(m2)
-sta.analyse(m2, skip_emitting_and_script_running = True)
+sta.analyse(m2)
+# sta.analyse(m2, skip_emitting_and_script_running = True)
 
 for k, v in m2.substructures.items():
     print(f"{k}: {v.timing_info}")
@@ -393,7 +390,7 @@ def AddChain(n: int, t: SignalType) -> Structure:
     
     adder: list[StructureProxy] = []
     for idx in range(n - 1):
-        adder.append(s.add_substructure(f"adder{idx}", Add[t, t]))
+        adder.append(s.add_substructure(f"adder{idx}", IntAdd[t, t]))
         
         s.connect(adder[-2].IO.res if idx > 0 else i[0], adder[-1].IO.op1)
         s.connect(i[idx + 1], adder[-1].IO.op2)

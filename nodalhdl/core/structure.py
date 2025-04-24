@@ -1,4 +1,4 @@
-from .signal import SignalType, BundleType, Auto, IOWrapper, Input, Output, Bundle
+from .signal import SignalType, BundleType, Auto, IOWrapper, Input, Output, Bundle, Signal, SignalTypeException
 from .hdl import HDLFileModel
 
 import sys
@@ -126,7 +126,9 @@ class Net:
         self.nodes_weak: weakref.WeakSet[Node] = weakref.WeakSet()
         self.located_structure_weak: weakref.ReferenceType[Structure] = weakref.ref(located_structure)
         
+        # related to driver
         self.driver: weakref.ReferenceType[Node] = None # driver node (also in nodes_weak) or None, should be only one, originlly Output; others are loads
+        self.constant: Signal = None # valid only when not has_driver
         
         # runtime
         self.runtimes: weakref.WeakKeyDictionary[RuntimeId, Net.Runtime] = weakref.WeakKeyDictionary()
@@ -136,6 +138,11 @@ class Net:
     
     def get_loads(self): # ports(*) that are not drivers
         return [n for n in self.nodes_weak if n is not self.driver() and n.is_port]
+    
+    @property
+    def has_driver(self):
+        # [NOTICE] 理论上常数赋值也算驱动, 不过这里不将它和 port driver 混淆
+        return self.driver is not None and self.driver() is not None
     
     """
         Latency management.
@@ -149,7 +156,7 @@ class Net:
             Move the driver latency to the loads.
             The driver latency will be set to 0, and the loads' latency will add the driver latency.
         """
-        if self.driver() is None:
+        if not self.has_driver:
             return
         
         driver_latency = self.driver().latency
@@ -163,7 +170,7 @@ class Net:
             Move the latency to the drivers as more as possible.
             This minimizes the number of registers. (But in fact, registers on different loads in the same net might be optimized by most of the synthesizers.
         """
-        if self.driver() is None:
+        if not self.has_driver:
             return
         
         loads = self.get_loads()
@@ -185,7 +192,7 @@ class Net:
             return
         
         if node.origin_signal_type.belongs(Output): # driver
-            if self.driver is not None:
+            if self.has_driver:
                 raise StructureException("Net cannot have multiple drivers")
             self.driver = weakref.ref(node)
         
@@ -201,7 +208,7 @@ class Net:
         if len(self.nodes_weak) == 1:
             return # only one node, no need to separate
         
-        if self.driver is not None and self.driver() is node: # driver is removed
+        if self.has_driver and self.driver() is node: # driver is removed
             self.driver = None
         
         self.nodes_weak.remove(node)
@@ -214,7 +221,7 @@ class Net:
         if self.located_structure_weak() is not other.located_structure_weak():
             raise StructureException("Cannot merge nets from different structures")
         
-        if self.driver is not None and other.driver is not None:
+        if self.has_driver and other.has_driver:
             raise StructureException("Merged net cannot have multiple drivers")
         
         net_h, net_l = (self, other) if len(self) > len(other) else (other, self)
@@ -280,6 +287,19 @@ class Node:
             Update the runtime type of the located net by merging. (IO-ignored)
         """
         self.located_net.get_runtime(runtime_id).merge_type(signal_type)
+
+    def set_constant(self, c: Signal):
+        # [NOTICE] 该操作只会检验是否符合 origin_type (可否 merge type) 而不会改变 origin_type, 所以不改变结构信息; 不改变 origin_type 的考虑是如果从一个 constant 更换到另一个, 无法回退上一次的更改.
+        net = self.located_net
+        if net.has_driver:
+            raise StructureException("Net with a driver can not be constantly assigned")
+        
+        try:
+            type(c).merges(self.origin_signal_type)
+        except SignalTypeException:
+            raise StructureException("Constant type conflicts with the origin type")
+        
+        net.constant = c
     
     """
         The following actions (set_origin_type, merge, separate and delete) may change the structural information,
@@ -291,6 +311,7 @@ class Node:
         self.located_structure._structural_modified()
     
     def set_origin_type(self, signal_type: SignalType, safe_modification: bool = False):
+        # [NOTICE] 去掉 safe_modification? apply_runtime 时可以最后用 rid 再重新跑一遍 deduction 来恢复其有效性.
         if self.origin_signal_type is signal_type: # no change
             return
 
@@ -298,7 +319,7 @@ class Node:
         
         if not safe_modification: # safe_modification: this modification do not influence runtime info
             self._structural_modification() # structural modification
-
+    
     def merge(self, other: 'Node'):
         if self.located_net is other.located_net: # same net, no change
             return

@@ -210,7 +210,8 @@ class VivadoSTA(StaticTimingAnalyser):
             # duplicate a temporary structure, set all latencies to 1, for generating
             s_dup = s.duplicate()
             for net in s_dup.get_nets():
-                net.driver().set_latency(1)
+                if net.has_driver:
+                    net.driver().set_latency(1)
             
             # deduction and generation
             s_dup_rid = RuntimeId.create()
@@ -250,16 +251,16 @@ class VivadoSTA(StaticTimingAnalyser):
         tcl += f"set paths {{}}\n"
         added_paths: List[Tuple] = [] # [(inst_name, pi_full_name, po_full_name, ), ]
         for inst_name, subs in s.substructures.items():
-            if subs.timing_info is not None: # [NOTICE] 分析过的结构不用再分析
+            if subs.timing_info is not None: # [NOTICE] 分析过的结构不用再分析 TODO [Important] 一个问题, 例如大量同结构加法模块, 其中有一个只有一个输入, 另一个输入 NC, 就导致其综合后直接变成了导线, timing 和其他同结构模块实质上不一样.
                 continue
-            subs.timing_info = {} # [NOTICE] 这次分析中已经计划分析的结构不用重复分析
+            subs.timing_info = {} # [NOTICE] 本次分析中已经加入计划的结构不用重复分析
             
             subs_ports_outside = s.get_subs_ports_outside(inst_name)
             in_ports = subs_ports_outside.nodes(filter = "in")
             out_ports = subs_ports_outside.nodes(filter = "out")
             
             for pi_full_name, pi in in_ports:
-                if pi.located_net.driver is None or pi.located_net.driver() is None: # NC
+                if not pi.located_net.has_driver: # input port not connected (NC)
                     continue
                 
                 from_po = pi.located_net.driver()

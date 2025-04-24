@@ -21,6 +21,8 @@ def to_extended_circuit(s: Structure):
     external_edges_map: Dict[Node, int] = {}
     external_edge_idx = 0
     for net in s.get_nets():
+        if not net.has_driver:
+            continue
         driver_latency = net.driver().latency
         
         # each driver -> load pair indicates an external edge
@@ -82,6 +84,8 @@ def to_simple_circuit(s: Structure):
     edges_list: List[Tuple[int, int, int]] = []
     
     for net in s.get_nets():
+        if not net.has_driver:
+            continue
         driver = net.driver()
         
         # each driver -> load pair indicates an edge
@@ -128,7 +132,7 @@ def retiming(s: Structure, period: Union[float, str] = "min", model = "simple"):
     
     # apply the retiming to the structure
     for load in E_map.keys():
-        driver = load.located_net.driver()
+        driver = load.located_net.driver() # [NOTICE] 理论上 E_map 中 load 都有对应的 driver
         u = V_map[driver.of_structure_inst_name] if driver.of_structure_inst_name is not None else 0
         v = V_map[load.of_structure_inst_name] if load.of_structure_inst_name is not None else 0
         load.incr_latency(r[v] - r[u])
