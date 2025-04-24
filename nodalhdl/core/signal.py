@@ -391,6 +391,9 @@ class Auto(Signal):
     @classmethod
     def to_definition_string(cls):
         return "Auto"
+    
+    def to_bits_string(self):
+        return None
 
 class Bits(Auto, metaclass = BitsType):
     @classmethod
@@ -408,7 +411,10 @@ class Bits(Auto, metaclass = BitsType):
             raise SignalTypeInstantiationException # TODO
     
     def __repr__(self):
-        return "b" + "".join([str(int(b)) for b in self.value[::-1]])
+        return "b" + self.to_bits_string()
+    
+    def to_bits_string(self):
+        return "".join([str(int(b)) for b in self.value[::-1]])
 
 Bit = Bits[1]
 Byte = Bits[8]
@@ -441,6 +447,9 @@ class UInt(Bits):
     
     def set_value(self, value: int):
         self.value = value % (1 << self.W)
+    
+    def to_bits_string(self):
+        return bin(self.value)[2:].zfill(self.W)[-self.W:]
 
 UInt8 = UInt[8]
 UInt16 = UInt[16]
@@ -476,6 +485,12 @@ class SInt(Bits):
     def set_value(self, value: int):
         half = 1 << self.W - 1
         self.value = (value + half) % (1 << self.W) - half
+    
+    def to_bits_string(self):
+        num = self.value
+        if num < 0:
+            num = (1 << self.W) + num
+        return bin(num)[2:].zfill(self.W)[-self.W:]
 
 Int8 = SInt[8]
 Int16 = SInt[16]
@@ -486,11 +501,17 @@ class FixedPoint(Bits, metaclass = FixedPointType):
     @classmethod
     def to_definition_string(cls):
         return f"FixedPoint[{cls.W_int}, {cls.W_frac}]" if hasattr(cls, 'W_int') and hasattr(cls, 'W_frac') else "FixedPoint"
+    
+    def to_bits_string(self):
+        return NotImplemented # TODO
 
 class FloatingPoint(Bits, metaclass = FloatingPointType):
     @classmethod
     def to_definition_string(cls):
         return f"FloatingPoint[{cls.W_exp}, {cls.W_frac}]" if hasattr(cls, 'W_exp') and hasattr(cls, 'W_frac') else "FloatingPoint"
+    
+    def to_bits_string(self):
+        return NotImplemented # TODO
 
 Float = FloatingPoint[8, 23]
 Double = FloatingPoint[11, 52]
