@@ -172,7 +172,8 @@ def M2() -> Structure:
     u2 = s.add_substructure("u2", addw)
     u3 = s.add_substructure("u3", Decomposition[B_t, ".xy.y", "z"])
     
-    u5 = s.add_substructure("u5", Composition[B_t, ".xy.y", "z"])
+    # u5 = s.add_substructure("u5", Composition[B_t, ".xy.y", "z"]) # Composition test
+    u5 = s.add_substructure("u5", Inverse[SInt[10]]) # Inverse test
     
     # s.connect(t, u1.IO.t)
     s.connect(const.IO.c0, u1.IO.t)

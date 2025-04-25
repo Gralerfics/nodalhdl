@@ -7,6 +7,11 @@ import hashlib
 from typing import Dict, List
 
 
+"""
+    TODO check the `NotImplemented`s.
+"""
+
+
 class ArgsOperatorMeta(type):
     pool: Dict[str, Structure] = {}
     
@@ -83,7 +88,7 @@ class Adder(ArgsOperator):
         t1, t2, tr = io.op1.type, io.op2.type, io.res.type
         
         if not (t1.belongs(UInt) and t2.belongs(UInt) or t1.belongs(SInt) and t2.belongs(SInt)):
-            raise NotImplemented # TODO
+            raise NotImplemented
 
         if not tr.W == max(t1.W, t2.W):
             raise StructureGenerationException(f"Result width should be the maximum of the two operands")
@@ -124,7 +129,7 @@ class Subtracter(Adder):
         t1, t2, tr = io.op1.type, io.op2.type, io.res.type
         
         if not (t1.belongs(UInt) and t2.belongs(UInt) or t1.belongs(SInt) and t2.belongs(SInt)):
-            raise NotImplemented # TODO
+            raise NotImplemented
 
         if not tr.W == max(t1.W, t2.W):
             raise StructureGenerationException(f"Result width should be the maximum of the two operands")
@@ -153,19 +158,58 @@ end architecture;
         )
 
 
-class Inverse:
+class Inverse(ArgsOperator):
     """
         Inverse[<op_type (SignalType)>]
         
         Input(s): op (input_type)
         Output(s): res (input_type)
-        
-        TODO 取相反数, 暂时只考虑 SInt
     """
-    pass
+    @staticmethod
+    def setup(*args) -> Structure:
+        op_type = args[0]
+        
+        s = Structure()
+        
+        s.add_port("op", Input[op_type])
+        s.add_port("res", Output[op_type])
+        
+        return s
+    
+    @staticmethod
+    def deduction(s: Structure, io: IOProxy):
+        io.res.update(io.op.type)
+        io.op.update(io.res.type)
+    
+    @staticmethod
+    def generation(s: Structure, h: HDLFileModel, io: IOProxy):
+        op_type = io.op.type
+        
+        if not op_type.belongs(SInt):
+            raise NotImplemented
+        
+        h.set_raw(".vhd",
+f"""\
+library IEEE;
+use IEEE.std_logic_1164.all;
+use IEEE.numeric_std.all;
+
+entity {h.entity_name} is
+    port (
+        op: in std_logic_vector({op_type.W - 1} downto 0);
+        res: out std_logic_vector({op_type.W - 1} downto 0)
+    );
+end entity;
+
+architecture Behavioral of {h.entity_name} is
+begin
+    res <= std_logic_vector(-signed(op));
+end architecture;
+"""
+        )
 
 
-class EqualTo:
+class EqualTo(ArgsOperator):
     """
         EqualTo[<op1_type (SignalType)>, <op2_type (SignalType)>]
         
@@ -177,7 +221,7 @@ class EqualTo:
     pass
 
 
-class LessThan:
+class LessThan(ArgsOperator):
     """
         LessThan[<op1_type (SignalType)>, <op2_type (SignalType)>]
         
@@ -189,7 +233,7 @@ class LessThan:
     pass
 
 
-class Not:
+class Not(ArgsOperator):
     """
         Not[<op_type (BitsType)>]
         
@@ -201,7 +245,7 @@ class Not:
     pass
 
 
-class And:
+class And(ArgsOperator):
     """
         And[<op1_type (BitsType)>, <op2_type (BitsType)>]
         
@@ -213,7 +257,7 @@ class And:
     pass
 
 
-class ReduceAnd:
+class ReduceAnd(ArgsOperator):
     """
         ReduceAnd[<op_type (BitsType)>]
         
@@ -225,7 +269,7 @@ class ReduceAnd:
     pass
 
 
-class Or:
+class Or(ArgsOperator):
     """
         Or[<op1_type (BitsType)>, <op2_type (BitsType)>]
         
@@ -237,7 +281,7 @@ class Or:
     pass
 
 
-class ReduceOr:
+class ReduceOr(ArgsOperator):
     """
         ReduceOr[<op_type (BitsType)>]
         
@@ -249,21 +293,21 @@ class ReduceOr:
     pass
 
 
-# class Shifter:
+# class Shifter(ArgsOperator):
 #     """
 #         TODO 暂时只考虑 UInt, SInt 和 Bits
 #     """
 #     pass
 
 
-# class Slicer:
+# class Slicer(ArgsOperator):
 #     """
 #         TODO 暂时只考虑 Bits
 #     """
 #     pass
 
 
-class Multiplexer:
+class Multiplexer(ArgsOperator):
     """
         Multiplexer[<value_type (SignalType)>]
         
@@ -328,7 +372,7 @@ class Decomposition(ArgsOperator):
         to_hdl_type = lambda t: t.__name__ if t.belongs(Bundle) else f"std_logic_vector({t.W - 1} downto 0)"
         path_to_valid_name = lambda path_str: path_str.strip(".").replace(".", "_")
         
-        port_str = ";\n".join([f"        o_{path_to_valid_name(path_str)}: out {to_hdl_type(eval(f"io.o.{path_str.strip(".")}.type"))}" for path_str in s.custom_params["path_strings"]]) # TODO dont use eval
+        port_str = ";\n".join([f"        o_{path_to_valid_name(path_str)}: out {to_hdl_type(eval(f"io.o.{path_str.strip(".")}.type"))}" for path_str in s.custom_params["path_strings"]]) # [NOTICE] dont use eval
         assign_str = "\n".join([f"    o_{path_to_valid_name(path_str)} <= i.{path_str.strip(".")};" for path_str in s.custom_params["path_strings"]])
         
         h.set_raw(".vhd",
@@ -416,7 +460,7 @@ class Composition(ArgsOperator):
         to_hdl_type = lambda t: t.__name__ if t.belongs(Bundle) else f"std_logic_vector({t.W - 1} downto 0)"
         path_to_valid_name = lambda path_str: path_str.strip(".").replace(".", "_")
         
-        port_str = ";\n".join([f"        i_{path_to_valid_name(path_str)}: in {to_hdl_type(eval(f"io.i.{path_str.strip(".")}.type"))}" for path_str in s.custom_params["path_strings"]]) # TODO dont use eval
+        port_str = ";\n".join([f"        i_{path_to_valid_name(path_str)}: in {to_hdl_type(eval(f"io.i.{path_str.strip(".")}.type"))}" for path_str in s.custom_params["path_strings"]]) # [NOTICE] dont use eval
         assign_str = "\n".join([f"    o.{path_str.strip(".")} <= i_{path_to_valid_name(path_str)};" for path_str in s.custom_params["path_strings"]])
         
         def _assign_zeros(t: SignalType, path: List[str] = []):
