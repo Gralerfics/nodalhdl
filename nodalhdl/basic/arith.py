@@ -263,10 +263,50 @@ class LessThan(ArgsOperator):
         
         Input(s): op1 (op1_type), op2 (op2_type)
         Output(s): res (Bit)
-        
-        TODO 小于, 暂时只考虑 UInt 和 SInt
     """
-    pass
+    @staticmethod
+    def setup(*args) -> Structure:
+        op1_type, op2_type = args[0], args[1]
+        
+        s = Structure()
+        
+        s.add_port("op1", Input[op1_type])
+        s.add_port("op2", Input[op2_type])
+        s.add_port("res", Output[Bit])
+        
+        return s
+    
+    @staticmethod
+    def generation(s: Structure, h: HDLFileModel, io: IOProxy):
+        op1_type, op2_type = io.op1.type, io.op2.type
+        
+        if op1_type.belongs(UInt) and op2_type.belongs(UInt):
+            cond_str = "unsigned(op1) < unsigned(op2)"
+        elif op1_type.belongs(SInt) and op2_type.belongs(SInt):
+            cond_str = "signed(op1) < signed(op2)"
+        else:
+            raise NotImplemented
+        
+        h.set_raw(".vhd",
+f"""\
+library IEEE;
+use IEEE.std_logic_1164.all;
+use IEEE.numeric_std.all;
+
+entity {h.entity_name} is
+    port (
+        op1: in {declaration_from_type(op1_type)};
+        op2: in {declaration_from_type(op2_type)};
+        res: out std_logic
+    );
+end entity;
+
+architecture Behavioral of {h.entity_name} is
+begin
+    res <= '1' when {cond_str} else '0';
+end architecture;
+"""
+        )
 
 
 class Not(ArgsOperator):
