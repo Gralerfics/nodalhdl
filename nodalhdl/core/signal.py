@@ -542,33 +542,44 @@ class Bundle(Auto, metaclass = BundleType):
         return "{" + ", ".join([f"\"{k}\": {str(v)}" for k, v in self._bundle_objects.items()]) + "}"
 
 
-P = Bundle[{
-    "a": UInt[4],
-    "b": Bits[8],
-    "c": Bundle[{
-        "x": SInt[3],
-        "y": SInt[5],
-        "z": Bundle[{
-            "n": UInt[8]
-        }]
-    }]
-}]
+# P = Bundle[{
+#     "a": UInt[4],
+#     "b": Bits[8],
+#     "c": Bundle[{
+#         "x": SInt[3],
+#         "y": SInt[5],
+#         "z": Bundle[{
+#             "n": UInt[8]
+#         }]
+#     }]
+# }]
 
-def _add_output(t: SignalType, path: List[str]):
-    print(path, t)
-    if len(path) == 0:
-        return Output[t]
-    elif t.belongs(Bundle):
-        return Bundle[{k: (v if k != path[0] else _add_output(v, path[1:])) for k, v in t._bundle_types.items()}]
-    else:
-        raise Exception("") # [NOTICE]
+# def _add_output(t: SignalType, path: List[str]):
+#     print(path, t)
+#     if len(path) == 0:
+#         return Output[t]
+#     elif t.belongs(Bundle):
+#         return Bundle[{k: (v if k != path[0] else _add_output(v, path[1:])) for k, v in t._bundle_types.items()}]
+#     else:
+#         raise Exception("") # [NOTICE]
 
-def _remove_non_wrapped(t: SignalType):
-    return Bundle[{k: (v if v.perfectly_io_wrapped else _remove_non_wrapped(v)) for k, v in t._bundle_types.items() if v.io_wrapper_included}]
+# def _remove_non_wrapped(t: SignalType):
+#     return Bundle[{k: (v if v.perfectly_io_wrapped else _remove_non_wrapped(v)) for k, v in t._bundle_types.items() if v.io_wrapper_included}]
 
-Q = _add_output(P, ["c", "z"])
-Qr = _remove_non_wrapped(Q)
+# Q = _add_output(P, ["c", "z"])
+# Qr = _remove_non_wrapped(Q)
 
-print(Q.to_definition_string())
-print(Qr.to_definition_string())
+# print(Q.to_definition_string())
+# print(Qr.to_definition_string())
+
+# def _assign_zeros(t: SignalType, path: List[str] = []):
+#     res = ""
+#     if not t.perfectly_io_wrapped:
+#         if t.belongs(Bundle):
+#             res += "".join([_assign_zeros(v, path + [k]) for k, v in t._bundle_types.items()])
+#         else:
+#             res += f"\n    o.{".".join(path)} <= (others => \'0\');"
+#     return res
+
+# print(_assign_zeros(Q))
 

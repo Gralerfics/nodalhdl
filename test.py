@@ -1,6 +1,6 @@
 from nodalhdl.core.signal import UInt, SInt, Bits, Bit, Float, Bundle, Input, Output, Auto, SignalType
 from nodalhdl.core.structure import Structure, RuntimeId, StructureProxy
-from nodalhdl.basic.arith import Adder, Constant, Decomposition
+from nodalhdl.basic.arith import * # Adder, Constant, Decomposition, Composition
 from nodalhdl.core.hdl import HDLFileModel
 from nodalhdl.timing.sta import VivadoSTA
 from nodalhdl.timing.pipelining import pipelining
@@ -172,8 +172,7 @@ def M2() -> Structure:
     u2 = s.add_substructure("u2", addw)
     u3 = s.add_substructure("u3", Decomposition[B_t, ".xy.y", "z"])
     
-    # u5 = s.add_substructure("u5", Decomposition[B_t])
-    # s.connect(Bi, u5.IO.i)
+    u5 = s.add_substructure("u5", Composition[B_t, ".xy.y", "z"])
     
     # s.connect(t, u1.IO.t)
     s.connect(const.IO.c0, u1.IO.t)

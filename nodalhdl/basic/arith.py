@@ -289,10 +289,7 @@ class Decomposition(ArgsOperator):
         
         # arguments
         input_type: BundleType = args[0].clear_io()
-        if len(args) == 1:
-            path_strings = list(input_type._bundle_types.keys())
-        else:
-            path_strings = args[1:]
+        path_strings = args[1:] if len(args) > 1 else list(input_type._bundle_types.keys())
         
         # add Output wrappers
         output_type = input_type
@@ -365,13 +362,100 @@ end architecture;
 
 class Composition(ArgsOperator):
     """
-        Composition[<output_type (BundleType)>]: all shallow members
-        Composition[<output_type (BundleType)>, <path_0 (str)>, <path_1 (str)>, ...]
-
+        Composition[<output_type (BundleType)>, <path_0 (str)>, ...]
+        
         Input(s): i (structural)
         Output(s): o (BundleType)
     """
-    pass # TODO
+    @staticmethod
+    def setup(*args) -> Structure:
+        assert len(args) - 1 >= 0
+        
+        # arguments
+        output_type: BundleType = args[0].clear_io()
+        path_strings = args[1:] if len(args) > 1 else list(input_type._bundle_types.keys())
+        
+        # add Input wrappers
+        input_type = output_type
+        
+        def _add_input(t: SignalType, path: List[str]):
+            if len(path) == 0:
+                return Input[t]
+            elif t.belongs(Bundle):
+                return Bundle[{k: (v if k != path[0] else _add_input(v, path[1:])) for k, v in t._bundle_types.items()}]
+            else:
+                raise Exception("Invalid path")
+        
+        for path_str in path_strings:
+            input_type = _add_input(input_type, path_str.strip(".").split("."))
+        
+        selectively_wrapped_input_type = input_type
+        
+        # remove imperfect componets
+        def _remove_non_wrapped(t: SignalType):
+            return Bundle[{k: (v if v.perfectly_io_wrapped else _remove_non_wrapped(v)) for k, v in t._bundle_types.items() if v.io_wrapper_included}]
+        
+        input_type = _remove_non_wrapped(input_type)
+        
+        # build structure
+        s = Structure()
+        
+        s.add_port("i", input_type)
+        s.add_port("o", Output[output_type])
+        
+        s.custom_params["path_strings"] = path_strings
+        s.custom_params["selectively_wrapped_input_type"] = selectively_wrapped_input_type
+        
+        return s
+    
+    @staticmethod
+    def generation(s: Structure, h: HDLFileModel, io: IOProxy):
+        output_type = io.o.type
+        selectively_wrapped_input_type = s.custom_params["selectively_wrapped_input_type"]
+        
+        to_hdl_type = lambda t: t.__name__ if t.belongs(Bundle) else f"std_logic_vector({t.W - 1} downto 0)"
+        path_to_valid_name = lambda path_str: path_str.strip(".").replace(".", "_")
+        
+        port_str = ";\n".join([f"        i_{path_to_valid_name(path_str)}: in {to_hdl_type(eval(f"io.i.{path_str.strip(".")}.type"))}" for path_str in s.custom_params["path_strings"]]) # TODO dont use eval
+        assign_str = "\n".join([f"    o.{path_str.strip(".")} <= i_{path_to_valid_name(path_str)};" for path_str in s.custom_params["path_strings"]])
+        
+        def _assign_zeros(t: SignalType, path: List[str] = []):
+            res = ""
+            if not t.perfectly_io_wrapped:
+                if t.belongs(Bundle):
+                    res += "".join([_assign_zeros(v, path + [k]) for k, v in t._bundle_types.items()])
+                else:
+                    res += f"\n    o.{".".join(path)} <= (others => \'0\');"
+            return res
+        
+        assign_str += _assign_zeros(selectively_wrapped_input_type)
+        
+        h.set_raw(".vhd",
+f"""\
+library IEEE;
+use IEEE.std_logic_1164.all;
+use work.types.all;
+
+entity {h.entity_name} is
+    port (
+        o: out {to_hdl_type(output_type)};
+{port_str}
+    );
+end entity;
+
+architecture Behavioral of {h.entity_name} is
+begin
+{assign_str}
+end architecture;
+"""
+        )
+
+    @classmethod
+    def naming(cls, *args):
+        if len(args) == 1:
+            return f"{cls.__name__}_{args[0].__name__[7:15]}"
+        else:
+            return f"{cls.__name__}_{args[0].__name__[7:15]}_{"_".join([path_str.strip(".").replace(".", "_") for path_str in args[1:]])}"
 
 
 class Constant(ArgsOperator):

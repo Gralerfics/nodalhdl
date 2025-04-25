@@ -1029,6 +1029,10 @@ class NodeProxy:
         return Input if is_in ^ self.flipped else Output
     
     @property
+    def origin_type(self):
+        return self.proxy_node.origin_signal_type
+    
+    @property
     def type(self):
         return self.proxy_node.get_type(self.runtime_id)
     
