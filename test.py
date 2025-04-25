@@ -177,7 +177,8 @@ def M2() -> Structure:
     # u5 = s.add_substructure("u5", EqualTo[SInt[10], B_t]) # EqualTo test
     # u5 = s.add_substructure("u5", LessThan[SInt[10], SInt[5]]) # LessThan test
     # u5 = s.add_substructure("u5", Not[Bits[10]]) # Not test
-    u5 = s.add_substructure("u5", And[Bits[10], Bits[10]]) # And test
+    # u5 = s.add_substructure("u5", And[Bits[10], Bits[10]]) # And test
+    u5 = s.add_substructure("u5", Or[Bits[10], Bits[10]]) # Or test
     
     # s.connect(t, u1.IO.t)
     s.connect(const.IO.c0, u1.IO.t)

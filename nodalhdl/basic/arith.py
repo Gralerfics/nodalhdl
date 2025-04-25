@@ -432,16 +432,39 @@ class ReduceAnd(ArgsOperator):
     pass
 
 
-class Or(ArgsOperator):
+class Or(EqualWidthBinaryOperator):
     """
         Or[<op1_type (BitsType)>, <op2_type (BitsType)>]
         
         Input(s): op1 (op1_type), op2 (op2_type)
         Output(s): res (the wider one)
-        
-        TODO 按位或
     """
-    pass
+    @staticmethod
+    def generation(s: Structure, h: HDLFileModel, io: IOProxy):
+        op1_type, op2_type, res_type = io.op1.type, io.op2.type, io.res.type
+        
+        if op1_type.base != Bits or op2_type.base != Bits:
+            raise NotImplementedError
+        
+        h.set_raw(".vhd",
+f"""\
+library IEEE;
+use IEEE.std_logic_1164.all;
+
+entity {h.entity_name} is
+    port (
+        op1: in {declaration_from_type(op1_type)};
+        op2: in {declaration_from_type(op2_type)};
+        res: out {declaration_from_type(res_type)}
+    );
+end entity;
+
+architecture Behavioral of {h.entity_name} is
+begin
+    res <= op1 or op2;
+end architecture;
+"""
+        )
 
 
 class ReduceOr(ArgsOperator):
