@@ -400,21 +400,22 @@ class Bits(Auto, metaclass = BitsType):
     def to_definition_string(cls):
         return f"Bits[{cls.W}]" if hasattr(cls, 'W') else "Bits"
     
-    def __init__(self, value: Union[List[bool], str] = []):
-        if isinstance(value, list):
-            if len(value) > self.W:
-                raise SignalTypeInstantiationException # TODO
-            self.value = value + [False] * (self.W - len(value))
+    def __init__(self, value: int = 0):
+        if isinstance(value, int):
+            self.set_value(value)
         elif isinstance(value, str):
-            self.value = [bool(int(c)) for c in value[::-1]]
+            self.set_value(int(value[-self.W:], base = 2))
         else:
             raise SignalTypeInstantiationException # TODO
     
     def __repr__(self):
         return "b" + self.to_bits_string()
     
+    def set_value(self, value: int):
+        self.value = value % (1 << self.W)
+    
     def to_bits_string(self):
-        return "".join([str(int(b)) for b in self.value[::-1]])
+        return bin(self.value)[2:].zfill(self.W)[-self.W:]
 
 Bit = Bits[1]
 Byte = Bits[8]
@@ -423,9 +424,6 @@ class UInt(Bits):
     @classmethod
     def to_definition_string(cls):
         return f"UInt[{cls.W}]" if hasattr(cls, 'W') else "UInt"
-    
-    def __init__(self, value: int = 0):
-        self.set_value(value)
     
     def __repr__(self):
         return f"{self.value}.U({self.W}.W)"
@@ -444,12 +442,6 @@ class UInt(Bits):
     
     __radd__ = __add__
     __rsub__ = __sub__
-    
-    def set_value(self, value: int):
-        self.value = value % (1 << self.W)
-    
-    def to_bits_string(self):
-        return bin(self.value)[2:].zfill(self.W)[-self.W:]
 
 UInt8 = UInt[8]
 UInt16 = UInt[16]
