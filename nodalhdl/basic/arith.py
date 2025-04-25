@@ -503,10 +503,40 @@ class ReduceOr(ArgsOperator):
         
         Input(s): op (op_type)
         Output(s): res (Bit)
-        
-        TODO 规约或
     """
-    pass
+    @staticmethod
+    def setup(*args) -> Structure:
+        op_type = args[0]
+        
+        s = Structure()
+        
+        s.add_port("op", Input[op_type])
+        s.add_port("res", Output[Bit])
+        
+        return s
+    
+    @staticmethod
+    def generation(s: Structure, h: HDLFileModel, io: IOProxy):
+        op_type = io.op.type
+        
+        h.set_raw(".vhd",
+f"""\
+library IEEE;
+use IEEE.std_logic_1164.all;
+
+entity {h.entity_name} is
+    port (
+        op: in {declaration_from_type(op_type)};
+        res: out std_logic
+    );
+end entity;
+
+architecture Behavioral of {h.entity_name} is
+begin
+    res <= '1' when (op /= (op'range => '0')) else '0';
+end architecture;
+"""
+        )
 
 
 # class Shifter(ArgsOperator):
