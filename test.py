@@ -180,7 +180,8 @@ def M2() -> Structure:
     # u5 = s.add_substructure("u5", And[Bits[10], Bits[10]]) # And test
     # u5 = s.add_substructure("u5", Or[Bits[10], Bits[10]]) # Or test
     # u5 = s.add_substructure("u5", ReduceAnd[Bits[10]]) # ReduceAnd test
-    u5 = s.add_substructure("u5", ReduceOr[Bits[10]]) # ReduceOr test
+    # u5 = s.add_substructure("u5", ReduceOr[Bits[10]]) # ReduceOr test
+    u5 = s.add_substructure("u5", Multiplexer[UInt[6]]) # Multiplexer test
     
     # s.connect(t, u1.IO.t)
     s.connect(const.IO.c0, u1.IO.t)

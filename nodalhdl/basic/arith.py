@@ -83,7 +83,7 @@ class WiderOutputBinaryOperator(ArgsOperator):
             io.op1.update(res_type.base[res_type.W])
 
 
-class EqualWidthBinaryOperator(ArgsOperator):
+class EqualBinaryOperator(ArgsOperator):
     @staticmethod
     def setup(*args) -> Structure:
         op1_type, op2_type = args[0], args[1]
@@ -385,7 +385,7 @@ end architecture;
         )
 
 
-class And(EqualWidthBinaryOperator):
+class And(EqualBinaryOperator):
     """
         And[<op1_type (BitsType)>, <op2_type (BitsType)>]
         
@@ -462,7 +462,7 @@ end architecture;
         )
 
 
-class Or(EqualWidthBinaryOperator):
+class Or(EqualBinaryOperator):
     """
         Or[<op1_type (BitsType)>, <op2_type (BitsType)>]
         
@@ -555,14 +555,56 @@ end architecture;
 
 class Multiplexer(ArgsOperator):
     """
-        Multiplexer[<value_type (SignalType)>]
+        Multiplexer[<value_type (SignalType)>]: two-way MUX
         
         Input(s): i0 (value_type), i1 (value_type), s (Bit)
         Output(s): o
-        
-        TODO 二路线选器
     """
-    pass
+    @staticmethod
+    def setup(*args) -> Structure:
+        value_type = args[0]
+        
+        s = Structure()
+        
+        s.add_port("i0", Input[value_type])
+        s.add_port("i1", Input[value_type])
+        s.add_port("s", Input[Bit])
+        s.add_port("o", Output[value_type])
+        
+        return s
+    
+    @staticmethod
+    def deduction(s: Structure, io: IOProxy):
+        io.o.update(io.i0.type)
+        io.o.update(io.i1.type)
+        io.i0.update(io.o.type)
+        io.i1.update(io.o.type)
+    
+    @staticmethod
+    def generation(s: Structure, h: HDLFileModel, io: IOProxy):
+        value_type = io.i0.type
+        type_declaration = declaration_from_type(value_type)
+        
+        h.set_raw(".vhd",
+f"""\
+library IEEE;
+use IEEE.std_logic_1164.all;
+
+entity {h.entity_name} is
+    port (
+        i0: in {type_declaration};
+        i1: in {type_declaration};
+        s: in std_logic;
+        o: out {type_declaration}
+    );
+end entity;
+
+architecture Behavioral of {h.entity_name} is
+begin
+    o <= i1 when s = '1' else i0;
+end architecture;
+"""
+        )
 
 
 class Decomposition(ArgsOperator):
