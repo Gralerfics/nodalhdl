@@ -12,6 +12,9 @@ from typing import Dict, List
 """
 
 
+declaration_from_type = lambda t: t.__name__ if t.belongs(Bundle) else f"std_logic_vector({t.W - 1} downto 0)"
+
+
 class ArgsOperatorMeta(type):
     pool: Dict[str, Structure] = {}
     
@@ -184,6 +187,7 @@ class Inverse(ArgsOperator):
     @staticmethod
     def generation(s: Structure, h: HDLFileModel, io: IOProxy):
         op_type = io.op.type
+        type_declaration = declaration_from_type(op_type)
         
         if not op_type.belongs(SInt):
             raise NotImplemented
@@ -196,8 +200,8 @@ use IEEE.numeric_std.all;
 
 entity {h.entity_name} is
     port (
-        op: in std_logic_vector({op_type.W - 1} downto 0);
-        res: out std_logic_vector({op_type.W - 1} downto 0)
+        op: in {type_declaration};
+        res: out {type_declaration}
     );
 end entity;
 
@@ -215,10 +219,42 @@ class EqualTo(ArgsOperator):
         
         Input(s): op1 (op1_type), op2 (op2_type)
         Output(s): res (Bit)
-        
-        TODO 相等, 考虑支持所有类型 (所有类型到 hdl 中都是 std_logic_vector 或由 std_logic_vector 构成的结构体类型, 按位比较即可)
     """
-    pass
+    @staticmethod
+    def setup(*args) -> Structure:
+        op1_type, op2_type = args[0], args[1]
+        
+        s = Structure()
+        
+        s.add_port("op1", Input[op1_type])
+        s.add_port("op2", Input[op2_type])
+        s.add_port("res", Output[Bit])
+        
+        return s
+    
+    @staticmethod
+    def generation(s: Structure, h: HDLFileModel, io: IOProxy):
+        op1_type, op2_type = io.op1.type, io.op2.type
+        
+        h.set_raw(".vhd",
+f"""\
+library IEEE;
+use IEEE.std_logic_1164.all;
+
+entity {h.entity_name} is
+    port (
+        op1: in {declaration_from_type(op1_type)};
+        op2: in {declaration_from_type(op2_type)};
+        res: out std_logic
+    );
+end entity;
+
+architecture Behavioral of {h.entity_name} is
+begin
+    res <= '1' when op1 = op2 else '0';
+end architecture;
+"""
+        )
 
 
 class LessThan(ArgsOperator):
@@ -369,10 +405,9 @@ class Decomposition(ArgsOperator):
     def generation(s: Structure, h: HDLFileModel, io: IOProxy):
         input_type = io.i.type
         
-        to_hdl_type = lambda t: t.__name__ if t.belongs(Bundle) else f"std_logic_vector({t.W - 1} downto 0)"
         path_to_valid_name = lambda path_str: path_str.strip(".").replace(".", "_")
         
-        port_str = ";\n".join([f"        o_{path_to_valid_name(path_str)}: out {to_hdl_type(eval(f"io.o.{path_str.strip(".")}.type"))}" for path_str in s.custom_params["path_strings"]]) # [NOTICE] dont use eval
+        port_str = ";\n".join([f"        o_{path_to_valid_name(path_str)}: out {declaration_from_type(eval(f"io.o.{path_str.strip(".")}.type"))}" for path_str in s.custom_params["path_strings"]]) # [NOTICE] dont use eval
         assign_str = "\n".join([f"    o_{path_to_valid_name(path_str)} <= i.{path_str.strip(".")};" for path_str in s.custom_params["path_strings"]])
         
         h.set_raw(".vhd",
@@ -384,7 +419,7 @@ use work.types.all;
 
 entity {h.entity_name} is
     port (
-        i: in {to_hdl_type(input_type)};
+        i: in {declaration_from_type(input_type)};
 {port_str}
     );
 end entity;
@@ -457,10 +492,9 @@ class Composition(ArgsOperator):
         output_type = io.o.type
         selectively_wrapped_input_type = s.custom_params["selectively_wrapped_input_type"]
         
-        to_hdl_type = lambda t: t.__name__ if t.belongs(Bundle) else f"std_logic_vector({t.W - 1} downto 0)"
         path_to_valid_name = lambda path_str: path_str.strip(".").replace(".", "_")
         
-        port_str = ";\n".join([f"        i_{path_to_valid_name(path_str)}: in {to_hdl_type(eval(f"io.i.{path_str.strip(".")}.type"))}" for path_str in s.custom_params["path_strings"]]) # [NOTICE] dont use eval
+        port_str = ";\n".join([f"        i_{path_to_valid_name(path_str)}: in {declaration_from_type(eval(f"io.i.{path_str.strip(".")}.type"))}" for path_str in s.custom_params["path_strings"]]) # [NOTICE] dont use eval
         assign_str = "\n".join([f"    o.{path_str.strip(".")} <= i_{path_to_valid_name(path_str)};" for path_str in s.custom_params["path_strings"]])
         
         def _assign_zeros(t: SignalType, path: List[str] = []):
@@ -482,7 +516,7 @@ use work.types.all;
 
 entity {h.entity_name} is
     port (
-        o: out {to_hdl_type(output_type)};
+        o: out {declaration_from_type(output_type)};
 {port_str}
     );
 end entity;
@@ -525,9 +559,7 @@ class Constant(ArgsOperator):
     def generation(s: Structure, h: HDLFileModel, io: IOProxy):
         constants = s.custom_params["constants"]
         
-        f = lambda t: t.__name__ if t.belongs(Bundle) else f"std_logic_vector({t.W - 1} downto 0)"
-        
-        port_str = ";\n".join([f"        c{idx}: out {f(type(c))}" for idx, c in enumerate(constants)])
+        port_str = ";\n".join([f"        c{idx}: out {declaration_from_type(type(c))}" for idx, c in enumerate(constants)])
         
         def _assign(sub_wire_name: str, c: Signal):
             res = ""
