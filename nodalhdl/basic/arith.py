@@ -1,5 +1,5 @@
 from ..core.signal import SignalType, BundleType, Signal, Bits, Bit, UInt, SInt, Input, Output, Auto, Bundle
-from ..core.structure import Structure, RuntimeId, StructureGenerationException, IOProxy
+from ..core.structure import Structure, RuntimeId, IOProxy, StructureGenerationException
 from ..core.hdl import HDLFileModel
 
 import hashlib
@@ -58,7 +58,53 @@ class ArgsOperator(metaclass = ArgsOperatorMeta):
     def naming(cls, *args): return f"{cls.__name__}_{'_'.join(map(str, args))}" # [NOTICE] use valid string
 
 
-class Adder(ArgsOperator):
+class WiderOutputBinaryOperator(ArgsOperator):
+    @staticmethod
+    def setup(*args) -> Structure:
+        op1_type, op2_type = args[0], args[1]
+        
+        s = Structure()
+        
+        s.add_port("op1", Input[op1_type])
+        s.add_port("op2", Input[op2_type])
+        s.add_port("res", Output[Auto])
+        
+        return s
+    
+    @staticmethod
+    def deduction(s: Structure, io: IOProxy):
+        op1_type, op2_type, res_type = io.op1.type, io.op2.type, io.res.type
+        
+        if op1_type.determined and op2_type.determined:
+            io.res.update(op1_type.base[max(op1_type.W, op2_type.W)])
+        elif res_type.determined and op1_type.determined and op1_type.W < res_type.W:
+            io.op2.update(res_type.base[res_type.W])
+        elif res_type.determined and op2_type.determined and op2_type.W < res_type.W:
+            io.op1.update(res_type.base[res_type.W])
+
+
+class EqualWidthBinaryOperator(ArgsOperator):
+    @staticmethod
+    def setup(*args) -> Structure:
+        op1_type, op2_type = args[0], args[1]
+        
+        s = Structure()
+        
+        s.add_port("op1", Input[op1_type])
+        s.add_port("op2", Input[op2_type])
+        s.add_port("res", Output[Auto])
+        
+        return s
+    
+    @staticmethod
+    def deduction(s: Structure, io: IOProxy):
+        io.res.update(io.op1.type)
+        io.res.update(io.op2.type)
+        io.op1.update(io.res.type)
+        io.op2.update(io.res.type)
+
+
+class Adder(WiderOutputBinaryOperator):
     """
         Adder[<op1_type (SignalType)>, <op2_type (SignalType)>]
         
@@ -66,37 +112,16 @@ class Adder(ArgsOperator):
         Output(s): res (the wider one)
     """
     @staticmethod
-    def setup(*args) -> Structure:
-        s = Structure()
-        
-        s.add_port("op1", Input[args[0]])
-        s.add_port("op2", Input[args[1]])
-        s.add_port("res", Output[Auto])
-        
-        return s
-    
-    @staticmethod
-    def deduction(s: Structure, io: IOProxy):
-        t1, t2, tr = io.op1.type, io.op2.type, io.res.type
-        
-        if t1.determined and t2.determined:
-            io.res.update(t1.base[max(t1.W, t2.W)])
-        elif tr.determined and t1.determined and t1.W < tr.W:
-            io.op2.update(tr.base[tr.W])
-        elif tr.determined and t2.determined and t2.W < tr.W:
-            io.op1.update(tr.base[tr.W])
-    
-    @staticmethod
     def generation(s: Structure, h: HDLFileModel, io: IOProxy):
-        t1, t2, tr = io.op1.type, io.op2.type, io.res.type
+        op1_type, op2_type, res_type = io.op1.type, io.op2.type, io.res.type
         
-        if not (t1.belongs(UInt) and t2.belongs(UInt) or t1.belongs(SInt) and t2.belongs(SInt)):
+        if not (op1_type.belongs(UInt) and op2_type.belongs(UInt) or op1_type.belongs(SInt) and op2_type.belongs(SInt)):
             raise NotImplementedError
 
-        if not tr.W == max(t1.W, t2.W):
-            raise StructureGenerationException(f"Result width should be the maximum of the two operands")
+        # if res_type.W != max(op1_type.W, op2_type.W):
+        #     raise StructureGenerationException(f"Result width should be the maximum of the two operands")
         
-        ts = "unsigned" if t1.belongs(UInt) else "signed"
+        ts = "unsigned" if op1_type.belongs(UInt) else "signed"
         
         h.set_raw(".vhd",
 f"""\
@@ -106,9 +131,9 @@ use IEEE.numeric_std.all;
 
 entity {h.entity_name} is
     port (
-        op1: in std_logic_vector({t1.W - 1} downto 0);
-        op2: in std_logic_vector({t2.W - 1} downto 0);
-        res: out std_logic_vector({tr.W - 1} downto 0)
+        op1: in {declaration_from_type(op1_type)};
+        op2: in {declaration_from_type(op2_type)};
+        res: out {declaration_from_type(res_type)}
     );
 end entity;
 
@@ -120,7 +145,7 @@ end architecture;
         )
 
 
-class Subtracter(Adder):
+class Subtracter(WiderOutputBinaryOperator):
     """
         Subtracter[<op1_type (SignalType)>, <op2_type (SignalType)>]
         
@@ -129,15 +154,15 @@ class Subtracter(Adder):
     """
     @staticmethod
     def generation(s: Structure, h: HDLFileModel, io: IOProxy):
-        t1, t2, tr = io.op1.type, io.op2.type, io.res.type
+        op1_type, op2_type, res_type = io.op1.type, io.op2.type, io.res.type
         
-        if not (t1.belongs(UInt) and t2.belongs(UInt) or t1.belongs(SInt) and t2.belongs(SInt)):
+        if not (op1_type.belongs(UInt) and op2_type.belongs(UInt) or op1_type.belongs(SInt) and op2_type.belongs(SInt)):
             raise NotImplementedError
 
-        if not tr.W == max(t1.W, t2.W):
-            raise StructureGenerationException(f"Result width should be the maximum of the two operands")
+        # if res_type.W != max(op1_type.W, op2_type.W):
+        #     raise StructureGenerationException(f"Result width should be the maximum of the two operands")
         
-        ts = "unsigned" if t1.belongs(UInt) else "signed"
+        ts = "unsigned" if op1_type.belongs(UInt) else "signed"
         
         h.set_raw(".vhd",
 f"""\
@@ -147,9 +172,9 @@ use IEEE.numeric_std.all;
 
 entity {h.entity_name} is
     port (
-        op1: in std_logic_vector({t1.W - 1} downto 0);
-        op2: in std_logic_vector({t2.W - 1} downto 0);
-        res: out std_logic_vector({tr.W - 1} downto 0)
+        op1: in {declaration_from_type(op1_type)};
+        op2: in {declaration_from_type(op2_type)};
+        res: {declaration_from_type(res_type)}
     );
 end entity;
 
@@ -360,16 +385,39 @@ end architecture;
         )
 
 
-class And(ArgsOperator):
+class And(EqualWidthBinaryOperator):
     """
         And[<op1_type (BitsType)>, <op2_type (BitsType)>]
         
         Input(s): op1 (op1_type), op2 (op2_type)
         Output(s): res (the wider one)
-        
-        TODO 按位与
     """
-    pass
+    @staticmethod
+    def generation(s: Structure, h: HDLFileModel, io: IOProxy):
+        op1_type, op2_type, res_type = io.op1.type, io.op2.type, io.res.type
+        
+        if op1_type.base != Bits or op2_type.base != Bits:
+            raise NotImplementedError
+        
+        h.set_raw(".vhd",
+f"""\
+library IEEE;
+use IEEE.std_logic_1164.all;
+
+entity {h.entity_name} is
+    port (
+        op1: in {declaration_from_type(op1_type)};
+        op2: in {declaration_from_type(op2_type)};
+        res: out {declaration_from_type(res_type)}
+    );
+end entity;
+
+architecture Behavioral of {h.entity_name} is
+begin
+    res <= op1 and op2;
+end architecture;
+"""
+        )
 
 
 class ReduceAnd(ArgsOperator):
