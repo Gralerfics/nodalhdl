@@ -1,10 +1,10 @@
-from ..core.signal import SignalType, BundleType, Signal, Bits, UInt, SInt, Input, Output, Auto, Bundle
+from ..core.signal import SignalType, BundleType, Signal, Bits, Bit, UInt, SInt, Input, Output, Auto, Bundle
 from ..core.structure import Structure, RuntimeId, StructureGenerationException, IOProxy
 from ..core.hdl import HDLFileModel
 
 import hashlib
 
-from typing import Dict
+from typing import Dict, List
 
 
 class ArgsOperatorMeta(type):
@@ -50,7 +50,13 @@ class ArgsOperator(metaclass = ArgsOperatorMeta):
     def naming(cls, *args): return f"{cls.__name__}_{'_'.join(map(str, args))}" # [NOTICE] use valid string
 
 
-class IntAdd(ArgsOperator):
+class Adder(ArgsOperator):
+    """
+        Adder[<op1_type (SignalType)>, <op2_type (SignalType)>]
+        
+        Input(s): op1 (op1_type), op2 (op2_type)
+        Output(s): res (the wider one)
+    """
     @staticmethod
     def setup(*args) -> Structure:
         s = Structure()
@@ -77,7 +83,7 @@ class IntAdd(ArgsOperator):
         t1, t2, tr = io.op1.type, io.op2.type, io.res.type
         
         if not (t1.belongs(UInt) and t2.belongs(UInt) or t1.belongs(SInt) and t2.belongs(SInt)):
-            raise StructureGenerationException(f"Only accept UInt + UInt or SInt + SInt")
+            raise NotImplemented # TODO
 
         if not tr.W == max(t1.W, t2.W):
             raise StructureGenerationException(f"Result width should be the maximum of the two operands")
@@ -106,13 +112,19 @@ end architecture;
         )
 
 
-class IntSubtract(IntAdd):
+class Subtracter(Adder):
+    """
+        Subtracter[<op1_type (SignalType)>, <op2_type (SignalType)>]
+        
+        Input(s): op1 (op1_type), op2 (op2_type)
+        Output(s): res (the wider one)
+    """
     @staticmethod
     def generation(s: Structure, h: HDLFileModel, io: IOProxy):
         t1, t2, tr = io.op1.type, io.op2.type, io.res.type
         
         if not (t1.belongs(UInt) and t2.belongs(UInt) or t1.belongs(SInt) and t2.belongs(SInt)):
-            raise StructureGenerationException(f"Only accept UInt - UInt or SInt - SInt")
+            raise NotImplemented # TODO
 
         if not tr.W == max(t1.W, t2.W):
             raise StructureGenerationException(f"Result width should be the maximum of the two operands")
@@ -141,55 +153,186 @@ end architecture;
         )
 
 
+class Inverse:
+    """
+        Inverse[<op_type (SignalType)>]
+        
+        Input(s): op (input_type)
+        Output(s): res (input_type)
+        
+        TODO 取相反数, 暂时只考虑 SInt
+    """
+    pass
+
+
+class EqualTo:
+    """
+        EqualTo[<op1_type (SignalType)>, <op2_type (SignalType)>]
+        
+        Input(s): op1 (op1_type), op2 (op2_type)
+        Output(s): res (Bit)
+        
+        TODO 相等, 考虑支持所有类型 (所有类型到 hdl 中都是 std_logic_vector 或由 std_logic_vector 构成的结构体类型, 按位比较即可)
+    """
+    pass
+
+
+class LessThan:
+    """
+        LessThan[<op1_type (SignalType)>, <op2_type (SignalType)>]
+        
+        Input(s): op1 (op1_type), op2 (op2_type)
+        Output(s): res (Bit)
+        
+        TODO 小于, 暂时只考虑 UInt 和 SInt
+    """
+    pass
+
+
+class Not:
+    """
+        Not[<op_type (BitsType)>]
+        
+        Input(s): op (op_type)
+        Output(s): res (op_type)
+        
+        TODO 按位否
+    """
+    pass
+
+
+class And:
+    """
+        And[<op1_type (BitsType)>, <op2_type (BitsType)>]
+        
+        Input(s): op1 (op1_type), op2 (op2_type)
+        Output(s): res (the wider one)
+        
+        TODO 按位与
+    """
+    pass
+
+
+class ReduceAnd:
+    """
+        ReduceAnd[<op_type (BitsType)>]
+        
+        Input(s): op (op_type)
+        Output(s): res (Bit)
+        
+        TODO 规约与
+    """
+    pass
+
+
+class Or:
+    """
+        Or[<op1_type (BitsType)>, <op2_type (BitsType)>]
+        
+        Input(s): op1 (op1_type), op2 (op2_type)
+        Output(s): res (the wider one)
+        
+        TODO 按位或
+    """
+    pass
+
+
+class ReduceOr:
+    """
+        ReduceOr[<op_type (BitsType)>]
+        
+        Input(s): op (op_type)
+        Output(s): res (Bit)
+        
+        TODO 规约或
+    """
+    pass
+
+
+# class Shifter:
+#     """
+#         TODO 暂时只考虑 UInt, SInt 和 Bits
+#     """
+#     pass
+
+
+# class Slicer:
+#     """
+#         TODO 暂时只考虑 Bits
+#     """
+#     pass
+
+
+class Multiplexer:
+    """
+        Multiplexer[<value_type (SignalType)>]
+        
+        Input(s): i0 (value_type), i1 (value_type), s (Bit)
+        Output(s): o
+        
+        TODO 二路线选器
+    """
+    pass
+
+
 class Decomposition(ArgsOperator):
     """
-        Decomposition[type]: all shallow members TODO to be tested
-        Decomposition[type, [<keys_0>], ...]: selected members
+        Decomposition[<input_type (BundleType)>]: all shallow members
+        Decomposition[<input_type (BundleType)>, <path_0 (str)>, <path_1 (str)>, ...]
+
+        Input(s): i (BundleType)
+        Output(s): o (structural)
     """
     @staticmethod
     def setup(*args) -> Structure:
-        out_nums = len(args) - 1
-        assert out_nums >= 0
+        assert len(args) - 1 >= 0
         
-        ti: BundleType = args[0]
-        to = []
-        paths = args[1:]
+        # arguments
+        input_type: BundleType = args[0].clear_io()
+        if len(args) == 1:
+            path_strings = list(input_type._bundle_types.keys())
+        else:
+            path_strings = args[1:]
         
-        if out_nums == 0:
-            keys = ti._bundle_types.keys()
-            out_nums = len(keys)
-            paths = [[key] for key in keys]
+        # add Output wrappers
+        output_type = input_type
         
-        for path in paths:
-            if isinstance(path, list) or isinstance(path, tuple):
-                t = ti
-                for key in path:
-                    t = t._bundle_types[key]
-                to.append(t)
-            else: # str
-                to.append(ti._bundle_types[path])
+        def _add_output(t: SignalType, path: List[str]):
+            if len(path) == 0:
+                return Output[t]
+            elif t.belongs(Bundle):
+                return Bundle[{k: (v if k != path[0] else _add_output(v, path[1:])) for k, v in t._bundle_types.items()}]
+            else:
+                raise Exception("Invalid path")
         
+        for path_str in path_strings:
+            output_type = _add_output(output_type, path_str.strip(".").split("."))
+        
+        # remove imperfect componets
+        def _remove_non_wrapped(t: SignalType):
+            return Bundle[{k: (v if v.perfectly_io_wrapped else _remove_non_wrapped(v)) for k, v in t._bundle_types.items() if v.io_wrapper_included}]
+        
+        output_type = _remove_non_wrapped(output_type)
+        
+        # build structure
         s = Structure()
         
-        s.add_port("i", Input[ti])
-        for idx, t in enumerate(to):
-            s.add_port(f"o{idx}", Output[t])
+        s.add_port("i", Input[input_type])
+        s.add_port(f"o", output_type)
         
-        s.custom_params["paths"] = paths
-        s.custom_params["to"] = to
+        s.custom_params["path_strings"] = path_strings
         
         return s
     
-    # TODO deduction
-    
     @staticmethod
     def generation(s: Structure, h: HDLFileModel, io: IOProxy):
-        ti, to = io.i.type, s.custom_params["to"]
+        input_type = io.i.type
         
-        f = lambda t: t.__name__ if t.belongs(Bundle) else f"std_logic_vector({t.W - 1} downto 0)"
+        to_hdl_type = lambda t: t.__name__ if t.belongs(Bundle) else f"std_logic_vector({t.W - 1} downto 0)"
+        path_to_valid_name = lambda path_str: path_str.strip(".").replace(".", "_")
         
-        port_str = ";\n".join([f"        o{idx}: out {f(t)}" for idx, t in enumerate(to)])
-        assign_str = "\n".join([f"    o{idx} <= i.{'.'.join(s.custom_params["paths"][idx])};" for idx in range(len(to))])
+        port_str = ";\n".join([f"        o_{path_to_valid_name(path_str)}: out {to_hdl_type(eval(f"io.o.{path_str.strip(".")}.type"))}" for path_str in s.custom_params["path_strings"]]) # TODO dont use eval
+        assign_str = "\n".join([f"    o_{path_to_valid_name(path_str)} <= i.{path_str.strip(".")};" for path_str in s.custom_params["path_strings"]])
         
         h.set_raw(".vhd",
 f"""\
@@ -200,7 +343,7 @@ use work.types.all;
 
 entity {h.entity_name} is
     port (
-        i: in {f(ti)};
+        i: in {to_hdl_type(input_type)};
 {port_str}
     );
 end entity;
@@ -214,21 +357,28 @@ end architecture;
     
     @classmethod
     def naming(cls, *args):
-        return f"{cls.__name__}_{args[0].__name__[7:15]}_{"_".join(["_".join(map(str, path)) for path in args[1:]])}"
+        if len(args) == 1:
+            return f"{cls.__name__}_{args[0].__name__[7:15]}"
+        else:
+            return f"{cls.__name__}_{args[0].__name__[7:15]}_{"_".join([path_str.strip(".").replace(".", "_") for path_str in args[1:]])}"
 
 
 class Composition(ArgsOperator):
     """
-        Composition[type]: all shallow members
-        Composition[type, [<keys_0>], ...]: selected members
+        Composition[<output_type (BundleType)>]: all shallow members
+        Composition[<output_type (BundleType)>, <path_0 (str)>, <path_1 (str)>, ...]
+
+        Input(s): i (structural)
+        Output(s): o (BundleType)
     """
     pass # TODO
 
 
 class Constant(ArgsOperator):
     """
-        Constant[signal_0, ...]
-        TODO to be tested
+        Constant[constant_0 (Signal), constant_1 (Signal), ...]
+        
+        Output(s): c0 (type(constant_0)), c1 (type(constant_1)), ...
     """
     @staticmethod
     def setup(*args) -> Structure:
@@ -242,12 +392,6 @@ class Constant(ArgsOperator):
         s.custom_params["constants"] = args
         
         return s
-    
-    @staticmethod
-    def deduction(s: Structure, io: IOProxy):
-        for idx, c in enumerate(s.custom_params["constants"]):
-            port = io.__getattr__(f"c{idx}")
-            port.update(type(c))
     
     @staticmethod
     def generation(s: Structure, h: HDLFileModel, io: IOProxy):

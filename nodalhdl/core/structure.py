@@ -1037,18 +1037,18 @@ class NodeProxy:
 
 class IOProxy:
     def __init__(self, io: StructuralNodes, runtime_id: str, flipped: bool = True):
-        self.proxy: Dict[str, Union[NodeProxy, IOProxy]] = {}
+        self._proxy: Dict[str, Union[NodeProxy, IOProxy]] = {}
         
         for k, v in io.items():
             v: Union[Node, StructuralNodes]
             if isinstance(v, Node):
-                self.proxy[k] = NodeProxy(v, runtime_id, flipped)
+                self._proxy[k] = NodeProxy(v, runtime_id, flipped)
             else: # StructuralNodes
-                self.proxy[k] = IOProxy(v, runtime_id, flipped)
+                self._proxy[k] = IOProxy(v, runtime_id, flipped)
     
     def __getattr__(self, name):
-        if name in self.proxy.keys():
-            return self.proxy[name]
+        if name in self._proxy.keys():
+            return self._proxy[name]
         else:
             super().__getattr__(name)
 
