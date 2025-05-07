@@ -535,7 +535,7 @@ class Structure:
     
     @property
     def is_strictly_singleton(self):
-        return self.instance_number <= 1 and all([subs.is_singleton for subs in self.substructures.values()])
+        return self.instance_number <= 1 and all([subs.is_strictly_singleton for subs in self.substructures.values()])
     
     @property
     def is_runtime_applicable(self):

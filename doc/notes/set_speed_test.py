@@ -5,9 +5,9 @@
     先用 set 操作实现, 后续可以考虑杂糅到一起.
 """
 
-# import time
+import time
 
-# N = 500000
+N = 1000000
 
 # class SetManager:
 #     def __init__(self):
@@ -150,86 +150,92 @@
 # for i in range(N - 1):
 #     uf.union("0", str(i + 1))
 
-# for i in range(N - 1):
-#     uf.remove_node(str(i + 1))
+# print("UnionFind: ", time.time() - t)
+
+# # for i in range(N - 1):
+# #     uf.remove_node(str(i + 1))
     
 # # print(uf.get_all_sets())
 
-# print("UnionFind: ", time.time() - t)
+# # print("UnionFind: ", time.time() - t)
 
 
 """ ==================================================================================================== """
 
 
-# def use_dsu_node(uid: str = ""):
-#     class DSUException(Exception): pass
+def use_dsu_node(uid: str = ""):
+    class DSUException(Exception): pass
     
-#     def decorator(cls):
-#         def __init__(self, *args, **kwargs):
-#             self._dsu_father = self # 父节点初始化为自己
-#             self._dsu_rank = 0  # 初始化秩为 0
-#             self._dsu_uid = uid  # uid 不同的节点属不同空间, 不应被合并
+    def decorator(cls):
+        def __init__(self, *args, **kwargs):
+            self._dsu_father = self # 父节点初始化为自己
+            self._dsu_rank = 0  # 初始化秩为 0
+            self._dsu_uid = uid  # uid 不同的节点属不同空间, 不应被合并
 
-#             if hasattr(cls, '__original_init__'): # 如有则调用原有 __init__
-#                 cls.__original_init__(self, *args, **kwargs)
+            if hasattr(cls, '__original_init__'): # 如有则调用原有 __init__
+                cls.__original_init__(self, *args, **kwargs)
 
-#         def root(self):
-#             if self._dsu_father != self: # 路径压缩
-#                 self._dsu_father = self._dsu_father.root()
-#             return self._dsu_father
+        def root(self):
+            if self._dsu_father != self: # 路径压缩
+                self._dsu_father = self._dsu_father.root()
+            return self._dsu_father
 
-#         def merge(self, other):
-#             if not hasattr(other, "_dsu_uid"):
-#                 raise DSUException(f"Target node is not a DSU node")
-#             if self._dsu_uid != other._dsu_uid:
-#                 raise DSUException(f"Nodes with different uids should not be merged")
+        def merge(self, other):
+            if not hasattr(other, "_dsu_uid"):
+                raise DSUException(f"Target node is not a DSU node")
+            if self._dsu_uid != other._dsu_uid:
+                raise DSUException(f"Nodes with different uids should not be merged")
             
-#             root_self = self.root()
-#             root_other = other.root()
+            root_self = self.root()
+            root_other = other.root()
 
-#             if root_self != root_other: # 不在同一个集合, 按秩合并
-#                 if root_self._dsu_rank > root_other._dsu_rank:
-#                     root_other._dsu_father = root_self
-#                 elif root_self._dsu_rank < root_other._dsu_rank:
-#                     root_self._dsu_father = root_other
-#                 else:
-#                     root_other._dsu_father = root_self
-#                     root_self._dsu_rank += 1
+            if root_self != root_other: # 不在同一个集合, 按秩合并
+                if root_self._dsu_rank > root_other._dsu_rank:
+                    root_other._dsu_father = root_self
+                elif root_self._dsu_rank < root_other._dsu_rank:
+                    root_self._dsu_father = root_other
+                else:
+                    root_other._dsu_father = root_self
+                    root_self._dsu_rank += 1
 
-#         if hasattr(cls, '__init__'): # 若原本定义了 __init__ 则保存起来
-#             cls.__original_init__ = cls.__init__
+        if hasattr(cls, '__init__'): # 若原本定义了 __init__ 则保存起来
+            cls.__original_init__ = cls.__init__
         
-#         cls.__init__ = __init__
-#         cls.root = root
-#         cls.merge = merge
+        cls.__init__ = __init__
+        cls.root = root
+        cls.merge = merge
         
-#         return cls
+        return cls
     
-#     return decorator
+    return decorator
 
 
-# @use_dsu_node("")
-# class NodeDSU:
-#     def __init__(self, name):
-#         self.name = name
+@use_dsu_node("")
+class NodeDSU:
+    def __init__(self, name):
+        self.name = name
 
+
+# 创建集合 (无需)
 
 # t = time.time()
 
-# # 创建集合 (无需)
+nodes = [NodeDSU(str(i)) for i in range(N)]
 
-# nodes = [NodeDSU(str(i)) for i in range(N)]
+# print(time.time() - t)
 
-# # 加入集合 (无需)
+# 加入集合 (无需)
 
-# for i in range(N - 1):
-#     nodes[i + 1].merge(nodes[0])
+t = time.time()
 
-# # 移除
+for i in range(N - 1):
+    nodes[i + 1].merge(nodes[0])
+
+# 移除
     
-# # 打印集合情况
+# 打印集合情况
 
-# print("DSU: ", time.time() - t)
+print("DSU: ", time.time() - t)
 
 
 """ ==================================================================================================== """
@@ -384,11 +390,13 @@ class Node:
     def __init__(self, name): self.name = name
     def __repr__(self): return f"Node({self.name})"
 
-import time
-N = 100000
 mgr = Node._setmgr_mgr
 
+# t = time.time()
+
 nodes = [Node(str(i)) for i in range(N)]
+
+# print(time.time() - t)
 
 t = time.time()
 

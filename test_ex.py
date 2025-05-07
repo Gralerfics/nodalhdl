@@ -1,6 +1,6 @@
 from nodalhdl.core.signal import UInt, SInt, Bits, Bit, Float, Bundle, Input, Output, Auto, SignalType
 from nodalhdl.core.structure import Structure, RuntimeId, StructureProxy
-from nodalhdl.basic.arith import * # Adder, Constant, Decomposition, Composition
+from nodalhdl.basic.arith import *
 from nodalhdl.core.hdl import HDLFileModel
 from nodalhdl.timing.sta import VivadoSTA
 from nodalhdl.timing.pipelining import pipelining
@@ -8,12 +8,6 @@ from nodalhdl.timing.pipelining import pipelining
 from typing import List
 
 import time
-
-# import gc
-# import inspect
-
-
-print('add_u4_u4_u4 ==============================================================================================================')
 
 
 def AddU4U4U4() -> Structure:
@@ -33,77 +27,32 @@ def AddU4U4U4() -> Structure:
     s.connect(op3, add_123.IO.op2)
     s.connect(add_123.IO.res, res)
     
-    rid = RuntimeId.create()
-    s.deduction(rid)
-    s.apply_runtime(rid)
-    
     return s
 
 add_u4_u4_u4 = AddU4U4U4()
 
-
-print('keeper ==============================================================================================================')
-
-
-def KeeperTickN(t: SignalType, n: int = 0) -> Structure:
-    s = Structure()
-    
-    i = s.add_port("i", Input[t])
-    o = s.add_port("o", Output[Auto])
-    
-    s.connect(i, o)
-    
-    i.set_latency(n)
-    
-    rid = RuntimeId.create()
-    s.deduction(rid)
-    s.apply_runtime(rid)
-    
-    if s.is_reusable:
-        s.unique_name = f"Keeper_{t}_{n}CLK"
-
-    return s
-
-keeper_u4_0clk = KeeperTickN(UInt[4], 0)
-
-
-print('m1 ==============================================================================================================')
-
-
 def M1() -> Structure:
     s = Structure("m1")
     
-    t = s.add_port("t", Input[UInt[4]])
     a = s.add_port("a", Input[UInt[4]])
     b = s.add_port("b", Input[UInt[4]])
     c = s.add_port("c", Input[UInt[4]])
     o = s.add_port("o", Output[Auto])
     
-    x = s.add_substructure("x", keeper_u4_0clk)
-    y = s.add_substructure("y", Adder[UInt[4], UInt[4]])
-    z = s.add_substructure("z", add_u4_u4_u4)
+    x = s.add_substructure("x", Adder[UInt[4], UInt[4]])
+    y = s.add_substructure("y", add_u4_u4_u4)
+    z = s.add_substructure("z", Constant[UInt[4](10)])
     
-    s.connect(t, x.IO.i)
-    s.connect(x.IO.o, y.IO.op1)
-    s.connect(a, z.IO.op1)
-    s.connect(b, z.IO.op2)
-    s.connect(c, z.IO.op3)
-    s.connect(z.IO.res, y.IO.op2)
-    s.connect(y.IO.res, o)
-    
-    rid = RuntimeId.create()
-    s.deduction(rid)
-    s.apply_runtime(rid)
+    s.connect(z.IO.c0, x.IO.op1)
+    s.connect(a, y.IO.op1)
+    s.connect(b, y.IO.op2)
+    s.connect(c, y.IO.op3)
+    s.connect(y.IO.res, x.IO.op2)
+    s.connect(x.IO.res, o)
 
     return s
 
 m1 = M1()
-
-
-print('addw ==============================================================================================================')
-
-
-add_auto_auto = Adder[Auto, Auto]
 
 def AddWrapper(t1: SignalType, t2: SignalType) -> Structure:
     s = Structure()
@@ -112,50 +61,20 @@ def AddWrapper(t1: SignalType, t2: SignalType) -> Structure:
     i2 = s.add_port("i2", Input[t2])
     o = s.add_port("o", Output[Auto])
     
-    adder = s.add_substructure("adder", add_auto_auto)
+    adder = s.add_substructure("adder", Adder[Auto, Auto])
     
     s.connect(i1, adder.IO.op1)
     s.connect(i2, adder.IO.op2)
     s.connect(o, adder.IO.res)
-    
-    rid = RuntimeId.create()
-    s.deduction(rid)
-    s.apply_runtime(rid)
 
     return s
 
 addw = AddWrapper(Auto, Auto)
 
-
-print('m2 ==============================================================================================================')
-
-
 def M2() -> Structure:
     s = Structure()
     
-    B_t = Bundle[{
-        "xy": Bundle[{
-            "x": UInt[4],
-            "y": UInt[5]
-        }],
-        "z": UInt[6]
-    }]
-    
-    """ Test structural ports Begin """
-    ti = s.add_port("ti", Bundle[{
-        "x": Input[UInt[4]],
-        "y": Bundle[{
-            "a": Input[UInt[2]],
-            "b": Output[Auto],
-        }]
-    }])
-    u4 = s.add_substructure("u4", add_auto_auto)
-    s.connect(ti.x, u4.IO.op1)
-    s.connect(ti.y.a, u4.IO.op2)
-    s.connect(u4.IO.res, ti.y.b)
-    """ Test structural ports End """
-    
-    # t = s.add_port("t", Input[UInt[4]])
+    B_t = Bundle[{"xy": Bundle[{"x": UInt[4], "y": UInt[5]}], "z": UInt[6]}]
     
     a = s.add_port("a", Input[UInt[4]])
     b = s.add_port("b", Input[UInt[4]])
@@ -166,25 +85,9 @@ def M2() -> Structure:
     Bi = s.add_port("Bi", Input[B_t])
     Bo = s.add_port("Bo", Output[Auto])
     
-    const = s.add_substructure("const", Constant[UInt[4](10)])
-    
     u1 = s.add_substructure("u1", m1)
     u2 = s.add_substructure("u2", addw)
     u3 = s.add_substructure("u3", Decomposition[B_t, ".xy.y", "z"])
-    
-    # u5 = s.add_substructure("u5", Composition[B_t, ".xy.y", "z"]) # Composition test
-    # u5 = s.add_substructure("u5", Inverse[SInt[10]]) # Inverse test
-    # u5 = s.add_substructure("u5", EqualTo[SInt[10], B_t]) # EqualTo test
-    # u5 = s.add_substructure("u5", LessThan[SInt[10], SInt[5]]) # LessThan test
-    # u5 = s.add_substructure("u5", Not[Bits[10]]) # Not test
-    # u5 = s.add_substructure("u5", And[Bits[10], Bits[10]]) # And test
-    # u5 = s.add_substructure("u5", Or[Bits[10], Bits[10]]) # Or test
-    # u5 = s.add_substructure("u5", ReduceAnd[Bits[10]]) # ReduceAnd test
-    # u5 = s.add_substructure("u5", ReduceOr[Bits[10]]) # ReduceOr test
-    # u5 = s.add_substructure("u5", Multiplexer[UInt[6]]) # Multiplexer test
-    
-    # s.connect(t, u1.IO.t)
-    s.connect(const.IO.c0, u1.IO.t)
     
     s.connect(a, u1.IO.a)
     s.connect(b, u1.IO.b)
@@ -192,9 +95,7 @@ def M2() -> Structure:
     s.connect(u1.IO.o, u2.IO.i1)
     s.connect(x, u2.IO.i2)
     s.connect(u2.IO.o, o)
-    
     s.connect(u1.IO.o, u1o)
-    
     s.connect(Bi, u3.IO.i)
     s.connect(u3.IO.o.xy.y, Bo)
 
@@ -206,9 +107,6 @@ rid_m2 = RuntimeId.create()
 m2.deduction(rid_m2)
 
 print(m2.runtime_info(rid_m2))
-
-
-print('m3 ==============================================================================================================')
 
 
 def M3() -> Structure:
@@ -224,7 +122,7 @@ def M3() -> Structure:
     ro = s.add_port("ro", Output[Auto])
     
     p = s.add_substructure("p", addw)
-    q = s.add_substructure("q", add_auto_auto)
+    q = s.add_substructure("q", Adder[Auto, Auto])
     r = s.add_substructure("r", Adder[UInt[4], UInt[4]])
     
     Nipq = s.add_node("Nipq", Auto)
@@ -336,14 +234,6 @@ m2.deduction(rid_m2_exp)
 
 print(m2.runtime_info(rid_m2_exp))
 
-print(m2.is_sequential)
-
-print(m2.is_flattened)
-
-print([p.of_structure_inst_name for _, p in m2.get_subs_ports_outside("u1_z_add_12").nodes()])
-
-print([p.layered_name for _, p in m2.ports_inside_flipped.nodes()])
-
 
 print('m2.singletonize.gen ==============================================================================================================')
 
@@ -351,25 +241,6 @@ print('m2.singletonize.gen =====================================================
 model = m2.generation(rid_m2_exp)
 
 emit_to_files(model.emit_vhdl(), "C:/Workspace/test_project/test_project.srcs/sources_1/new")
-
-
-print('m2 persistence ==============================================================================================================')
-
-
-m2.save_dill("m2.dill")
-
-
-# print('m2.singletonize.gen (test latencies) ==============================================================================================================')
-
-
-# for net in m2.get_nets():
-#     net.driver().set_latency(1)
-#     for idx, load in enumerate(net.get_loads()):
-#         load.set_latency(1)
-
-# model = m2.generation(rid_m2_exp)
-
-# emit_to_files(model.emit_vhdl(), "C:/Workspace/test_project/test_project.srcs/sources_1/new")
 
 
 print('m2.singletonize (sta) ==============================================================================================================')
@@ -382,8 +253,6 @@ sta.analyse(m2, rid_m2_exp, skip_emitting_and_script_running = True)
 for subs_inst_name, subs in m2.substructures.items():
     print(f"{subs_inst_name}: {subs.get_runtime(rid_m2_exp.next(subs_inst_name)).timing_info}")
 
-# print(m2.is_flatly_timed)
-
 
 print('m2.singletonize (pipelining) ==============================================================================================================')
 
@@ -395,46 +264,29 @@ print("Phi_Gr", pipelining(m2, rid_m2_exp, 2, model = "simple")) # , model = "ex
 #         print(net.driver(), "--", net.driver().latency + load.latency, "->", load)
 
 
-print('m4 ==============================================================================================================')
+print('rid test ==============================================================================================================')
 
 
-def AddChain(n: int, t: SignalType) -> Structure:
-    s = Structure()
-    
-    i = [s.add_port(f"i{idx}", Input[t]) for idx in range(n)]
-    o = s.add_port("o", Output[Auto])
-    
-    adder: list[StructureProxy] = []
-    for idx in range(n - 1):
-        adder.append(s.add_substructure(f"adder{idx}", Adder[t, t]))
-        
-        s.connect(adder[-2].IO.res if idx > 0 else i[0], adder[-1].IO.op1)
-        s.connect(i[idx + 1], adder[-1].IO.op2)
-    
-    s.connect(adder[-1].IO.res, o)
+a = RuntimeId("7df1902c04d6541aa0c81a4c9258e0b1")
+b = a.next("u1")
+c = a.next("u3")
+d = a.next("u2")
+e = b.next("z")
+f = b.next("y")
+g = d.next("adder")
 
-    return s
+h1 = b.next("x")
+h2 = f.next("add_12")
+h3 = f.next("add_123")
 
-t = time.time()
-m4 = AddChain(100, UInt[4])
-print(time.time() - t)
-
-rid_m4 = RuntimeId.create()
-m4.deduction(rid_m4)
-# print(m4.runtime_info(rid_m4))
-
-sta = VivadoSTA(part_name = "xc7a200tfbg484-1", temporary_workspace_path = ".vivado_sta_m4", vivado_executable_path = "vivado.bat")
-# sta.analyse(m4, rid_m4)
-sta.analyse(m4, rid_m4, skip_emitting_and_script_running = True)
-
-# for k, v in m4.substructures.items():
-#     print(f"{k}: {v.get_runtime(rid_m4.next(k)).timing_info}")
-
-t = time.time()
-print("Phi_Gr", pipelining(m4, rid_m4, 10, model = "simple")) # , model = "extended"))
-print(time.time() - t) # `AddChain(1000, UInt[4]), simple model` for about 21.45s
-
-# for net in m4.get_nets():
-#     for load in net.get_loads():
-#         print(net.driver(), "--", net.driver().latency + load.latency, "->", load)
+print(a.id_str[:8])
+print(b.id_str[:8])
+print(c.id_str[:8])
+print(d.id_str[:8])
+print(e.id_str[:8])
+print(f.id_str[:8])
+print(g.id_str[:8])
+print(h1.id_str[:8])
+print(h2.id_str[:8])
+print(h3.id_str[:8])
 
