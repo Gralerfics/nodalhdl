@@ -12,7 +12,7 @@ def to_extended_circuit(s: Structure, root_runtime_id: RuntimeId):
     """
         The structure `s` should be flattened and timing-analysed.
     """
-    if not s.is_flattened or not s.is_flatly_timed:
+    if not s.is_flattened: # or not s.is_flatly_timed: TODO
         raise RetimingException("Only flattened and timing-analysed structures can be converted")
     
     G = ExtendedCircuit()
