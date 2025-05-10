@@ -1,98 +1,4 @@
-"""
-+--------------------------------------------------------------------+
-    Signal Types:
-        Signal;
-        Auto;
-        Bits[<width>], Bit, Byte;
-        UInt[<width>], UInt8, UInt16, UInt32, UInt64;
-        SInt[<width>], SInt8, SInt16, SInt32, SInt64;
-        FixedPoint[<integer_width>, <fraction_width>];
-        FloatingPoint[<exponent_width>, <fraction_width>], Float, Double;
-        Bundle[<members>].
-    Examples:
-        a = UInt[8]()
-        print(isinstance(a, UInt[8]))       # True
-        print(isinstance(a, UInt))          # True
-        print(isinstance(a, UInt[9]))       # False
-        print(isinstance(a, BitsType))      # False
-        print(isinstance(a, Bits))          # True
-        print(isinstance(a, Signal))        # True
-        print(type(a).W)                    # 8
-
-        print(Float.__name__)               # FloatingPoint_8_23
-        print(UInt.__name__)                # UInt
-        print(SInt[8].__name__)             # SInt_8
-
-        print(isinstance(UInt, SignalType))                 # True (*)
-        print(isinstance(UInt[8], SignalType))              # True
-
-        print(type(Signal))                                 # <class '...SignalType'>
-        print(type(UInt[8]))                                # <class '...BitsType'>
-        print(issubclass(UInt[8], UInt))                    # True
-        print(issubclass(UInt[8], BitsType))                # False
-        print(issubclass(type(UInt[8]), BitsType))          # True
-        print(issubclass(type(UInt[8]), SignalType))        # True
-
-        print(UInt[8].belongs(Bits))                        # True
-        print(UInt[8].belongs(Bits[8]))                     # False (*)
-        print(UInt[8].equals(UInt[8]))                      # True
-        print(UInt[8].equals(UInt[7]))                      # False
-
-        print(UInt.determined)                              # False
-        print(UInt[8].determined)                           # True
-        print(Bundle[{"a": Input[UInt]}].determined)        # False
-
-        S = Bundle[{
-            "a": UInt[8],
-            "b": Bit,
-            "c": Bundle[{
-                "x": SInt[3],
-                "y": SInt[5]
-            }]
-        }]
-        s = S()
-        print(S.a)                                          # <class '...UInt_8'>
-        print(s.a)                                          # <...UInt_8 object at ...>
-        print(S.c.x)                                        # <class '...SInt_3'>
-        print(s.c.x)                                        # <...SInt_3 object at ...>
-        print(S._bundle_types)                              # {'a': <class '...UInt_8'>, 'b': <class '...Bits_1'>, 'c': <class '...Bundle_...'>}
-        print(S.c._bundle_types)                            # {'x': <class '...SInt_3'>, 'y': <class '...SInt_5'>}
-        
-        Input[Bundle[{
-            "x": Input[SInt[3]],
-            "y": Output[SInt[5]]
-        }]]                                                 # SignalTypeException: Nesting is not allowed for IO Wrappers
-        
-        S = Bundle[{
-            "a": Input[UInt[8]],
-            "b": Bit
-        }]
-        print(S.perfectly_io_wrapped)                       # False
-        print(S.flip_io())                                  # SignalTypeException: Imperfect IO-wrapped signal type cannot be flipped
-        
-        S = Bundle[{
-            "a": Input[UInt[8]],
-            "b": Output[Bit],
-            "c": Bundle[{
-                "x": Input[SInt[3]],
-                "y": Output[SInt[5]]
-            }],
-            "d": Input[Bundle[{
-                "t": Float
-            }]]
-        }]
-        print(S.perfectly_io_wrapped)                       # True
-        print(S.flip_io()._bundle_types)                    # {'a': <class '...Output_UInt_8'>, 'b': <class '...Input_Bits_1'>, 'c': <class '...Bundle_...'>, 'd': <class '...Output_Bundle_...'>}
-        print(S.flip_io().c._bundle_types)                  # {'x': <class '...Output_SInt_3'>, 'y': <class '...Input_SInt_5'>}
-        print(S.flip_io().flip_io() == S)                   # True
-        print(S.clear_io()._bundle_types)                   # {'a': <class '...UInt_8'>, 'b': <class '...Bits_1'>, 'c': <class '...Bundle_...'>, 'd': <class '...Bundle_...'>}
-        print(S.clear_io().c._bundle_types)                 # {'x': <class '...SInt_3'>, 'y': <class '...SInt_5'>}
-    TODO:
-        单元测试.
-+--------------------------------------------------------------------+
-"""
-
-from typing import Union, Dict, List
+from typing import Dict
 
 import hashlib
 
@@ -180,9 +86,11 @@ class SignalType(type):
             P.S. "information":
                 Some STs have more information that others, e.g. UInt[8] is more useful than UInt or Auto.
                 Such kind of relationship can be described by the inheritance relationship.
+            
+            TODO 添加基类型属于且位宽相同的情况
         """
         cls, other = cls.normalize(), other.normalize()
-        return issubclass(cls, other)
+        return issubclass(cls, other) or (hasattr(cls, "W") and hasattr(other, "W") and cls.W == other.W and issubclass(cls.base, other.base))
     
     def merges(cls: 'SignalType', other: 'SignalType'):
         """
