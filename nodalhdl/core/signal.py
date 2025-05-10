@@ -400,7 +400,7 @@ class Bits(Auto, metaclass = BitsType):
     def to_definition_string(cls):
         return f"Bits[{cls.W}]" if hasattr(cls, 'W') else "Bits"
     
-    def __init__(self, value: int = 0):
+    def __init__(self, value = 0):
         if isinstance(value, int):
             self.set_value(value)
         elif isinstance(value, str):
@@ -489,13 +489,90 @@ Int16 = SInt[16]
 Int32 = SInt[32]
 Int64 = SInt[64]
 
-class FixedPoint(Bits, metaclass = FixedPointType):
+class UFixedPoint(Bits, metaclass = FixedPointType):
     @classmethod
     def to_definition_string(cls):
-        return f"FixedPoint[{cls.W_int}, {cls.W_frac}]" if hasattr(cls, 'W_int') and hasattr(cls, 'W_frac') else "FixedPoint"
+        return f"UFixedPoint[{cls.W_int}, {cls.W_frac}]" if hasattr(cls, 'W_int') and hasattr(cls, 'W_frac') else "UFixedPoint"
+        
+    def __init__(self, value = 0.0):
+        if isinstance(value, float):
+            self.set_value(value)
+        elif isinstance(value, str):
+            self.set_value(int(value[-self.W:], base = 2))
+        else:
+            raise SignalTypeInstantiationException # TODO
+    
+    def __repr__(self):
+        return f"UF{self.W_int}.{self.W_frac}({self.to_float})"
+    
+    def __add__(self, other):
+        if isinstance(other, UFixedPoint) and self.W_int == other.W_int and self.W_frac == other.W_frac:
+            return UFixedPoint[self.W_int, self.W_frac](self.to_float + other.to_float)
+        else:
+            raise SignalOperationException # TODO
+    
+    def __sub__(self, other):
+        if isinstance(other, UFixedPoint) and self.W_int == other.W_int and self.W_frac == other.W_frac:
+            return UFixedPoint[self.W_int, self.W_frac](self.to_float - other.to_float)
+        else:
+            raise SignalOperationException # TODO
+    
+    __radd__ = __add__
+    __rsub__ = __sub__
+    
+    def set_value(self, value: float):
+        value_int = int(value * (1 << self.W_frac))
+        self.value = value_int % (1 << self.W) # TODO 整数截断这样截吗？
+
+    @property
+    def to_float(self):
+        return self.value / (1 << self.W_frac)
     
     def to_bits_string(self):
-        return NotImplemented # TODO
+        return NotImplementedError
+
+class SFixedPoint(Bits, metaclass = FixedPointType): # TODO 目前符号位是包括在 W_int 中的，标准中好像一般另算
+    @classmethod
+    def to_definition_string(cls):
+        return f"SFixedPoint[{cls.W_int}, {cls.W_frac}]" if hasattr(cls, 'W_int') and hasattr(cls, 'W_frac') else "SFixedPoint"
+    
+    def __init__(self, value = 0.0):
+        if isinstance(value, float):
+            self.set_value(value)
+        elif isinstance(value, str):
+            self.set_value(int(value[-self.W:], base = 2))
+        else:
+            raise SignalTypeInstantiationException # TODO
+    
+    def __repr__(self):
+        return f"SF{self.W_int}.{self.W_frac}({self.to_float})"
+    
+    def __add__(self, other):
+        if isinstance(other, SFixedPoint) and self.W_int == other.W_int and self.W_frac == other.W_frac:
+            return SFixedPoint[self.W_int, self.W_frac](self.to_float + other.to_float)
+        else:
+            raise SignalOperationException # TODO
+    
+    def __sub__(self, other):
+        if isinstance(other, SFixedPoint) and self.W_int == other.W_int and self.W_frac == other.W_frac:
+            return SFixedPoint[self.W_int, self.W_frac](self.to_float - other.to_float)
+        else:
+            raise SignalOperationException # TODO
+    
+    __radd__ = __add__
+    __rsub__ = __sub__
+    
+    def set_value(self, value: float):
+        value_int = int(value * (1 << self.W_frac))
+        half = 1 << self.W - 1
+        self.value = (value_int + half) % (1 << self.W) - half # TODO 整数截断这样截吗？
+
+    @property
+    def to_float(self):
+        return self.value / (1 << self.W_frac)
+    
+    def to_bits_string(self):
+        return NotImplementedError
 
 class FloatingPoint(Bits, metaclass = FloatingPointType):
     @classmethod
@@ -503,7 +580,7 @@ class FloatingPoint(Bits, metaclass = FloatingPointType):
         return f"FloatingPoint[{cls.W_exp}, {cls.W_frac}]" if hasattr(cls, 'W_exp') and hasattr(cls, 'W_frac') else "FloatingPoint"
     
     def to_bits_string(self):
-        return NotImplemented # TODO
+        return NotImplementedError
 
 Float = FloatingPoint[8, 23]
 Double = FloatingPoint[11, 52]

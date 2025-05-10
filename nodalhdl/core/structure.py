@@ -487,7 +487,7 @@ class Structure:
         self.custom_params = {}
         
         # properties (customized params, for operators)
-        self.custom_sequential: bool = False # should be asserted to True if there are registers in custom_generation (raw_content)
+        self.custom_sequential: bool = False # should be asserted to True if there are registers in custom_generation (raw_content) TODO 或许基本算子就不该有时钟延迟？
         self.custom_deduction: callable = None
         self.custom_generation: callable = None
         

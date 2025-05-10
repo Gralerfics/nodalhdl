@@ -1,6 +1,6 @@
 from nodalhdl.core.signal import UInt, SInt, Bits, Bit, Float, Bundle, Input, Output, Auto, SignalType
 from nodalhdl.core.structure import Structure, RuntimeId
-from nodalhdl.basic.arith import Adder, GetAttribute
+from nodalhdl.basic.operator import Adder, GetAttribute
 from nodalhdl.core.hdl import HDLFileModel
 
 
