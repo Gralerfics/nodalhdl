@@ -411,6 +411,14 @@ class StructuralNodes(dict):
             elif isinstance(v, StructuralNodes):
                 v.connect(other[k])
     
+    def access(self, path: Union[str, list, tuple]) -> Union[Node, 'StructuralNodes']:
+        if isinstance(path, list) or isinstance(path, tuple):
+            return eval("self." + ".".join(path)) # TODO 不要用 eval 实现
+        elif isinstance(path, str):
+            return self.access(path.strip(".").split("."))
+        else:
+            raise ValueError
+    
     def nodes(self, prefix: str = "", filter: str = "all", flipped: bool = False) -> List[Tuple[str, Node]]:
         """
             Return all Node objects in a list with their full names.
@@ -865,7 +873,7 @@ class Structure:
             if self.reusable_hdl is not None:
                 return self.reusable_hdl
             else:
-                top_module_name = self.unique_name if self.unique_name is not None else self.id[:8]
+                top_module_name = self.unique_name if self.unique_name is not None else f"Structure_{self.id[:8]}"
         
         # create file model and set entity name
         model = HDLFileModel(entity_name = f"{top_module_name}", file_name = f"hdl_{top_module_name}")
