@@ -844,14 +844,72 @@ end architecture;
         return f"{cls.__name__}_{'_'.join([hashlib.md5(str(arg).encode('utf-8')).hexdigest()[:8] for arg in args])}" # [NOTICE] use valid string
 
 
-# class Concatenater(ArgsOperator):
-#     """
-#         Concatenater[wire_0 (SignalType), wire_1 (SignalType), ...]
+class Concatenater(ArgsOperator):
+    """
+        Concatenater[N (int)]: N-inputs, Auto type
+        Concatenater[type_0 (SignalType), type_1 (SignalType), ...]: TODO
         
-#         Input(s): i
-#         Output(s): c0 (type(constant_0)), c1 (type(constant_1)), ...
-#     """
-#     pass
+        Input(s): i0, i1, ...
+        Output(s): o (Bits[...])
+    """
+    @staticmethod
+    def setup(*args) -> Structure:
+        s = Structure()
+        
+        if isinstance(args[0], int):
+            for idx in range(args[0]):
+                s.add_port(f"i{idx}", Input[Auto])
+            s.add_port("o", Output[Auto])
+            
+            s.custom_params["N"] = args[0]
+        else:
+            raise NotImplementedError
+        
+        return s
+    
+    @staticmethod
+    def deduction(s: Structure, io: IOProxy):
+        N = s.custom_params["N"]
+        input_types = [io._proxy[f"i{idx}"].type for idx in range(N)]
+        
+        if all([t.determined for t in input_types]):
+            io.o.update(Bits[sum([t.W for t in input_types])])
+    
+    @staticmethod
+    def generation(s: Structure, h: HDLFileModel, io: IOProxy):
+        N = s.custom_params["N"]
+        input_types = [io._proxy[f"i{idx}"].type for idx in range(N)]
+        output_type = io.o.type
+        
+        if N is not None:
+            port_str = "\n".join([f"        i{idx}: in {declaration_from_type(t)};" for idx, t in enumerate(input_types)])
+            assign_str = "    o <= " + " & ".join([f"i{idx}" for idx in range(N)]) + ";"
+        else:
+            raise NotImplementedError
+
+        h.set_raw(".vhd",
+f"""\
+library IEEE;
+use IEEE.std_logic_1164.all;
+use IEEE.numeric_std.all;
+use work.types.all;
+
+entity {h.entity_name} is
+    port (
+{port_str}
+        o: out {declaration_from_type(output_type)}
+    );
+end entity;
+
+architecture Behavioral of {h.entity_name} is
+begin
+{assign_str}
+end architecture;
+"""
+        )
+
+    # @classmethod
+    # def naming(cls, *args): # TODO 只给出 N 的情况非定态
 
 
 # class Slicer(ArgsOperator):
@@ -868,4 +926,73 @@ end architecture;
 #         TODO 暂时只考虑 UInt, SInt 和 Bits
 #     """
 #     pass
+
+
+class BitsOperator(ArgsOperator):
+    """
+        Concatenater[(Wi0, Wi1, ...), (Wo0, Wo1, ...), "VHDL", content (str)]
+        
+        Input(s): i0, i1, ...
+        Output(s): o0, o1, ...
+    """
+    @staticmethod
+    def setup(*args) -> Structure:
+        i_widths = args[0]
+        o_widths = args[1]
+        hdl_type = args[2]
+        hdl_content = args[3]
+        
+        s = Structure()
+        
+        for idx, w in enumerate(i_widths):
+            s.add_port(f"i{idx}", Input[Bits[w]])
+        
+        for idx, w in enumerate(o_widths):
+            s.add_port(f"o{idx}", Output[Bits[w]])
+        
+        s.custom_params["i_widths"] = i_widths
+        s.custom_params["o_widths"] = o_widths
+        s.custom_params["hdl_type"] = hdl_type
+        s.custom_params["hdl_content"] = hdl_content
+        
+        return s
+    
+    @staticmethod
+    def generation(s: Structure, h: HDLFileModel, io: IOProxy):
+        i_widths = s.custom_params["i_widths"]
+        o_widths = s.custom_params["o_widths"]
+        hdl_type = s.custom_params["hdl_type"]
+        hdl_content: str = s.custom_params["hdl_content"]
+        
+        port_str = "\n".join(
+            [f"        i{idx}: in {declaration_from_type(Bits[w])};" for idx, w in enumerate(i_widths)] +
+            [f"        o{idx}: out {declaration_from_type(Bits[w])};" for idx, w in enumerate(o_widths)]
+        )
+        
+        if hdl_type == "VHDL":
+            h.set_raw(".vhd",
+f"""\
+library IEEE;
+use IEEE.std_logic_1164.all;
+use IEEE.numeric_std.all;
+use work.types.all;
+
+entity {h.entity_name} is
+    port (
+{port_str[:-1]}
+    );
+end entity;
+
+architecture Behavioral of {h.entity_name} is
+begin
+    {hdl_content.replace("\n", "\n    ")}
+end architecture;
+"""
+            )
+        else:
+            raise NotImplementedError
+
+    @classmethod
+    def naming(cls, *args):
+        return f"{cls.__name__}_{'_'.join([hashlib.md5(str(arg).encode('utf-8')).hexdigest()[:8] for arg in args])}" # [NOTICE] use valid string
 
