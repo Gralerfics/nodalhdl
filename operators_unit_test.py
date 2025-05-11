@@ -81,6 +81,20 @@ def Test_BitsNot(s: Structure):
 
     s.connect(a, u.IO.a)
     s.connect(u.IO.r, c)
+
+
+@here
+def Test_BitsAnd_BitsOr(s: Structure):
+    a = s.add_port("a", Input[Bits[6]])
+    b = s.add_port("b", Input[Auto])
+    c = s.add_port("c", Output[Auto])
+
+    u = s.add_substructure("u", BitsAnd[Auto])
+    # u = s.add_substructure("u", BitsOr[Auto])
+
+    s.connect(a, u.IO.a)
+    s.connect(b, u.IO.b)
+    s.connect(u.IO.r, c)
     
     return True
 

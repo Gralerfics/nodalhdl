@@ -67,37 +67,15 @@ class OperatorDeductionTemplates:
         return _deduction
     
     @staticmethod
-    def equal_type_2i1o(input_path_1: str, input_path_2: str, output_path: str):
+    def equal_types(*port_paths):
         def _deduction(s: Structure, io: IOProxy):
-            i1, i2, o = io.access(input_path_1), io.access(input_path_2), io.access(output_path)
-            
-            o.update(i1.type)
-            o.update(i2.type)
-            i1.update(o.type)
-            i2.update(o.type)
-        
-        return _deduction
-    
-    @staticmethod
-    def equal_type_1i1o(input_path: str, output_path: str):
-        def _deduction(s: Structure, io: IOProxy):
-            i, o = io.access(input_path), io.access(output_path)
-            
-            o.update(i.type)
-            i.update(o.type)
-        
-        return _deduction
-    
-    @staticmethod
-    def equal_inputs(*input_paths):
-        def _deduction(s: Structure, io: IOProxy):
-            I = [io.access(path) for path in input_paths]
+            P = [io.access(path) for path in port_paths]
             
             full_type = Auto
-            for i in I:
-                full_type = full_type.merges(i.type)
-            for i in I:
-                i.update(full_type)
+            for p in P:
+                full_type = full_type.merges(p.type)
+            for p in P:
+                p.update(full_type)
         
         return _deduction
 

@@ -92,7 +92,7 @@ class BitsInverse(ArgsOperator):
         Output(s): r (same type)
     """
     setup = OperatorSetupTemplates.input_type_args_1i1o("a", "r")
-    deduction = OperatorDeductionTemplates.equal_type_1i1o("a", "r")
+    deduction = OperatorDeductionTemplates.equal_types("a", "r")
     
     @staticmethod
     def generation(s: Structure, h: HDLFileModel, io: IOProxy):
@@ -125,7 +125,7 @@ class BitsEqualTo(ArgsOperator):
         Output(s): r (Bit)
     """
     setup = OperatorSetupTemplates.input_type_args_2i1o("a", "b", "r", output_type = Bit)
-    deduction = OperatorDeductionTemplates.equal_inputs("a", "b")
+    deduction = OperatorDeductionTemplates.equal_types("a", "b")
     
     @staticmethod
     def generation(s: Structure, h: HDLFileModel, io: IOProxy):
@@ -158,7 +158,7 @@ class BitsLessThan(ArgsOperator):
         Output(s): r (Bit)
     """
     setup = OperatorSetupTemplates.input_type_args_2i1o("a", "b", "r", output_type = Bit)
-    deduction = OperatorDeductionTemplates.equal_inputs("a", "b")
+    deduction = OperatorDeductionTemplates.equal_types("a", "b")
     
     @staticmethod
     def generation(s: Structure, h: HDLFileModel, io: IOProxy):
@@ -192,7 +192,7 @@ class BitsNot(ArgsOperator):
         Output(s): r (same type)
     """
     setup = OperatorSetupTemplates.input_type_args_1i1o("a", "r")
-    deduction = OperatorDeductionTemplates.equal_type_1i1o("a", "r")
+    deduction = OperatorDeductionTemplates.equal_types("a", "r")
     
     @staticmethod
     def generation(s: Structure, h: HDLFileModel, io: IOProxy):
@@ -215,41 +215,38 @@ class BitsNot(ArgsOperator):
         """))
 
 
-class And(ArgsOperator):
+class BitsAnd(ArgsOperator):
     """
-        And[<op1_type (BitsType)>, <op2_type (BitsType)>]
+        Bitwise AND.
+
+        BitsAnd[<a_type (SignalType)>, <b_type (SignalType)>]
         
-        Input(s): op1 (op1_type), op2 (op2_type)
-        Output(s): res (the wider one)
+        Input(s): a (a_type), b (b_type)
+        Output(s): r (same type)
     """
-    deduction = OperatorDeductionTemplates.equal_type_2i1o("a", "b", "r")
+    setup = OperatorSetupTemplates.input_type_args_2i1o("a", "b", "r")
+    deduction = OperatorDeductionTemplates.equal_types("a", "b", "r")
     
     @staticmethod
     def generation(s: Structure, h: HDLFileModel, io: IOProxy):
-        op1_type, op2_type, res_type = io.op1.type, io.op2.type, io.res.type
-        
-        if op1_type.base != Bits or op2_type.base != Bits:
-            raise NotImplementedError
-        
-        h.set_raw(".vhd",
-f"""\
-library IEEE;
-use IEEE.std_logic_1164.all;
+        h.set_raw(".vhd", textwrap.dedent(f"""\
+            library IEEE;
+            use IEEE.std_logic_1164.all;
+            use IEEE.numeric_std.all;
 
-entity {h.entity_name} is
-    port (
-        op1: in {OperatorUtils.type_decl(op1_type)};
-        op2: in {OperatorUtils.type_decl(op2_type)};
-        res: out {OperatorUtils.type_decl(res_type)}
-    );
-end entity;
+            entity {h.entity_name} is
+                port (
+                    a: in {OperatorUtils.type_decl(io.a.type)};
+                    b: in {OperatorUtils.type_decl(io.b.type)};
+                    r: out {OperatorUtils.type_decl(io.r.type)}
+                );
+            end entity;
 
-architecture Behavioral of {h.entity_name} is
-begin
-    res <= op1 and op2;
-end architecture;
-"""
-        )
+            architecture Behavioral of {h.entity_name} is
+            begin
+                r <= a and b;
+            end architecture;
+        """))
 
 
 class ReduceAnd(ArgsOperator):
@@ -294,41 +291,38 @@ end architecture;
         )
 
 
-class Or(ArgsOperator):
+class BitsOr(ArgsOperator):
     """
-        Or[<op1_type (BitsType)>, <op2_type (BitsType)>]
+        Bitwise OR.
+
+        BitsOr[<a_type (SignalType)>, <b_type (SignalType)>]
         
-        Input(s): op1 (op1_type), op2 (op2_type)
-        Output(s): res (the wider one)
+        Input(s): a (a_type), b (b_type)
+        Output(s): r (same type)
     """
-    deduction = OperatorDeductionTemplates.equal_type_2i1o("a", "b", "r")
+    setup = OperatorSetupTemplates.input_type_args_2i1o("a", "b", "r")
+    deduction = OperatorDeductionTemplates.equal_types("a", "b", "r")
     
     @staticmethod
     def generation(s: Structure, h: HDLFileModel, io: IOProxy):
-        op1_type, op2_type, res_type = io.op1.type, io.op2.type, io.res.type
-        
-        if op1_type.base != Bits or op2_type.base != Bits:
-            raise NotImplementedError
-        
-        h.set_raw(".vhd",
-f"""\
-library IEEE;
-use IEEE.std_logic_1164.all;
+        h.set_raw(".vhd", textwrap.dedent(f"""\
+            library IEEE;
+            use IEEE.std_logic_1164.all;
+            use IEEE.numeric_std.all;
 
-entity {h.entity_name} is
-    port (
-        op1: in {OperatorUtils.type_decl(op1_type)};
-        op2: in {OperatorUtils.type_decl(op2_type)};
-        res: out {OperatorUtils.type_decl(res_type)}
-    );
-end entity;
+            entity {h.entity_name} is
+                port (
+                    a: in {OperatorUtils.type_decl(io.a.type)};
+                    b: in {OperatorUtils.type_decl(io.b.type)};
+                    r: out {OperatorUtils.type_decl(io.r.type)}
+                );
+            end entity;
 
-architecture Behavioral of {h.entity_name} is
-begin
-    res <= op1 or op2;
-end architecture;
-"""
-        )
+            architecture Behavioral of {h.entity_name} is
+            begin
+                r <= a or b;
+            end architecture;
+        """))
 
 
 class ReduceOr(ArgsOperator):
