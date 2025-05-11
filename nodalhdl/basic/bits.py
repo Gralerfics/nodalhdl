@@ -388,6 +388,79 @@ class BinaryMultiplexer(ArgsOperator):
         """))
 
 
+class CustomVHDLOperator(ArgsOperator):
+    """
+        Customized bitwise operations in VHDL.
+
+        CustomVHDLOperator[
+            {input_name_0: input_type_0, ...}
+            {output_name_0: output_type_0, ...},
+            arch_body (str),
+            arch_decl (str)
+        ]
+        
+        TODO 结构化端口, 直接放个带 IOWrapper 的完善 Bundle 进来, 合适吗? 为保兼容性应保留原方式.
+        
+        Input(s): <input_name_0> (input_type_0), ...
+        Output(s): <output_name_0> (output_type_0), ...
+    """
+    @staticmethod
+    def setup(*args) -> Structure:
+        assert \
+            len(args) >= 3 and \
+            isinstance(args[0], dict) and \
+            isinstance(args[1], dict) and \
+            isinstance(args[2], str) and \
+            (len(args) == 3 or isinstance(args[3], str))
+        
+        s = Structure()
+        
+        for name, t in args[0].items():
+            s.add_port(name, Input[t])
+        
+        for name, t in args[1].items():
+            s.add_port(name, Output[t])
+        
+        return s
+    
+    @staticmethod
+    def generation(s: Structure, h: HDLFileModel, io: IOProxy):
+        args = s.custom_params["_setup_args"]
+        input_ports: dict = args[0]
+        output_ports: dict = args[1]
+        arch_body: str = args[2]
+        arch_decl: str = args[3] if len(args) > 3 else None
+        
+        port_body = ";\n                    ".join(
+            [f"{name}: in {OperatorUtils.type_decl(io.access(name).type)}" for name in input_ports.keys()] +
+            [f"{name}: out {OperatorUtils.type_decl(io.access(name).type)}" for name in output_ports.keys()]
+        )
+        
+        h.set_raw(".vhd", textwrap.dedent(f"""\
+            library IEEE;
+            use IEEE.std_logic_1164.all;
+            use IEEE.numeric_std.all;
+            use work.types.all;
+
+            entity {h.entity_name} is
+                port (
+                    {port_body}
+                );
+            end entity;
+
+            architecture Behavioral of {h.entity_name} is
+                {textwrap.dedent(arch_decl).strip().replace("\n", "\n                ") if arch_decl else "-- no declarations"}
+            begin
+                {textwrap.dedent(arch_body).strip().replace("\n", "\n                ")}
+            end architecture;
+        """))
+
+    @classmethod
+    def naming(cls, *args):
+        return f"{cls.__name__}_{hashlib.md5(str(args).encode('utf-8')).hexdigest()[:16]}"
+
+
+# TODO 重构
 class Decomposition(ArgsOperator):
     """
         Decomposition[<input_type (BundleType)>]: all shallow members
@@ -395,8 +468,6 @@ class Decomposition(ArgsOperator):
 
         Input(s): i (BundleType)
         Output(s): o (structural)
-        
-        TODO 重构
     """
     @staticmethod
     def setup(*args) -> Structure:
@@ -473,15 +544,13 @@ end architecture;
         else:
             return f"{cls.__name__}_{args[0].__name__[7:15]}_{"_".join([path_str.strip(".").replace(".", "_") for path_str in args[1:]])}"
 
-
+# TODO 重构
 class Composition(ArgsOperator):
     """
         Composition[<output_type (BundleType)>, <path_0 (str)>, ...]
         
         Input(s): i (structural)
         Output(s): o (BundleType)
-        
-        TODO 重构
     """
     @staticmethod
     def setup(*args) -> Structure:
@@ -573,156 +642,5 @@ end architecture;
             return f"{cls.__name__}_{args[0].__name__[7:15]}_{"_".join([path_str.strip(".").replace(".", "_") for path_str in args[1:]])}"
 
 
-class Concatenater(ArgsOperator):
-    """
-        Concatenater[N (int)]: N-inputs, Auto type
-        Concatenater[type_0 (SignalType), type_1 (SignalType), ...]: TODO
-        
-        Input(s): i0, i1, ...
-        Output(s): o (Bits[...])
-        
-        TODO 重构
-    """
-    @staticmethod
-    def setup(*args) -> Structure:
-        s = Structure()
-        
-        if isinstance(args[0], int):
-            for idx in range(args[0]):
-                s.add_port(f"i{idx}", Input[Auto])
-            s.add_port("o", Output[Auto])
-            
-            s.custom_params["N"] = args[0]
-        else:
-            raise NotImplementedError
-        
-        return s
-    
-    @staticmethod
-    def deduction(s: Structure, io: IOProxy):
-        N = s.custom_params["N"]
-        input_types = [io._proxy[f"i{idx}"].type for idx in range(N)]
-        
-        if all([t.determined for t in input_types]):
-            io.o.update(Bits[sum([t.W for t in input_types])])
-    
-    @staticmethod
-    def generation(s: Structure, h: HDLFileModel, io: IOProxy):
-        N = s.custom_params["N"]
-        input_types = [io._proxy[f"i{idx}"].type for idx in range(N)]
-        output_type = io.o.type
-        
-        if N is not None:
-            port_str = "\n".join([f"        i{idx}: in {OperatorUtils.type_decl(t)};" for idx, t in enumerate(input_types)])
-            assign_str = "    o <= " + " & ".join([f"i{idx}" for idx in range(N)]) + ";"
-        else:
-            raise NotImplementedError
-
-        h.set_raw(".vhd",
-f"""\
-library IEEE;
-use IEEE.std_logic_1164.all;
-use IEEE.numeric_std.all;
-use work.types.all;
-
-entity {h.entity_name} is
-    port (
-{port_str}
-        o: out {OperatorUtils.type_decl(output_type)}
-    );
-end entity;
-
-architecture Behavioral of {h.entity_name} is
-begin
-{assign_str}
-end architecture;
-"""
-        )
-
-    # @classmethod
-    # def naming(cls, *args): # TODO 只给出 N 的情况非定态
-
-
-class CustomVHDLOperator(ArgsOperator):
-    """
-        Customized bitwise operations in VHDL.
-
-        CustomVHDLOperator[(input_type_0, input_type_1, ...), (output_type_0, output_type_1, ...), arch_body (str), arch_decl (str)]
-        
-        Input(s): i0 (input_type_0), i1 (input_type_1), ...
-        Output(s): o0 (output_type_0), o1 (output_type_1), ...
-    """
-    @staticmethod
-    def setup(*args) -> Structure:
-        assert \
-            len(args) >= 3 and \
-            (isinstance(args[0], tuple) or isinstance(args[0], list) or isinstance(args[0], SignalType)) and \
-            (isinstance(args[1], tuple) or isinstance(args[1], list) or isinstance(args[1], SignalType)) and \
-            isinstance(args[2], str) and \
-            (len(args) == 3 or isinstance(args[3], str))
-        
-        input_types = [args[0]] if isinstance(args[0], SignalType) else args[0]
-        output_types = [args[1]] if isinstance(args[1], SignalType) else args[1]
-        
-        s = Structure()
-        
-        for idx, t in enumerate(input_types):
-            s.add_port(f"i{idx}", Input[t])
-        
-        for idx, t in enumerate(output_types):
-            s.add_port(f"o{idx}", Output[t])
-        
-        return s
-    
-    @staticmethod
-    def generation(s: Structure, h: HDLFileModel, io: IOProxy):
-        args = s.custom_params["_setup_args"]
-        inputs_num = 1 if isinstance(args[0], SignalType) else len(args[0])
-        outputs_num = 1 if isinstance(args[1], SignalType) else len(args[1])
-        arch_body: str = args[2]
-        arch_decl: str = args[3] if len(args) > 3 else None
-        
-        port_body = ";\n                    ".join(
-            [f"i{idx}: in {OperatorUtils.type_decl(io.access(f"i{idx}").type)}" for idx in range(inputs_num)] +
-            [f"o{idx}: out {OperatorUtils.type_decl(io.access(f"o{idx}").type)}" for idx in range(outputs_num)]
-        )
-        
-        h.set_raw(".vhd", textwrap.dedent(f"""\
-            library IEEE;
-            use IEEE.std_logic_1164.all;
-            use IEEE.numeric_std.all;
-            use work.types.all;
-
-            entity {h.entity_name} is
-                port (
-                    {port_body}
-                );
-            end entity;
-
-            architecture Behavioral of {h.entity_name} is
-                {textwrap.dedent(arch_decl).strip().replace("\n", "\n                ") if arch_decl else "-- no declarations"}
-            begin
-                {textwrap.dedent(arch_body).strip().replace("\n", "\n                ")}
-            end architecture;
-        """))
-
-    @classmethod
-    def naming(cls, *args):
-        return f"{cls.__name__}_{hashlib.md5(str(args).encode('utf-8')).hexdigest()[:16]}"
-
-
-# class Slicer(ArgsOperator):
-#     """
-#         Slicer[input_type (SignalType), wire_1 (SignalType), ...]
-        
-#         Output(s): c0 (type(constant_0)), c1 (type(constant_1)), ...
-#     """
-#     pass
-
-
-# class Shifter(ArgsOperator):
-#     """
-#         TODO 暂时只考虑 UInt, SInt 和 Bits
-#     """
-#     pass
+# TODO Slicer、Concatenater、Shifter 以及其他复杂位操作可以直接用 CustomVHDLOperator 实现（大多这样的操作都是拼接性质，放在一个基本算子里会导致无法拆分的大延迟）
 

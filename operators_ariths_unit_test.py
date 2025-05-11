@@ -121,15 +121,15 @@ def Test_CustomVHDLOperator(s: Structure):
     c = s.add_port("c", Output[Auto])
 
     u = s.add_substructure("u", CustomVHDLOperator[
-        (Bits[3], Auto),
-        Bits[8],
-        "t0 <= i0;\nt1 <= i1;\no0 <= t1 & t0;",
+        {"aa": Bits[3], "bb": Auto},
+        {"cc": Bits[8]},
+        "t0 <= aa;\nt1 <= bb;\ncc <= t1 & t0;",
         "signal t0: std_logic_vector(2 downto 0);\nsignal t1: std_logic_vector(4 downto 0);"
     ])
 
-    s.connect(a, u.IO.i0)
-    s.connect(b, u.IO.i1)
-    s.connect(u.IO.o0, c)
+    s.connect(a, u.IO.aa)
+    s.connect(b, u.IO.bb)
+    s.connect(u.IO.cc, c)
 
 
 @here
@@ -169,12 +169,12 @@ def Test_Arith_Constants(s: Structure):
     s.connect(u.IO.bbb, b)
     s.connect(u.IO.ccc, c)
     
-    # return "hdl_CustomVHDLOperator_f3392e90eda2bdf2.vhd"
+    # return "hdl_CustomVHDLOperator_72493f969d0f2dcd.vhd"
     # return "hdl_root.vhd"
 
 
 @here
-def Test_CustomVHDLOperator(s: Structure):
+def Test_BinaryMultiplexer(s: Structure):
     a = s.add_port("a", Input[Auto])
     b = s.add_port("b", Input[Auto])
     sel = s.add_port("sel", Input[Bit])
@@ -187,5 +187,5 @@ def Test_CustomVHDLOperator(s: Structure):
     s.connect(sel, u.IO.sel)
     s.connect(c, u.IO.o)
     
-    return "hdl_BinaryMultiplexer_UInt_12.vhd"
+    # return "hdl_BinaryMultiplexer_UInt_12.vhd"
 

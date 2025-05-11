@@ -14,8 +14,7 @@ from .bits import *
 
 def Constants(**constants) -> Structure:
     """
-        TODO 结构化常量; 列表常量
-        TODO 用 CustomVHDLOperator 实现的话 naming 就是 Constants 了
+        Constants({"<constant_name_0>": constant_object_0, ...})
     """
     pairs = list(constants.items()) # fix the order
     
@@ -33,13 +32,13 @@ def Constants(**constants) -> Structure:
     ports = [s.add_port(name, Output[type(value)]) for name, value in pairs]
     
     opt = s.add_substructure("opt", CustomVHDLOperator[
-        [],
-        [type(value) for _, value in pairs],
-        "\n".join([line for idx, (_, value) in enumerate(pairs) for line in _assign(f"o{idx}", value)])
+        {},
+        {name: type(value) for name, value in constants.items()},
+        "\n".join([line for name, value in pairs for line in _assign(name, value)])
     ])
     
-    for idx, port in enumerate(ports):
-        s.connect(opt.IO.access(f"o{idx}"), port)
+    for port in ports:
+        s.connect(opt.IO.access(port.name), port)
     
     return s
 
