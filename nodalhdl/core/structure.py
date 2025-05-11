@@ -271,7 +271,7 @@ class Node:
     
     @property
     def is_driver(self):
-        return self.origin_signal_type.belongs(Output)
+        return self.origin_signal_type.bases(Output)
     
     def is_determined(self, runtime_id: RuntimeId):
         return self.get_type(runtime_id).determined
@@ -423,7 +423,7 @@ class StructuralNodes(dict):
         res = []
         for k, v in self.items():
             if isinstance(v, Node):
-                if real_filter == "all" or (real_filter == "in" and v.origin_signal_type.belongs(Input)) or (real_filter == "out" and v.origin_signal_type.belongs(Output)):
+                if real_filter == "all" or (real_filter == "in" and v.origin_signal_type.bases(Input)) or (real_filter == "out" and v.origin_signal_type.bases(Output)):
                     res.append((prefix + v.name, v))
             elif isinstance(v, StructuralNodes):
                 res.extend(v.nodes(prefix + k + "_", filter, flipped))
@@ -883,7 +883,7 @@ class Structure:
         
         # add ports into model according to ports_inside_flipped
         for port_full_name, port in self.ports_inside_flipped.nodes():
-            direction = "out" if port.origin_signal_type.belongs(Input) else "in" # ports_inside_flipped is IO flipped
+            direction = "out" if port.origin_signal_type.bases(Input) else "in" # ports_inside_flipped is IO flipped
             model.add_port(f"{port_full_name}", direction, port.get_type(runtime_id)) # use full name
             
             # fill net_wires
@@ -964,7 +964,7 @@ class Structure:
             """
             if t.belongs(IOWrapper):
                 return Node(key, t.flip_io(), is_port = True, located_structure = self, layered_name = prefix + key) # (1.) io is flipped in ports_inside_flipped, (2.) ports inside are connected with internal nodes/nets, so located_structure is set to self
-            elif t.belongs(Bundle):
+            elif t.bases(Bundle):
                 return StructuralNodes({k: _extract(k, v, prefix = prefix + key + "_") for k, v in t._bundle_types.items()})
 
         new_port = _extract(name, signal_type)
@@ -1025,7 +1025,7 @@ class NodeProxy:
     
     @property
     def dir(self):
-        is_in = self.proxy_node.origin_signal_type.belongs(Input)
+        is_in = self.proxy_node.origin_signal_type.bases(Input)
         return Input if is_in ^ self.flipped else Output
     
     @property

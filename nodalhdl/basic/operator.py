@@ -12,7 +12,7 @@ from typing import Dict, List
 """
 
 
-declaration_from_type = lambda t: t.__name__ if t.belongs(Bundle) else f"std_logic_vector({t.W - 1} downto 0)"
+declaration_from_type = lambda t: t.__name__ if t.bases(Bundle) else f"std_logic_vector({t.W - 1} downto 0)"
 
 
 class ArgsOperatorMeta(type):
@@ -115,13 +115,13 @@ class Adder(WiderOutputBinaryOperator):
     def generation(s: Structure, h: HDLFileModel, io: IOProxy):
         op1_type, op2_type, res_type = io.op1.type, io.op2.type, io.res.type
         
-        if op1_type.belongs(UInt) and op2_type.belongs(UInt):
+        if op1_type.bases(UInt) and op2_type.bases(UInt):
             ts = "unsigned"
-        elif op1_type.belongs(SInt) and op2_type.belongs(SInt):
+        elif op1_type.bases(SInt) and op2_type.bases(SInt):
             ts = "signed"
-        elif op1_type.belongs(UFixedPoint) and op2_type.belongs(UFixedPoint) and op1_type.W_int == op2_type.W_int and op1_type.W_frac == op2_type.W_frac:
+        elif op1_type.bases(UFixedPoint) and op2_type.bases(UFixedPoint) and op1_type.W_int == op2_type.W_int and op1_type.W_frac == op2_type.W_frac:
             ts = "unsigned"
-        elif op1_type.belongs(SFixedPoint) and op2_type.belongs(SFixedPoint) and op1_type.W_int == op2_type.W_int and op1_type.W_frac == op2_type.W_frac:
+        elif op1_type.bases(SFixedPoint) and op2_type.bases(SFixedPoint) and op1_type.W_int == op2_type.W_int and op1_type.W_frac == op2_type.W_frac:
             ts = "signed"
         else:
             raise NotImplementedError
@@ -159,13 +159,13 @@ class Subtracter(WiderOutputBinaryOperator):
     def generation(s: Structure, h: HDLFileModel, io: IOProxy):
         op1_type, op2_type, res_type = io.op1.type, io.op2.type, io.res.type
         
-        if op1_type.belongs(UInt) and op2_type.belongs(UInt):
+        if op1_type.bases(UInt) and op2_type.bases(UInt):
             ts = "unsigned"
-        elif op1_type.belongs(SInt) and op2_type.belongs(SInt):
+        elif op1_type.bases(SInt) and op2_type.bases(SInt):
             ts = "signed"
-        elif op1_type.belongs(UFixedPoint) and op2_type.belongs(UFixedPoint) and op1_type.W_int == op2_type.W_int and op1_type.W_frac == op2_type.W_frac:
+        elif op1_type.bases(UFixedPoint) and op2_type.bases(UFixedPoint) and op1_type.W_int == op2_type.W_int and op1_type.W_frac == op2_type.W_frac:
             ts = "unsigned"
-        elif op1_type.belongs(SFixedPoint) and op2_type.belongs(SFixedPoint) and op1_type.W_int == op2_type.W_int and op1_type.W_frac == op2_type.W_frac:
+        elif op1_type.bases(SFixedPoint) and op2_type.bases(SFixedPoint) and op1_type.W_int == op2_type.W_int and op1_type.W_frac == op2_type.W_frac:
             ts = "signed"
         else:
             raise NotImplementedError
@@ -220,7 +220,7 @@ class Inverse(ArgsOperator):
         op_type = io.op.type
         type_declaration = declaration_from_type(op_type)
         
-        if not op_type.belongs(SInt):
+        if not op_type.bases(SInt):
             raise NotImplementedError
         
         h.set_raw(".vhd",
@@ -311,9 +311,9 @@ class LessThan(ArgsOperator):
     def generation(s: Structure, h: HDLFileModel, io: IOProxy):
         op1_type, op2_type = io.op1.type, io.op2.type
         
-        if op1_type.belongs(UInt) and op2_type.belongs(UInt):
+        if op1_type.bases(UInt) and op2_type.bases(UInt):
             cond_str = "unsigned(op1) < unsigned(op2)"
-        elif op1_type.belongs(SInt) and op2_type.belongs(SInt):
+        elif op1_type.bases(SInt) and op2_type.bases(SInt):
             cond_str = "signed(op1) < signed(op2)"
         else:
             raise NotImplementedError
@@ -621,7 +621,7 @@ class Decomposition(ArgsOperator):
         def _add_output(t: SignalType, path: List[str]):
             if len(path) == 0:
                 return Output[t]
-            elif t.belongs(Bundle):
+            elif t.bases(Bundle):
                 return Bundle[{k: (v if k != path[0] else _add_output(v, path[1:])) for k, v in t._bundle_types.items()}]
             else:
                 raise Exception("Invalid path")
@@ -704,7 +704,7 @@ class Composition(ArgsOperator):
         def _add_input(t: SignalType, path: List[str]):
             if len(path) == 0:
                 return Input[t]
-            elif t.belongs(Bundle):
+            elif t.bases(Bundle):
                 return Bundle[{k: (v if k != path[0] else _add_input(v, path[1:])) for k, v in t._bundle_types.items()}]
             else:
                 raise Exception("Invalid path")
@@ -744,7 +744,7 @@ class Composition(ArgsOperator):
         def _assign_zeros(t: SignalType, path: List[str] = []):
             res = ""
             if not t.perfectly_io_wrapped:
-                if t.belongs(Bundle):
+                if t.bases(Bundle):
                     res += "".join([_assign_zeros(v, path + [k]) for k, v in t._bundle_types.items()])
                 else:
                     res += f"\n    o.{".".join(path)} <= (others => \'0\');"

@@ -13,10 +13,10 @@ def Multiplier(t1: SignalType, t2: SignalType) -> Structure:
     op1 = s.add_port("op1", Input[t1])
     op2 = s.add_port("op2", Input[t2])
     
-    if t1.belongs(UFixedPoint) and t2.belongs(UFixedPoint) and t1.W_int == t2.W_int and t1.W_frac == t2.W_frac:
+    if t1.bases(UFixedPoint) and t2.bases(UFixedPoint) and t1.W_int == t2.W_int and t1.W_frac == t2.W_frac:
         raise NotImplementedError
-    elif t1.belongs(SFixedPoint) and t2.belongs(SFixedPoint) and t1.W_int == t2.W_int and t1.W_frac == t2.W_frac:
-        pass
+    elif t1.bases(SFixedPoint) and t2.bases(SFixedPoint) and t1.W_int == t2.W_int and t1.W_frac == t2.W_frac:
+        pass # TODO
     else:
         raise NotImplementedError
 

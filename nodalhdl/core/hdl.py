@@ -36,7 +36,7 @@ class HDLGlobalInfo:
         for t in self.type_pool_ordered: # t: BundleType
             content += f"    type {t.__name__} is record\n"
             for k, T in t._bundle_types.items():
-                if T.belongs(Bundle):
+                if T.bases(Bundle):
                     content += f"        {k}: {T.__name__};\n"
                 else:
                     content += f"        {k}: std_logic_vector({T.W - 1} downto 0);\n"
@@ -50,7 +50,7 @@ class HDLGlobalInfo:
             非 Bundle 类型不接受 (全部视为 std_logic_vector, 应都有 .W 位宽属性), IO Wrapper 不接受.
             Bundle 类型会递归添加其内部的子 Bundle 类型.
         """
-        if not t.belongs(Bundle):
+        if not t.bases(Bundle):
             raise HDLFileModelException(f"Type to be added should be a Bundle.")
         
         if t.io_wrapper_included:
@@ -60,7 +60,7 @@ class HDLGlobalInfo:
             return
         
         def _add(t: BundleType):
-            if t.belongs(Bundle): # [NOTICE]
+            if t.bases(Bundle): # [NOTICE]
                 for _, v in t._bundle_types.items(): # 遍历子 Bundle
                     _add(v)
                 self.type_pool.add(t) # 添加该 Bundle 类型
@@ -130,7 +130,7 @@ class HDLFileModel:
                     port_content += f"{indent}        reset: in std_logic;\n"
                 
                 for name, (direction, t) in hdl.ports.items():
-                    if t.belongs(Bundle):
+                    if t.bases(Bundle):
                         port_content += f"{indent}        {name}: {direction} {t.__name__};\n"
                     else:
                         port_content += f"{indent}        {name}: {direction} std_logic_vector({t.W - 1} downto 0);\n"
@@ -147,7 +147,7 @@ class HDLFileModel:
             # 信号声明
             signal_declaration = ""
             for name, t in model.signals.items():
-                if t.belongs(Bundle):
+                if t.bases(Bundle):
                     signal_declaration += f"    signal {name}: {t.__name__};\n"
                 else:
                     signal_declaration += f"    signal {name}: std_logic_vector({t.W - 1} downto 0);\n"
@@ -160,7 +160,7 @@ class HDLFileModel:
                 for _, reg_name, signal_type in model.registers:
                     def _generate(sub_reg_name: str, t: SignalType):
                         res = ""
-                        if t.belongs(Bundle):
+                        if t.bases(Bundle):
                             for k, v in t._bundle_types.items():
                                 res += _generate(sub_reg_name + "." + k, v)
                         else:
@@ -223,7 +223,7 @@ class HDLFileModel:
         """
             不需要在 custom_generation 中使用, generation 时会根据结构自动调用.
         """
-        if t.belongs(Bundle):
+        if t.bases(Bundle):
             self.global_info.add_type(t) # 添加类型到全局信息
         
         self.ports[name] = (direction, t)
@@ -245,7 +245,7 @@ class HDLFileModel:
         })
     
     def add_signal(self, name: str, t: SignalType):
-        if t.belongs(Bundle):
+        if t.bases(Bundle):
             self.global_info.add_type(t) # 添加类型到全局信息
         
         self.signals[name] = t

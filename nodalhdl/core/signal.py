@@ -77,6 +77,9 @@ class SignalType(type):
         cls, other = cls.normalize(), other.normalize()
         return cls is other
     
+    def bases(cls: 'SignalType', other: 'SignalType'):
+        return cls.equals(other) or (hasattr(cls, "base") and cls.base.equals(other))
+    
     def belongs(cls: 'SignalType', other: 'SignalType'):
         """
             Whether `cls` belongs to `other`.
@@ -87,7 +90,8 @@ class SignalType(type):
                 Some STs have more information that others, e.g. UInt[8] is more useful than UInt or Auto.
                 Such kind of relationship can be described by the inheritance relationship.
             
-            TODO 添加基类型属于且位宽相同的情况
+            TODO 重构其他地方 belongs 的使用，基类型判断尽量使用 .bases(...)
+            TODO 后半部分判断放到单类型合并，belongs 或可直接弃用
         """
         cls, other = cls.normalize(), other.normalize()
         return issubclass(cls, other) or (hasattr(cls, "W") and hasattr(other, "W") and cls.W == other.W and issubclass(cls.base, other.base))
@@ -109,6 +113,15 @@ class SignalType(type):
             `cls` and `other` should have the same structure (ignoring IO wrappers).
             `cls` could have IO wrappers, and the IO wrappers in `other` will be ignored.
         """
+        def _single_type_merges(a: 'SignalType', b: 'SignalType'):
+            # TODO 单类型的合并 添加例如 Bits[8] 和 UInt 合并得 UInt[8] 这样情况的考虑；或许应该放到类型的类方法里？
+            if a.belongs(b):
+                return a
+            elif b.belongs(a):
+                return b
+            else:
+                return None
+        
         if other.io_wrapper_included:
             other = other.clear_io()
         
@@ -117,22 +130,17 @@ class SignalType(type):
                 return d_rtst
             elif d_rtst.equals(Auto):
                 return d_port
-            elif d_port.belongs(Input):
+            elif d_port.bases(Input):
                 return Input[_apply(d_port.T, d_rtst)]
-            elif d_port.belongs(Output):
+            elif d_port.bases(Output):
                 return Output[_apply(d_port.T, d_rtst)]
-            elif d_port.belongs(Bundle) and d_rtst.belongs(Bundle):
+            elif d_port.bases(Bundle) and d_rtst.bases(Bundle):
                 if d_port._bundle_types.keys() != d_rtst._bundle_types.keys():
                     return None
                 
                 return Bundle[{key: _apply(T1, T2) for (key, T1), (_, T2) in zip(d_port._bundle_types.items(), d_rtst._bundle_types.items())}]
-            elif not d_port.belongs(Bundle) and not d_rtst.belongs(Bundle):
-                if d_port.belongs(d_rtst):
-                    return d_port
-                elif d_rtst.belongs(d_port):
-                    return d_rtst
-                else:
-                    return None
+            elif not d_port.bases(Bundle) and not d_rtst.bases(Bundle):
+                return _single_type_merges(d_port, d_rtst)
             else:
                 return None
         
@@ -159,9 +167,9 @@ class SignalType(type):
             raise SignalTypeException(f"Imperfect IO-wrapped signal type cannot be flipped")
         
         def _flip(t: SignalType):
-            if t.belongs(Input):
+            if t.bases(Input):
                 return Output[t.T]
-            elif t.belongs(Output):
+            elif t.bases(Output):
                 return Input[t.T]
             else: # 一定是 Bundle, 如果是未被包裹的普通信号, 必然通不过 perfectly_io_wrapped 检查
                 return Bundle[{key: _flip(T) for key, T in t._bundle_types.items()}]
@@ -175,9 +183,9 @@ class SignalType(type):
         if not cls.io_wrapper_included:
             return cls
         
-        if cls.belongs(Input) or cls.belongs(Output):
+        if cls.bases(Input) or cls.bases(Output):
             return cls.T
-        elif cls.belongs(Bundle):
+        elif cls.bases(Bundle):
             return Bundle[{key: T.clear_io() for key, T in cls._bundle_types.items()}]
         else: # ordinary
             return cls
