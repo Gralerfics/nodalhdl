@@ -1,5 +1,6 @@
 from ..core.signal import *
-from ..core.structure import Structure, RuntimeId, IOProxy
+from ..core.structure import Structure, IOProxy
+from ..core.operator import ArgsOperator, OperatorUtils
 from ..core.hdl import HDLFileModel
 
 import hashlib
@@ -10,52 +11,6 @@ from typing import Dict, List
 """
     TODO check the `NotImplementedError`s.
 """
-
-
-declaration_from_type = lambda t: t.__name__ if t.bases(Bundle) else f"std_logic_vector({t.W - 1} downto 0)"
-
-
-class ArgsOperatorMeta(type):
-    pool: Dict[str, Structure] = {}
-    
-    def __getitem__(cls, args):
-        if not isinstance(args, list) and not isinstance(args, tuple):
-            args = [args]
-        
-        s = cls.setup(*args)
-        
-        s.custom_deduction = cls.deduction
-        s.custom_generation = cls.generation
-        s.custom_params["_setup_args"] = args
-        
-        rid = RuntimeId.create()
-        s.deduction(rid)
-        if s.is_runtime_applicable:
-            s.apply_runtime(rid)
-        
-        if s.is_reusable:
-            unique_name = cls.naming(*args) # should be a valid string and unique across all operators
-            if unique_name in cls.pool:
-                return cls.pool[unique_name]
-            else:
-                s.unique_name = unique_name
-                cls.pool[unique_name] = s
-        
-        return s
-
-
-class ArgsOperator(metaclass = ArgsOperatorMeta):
-    @staticmethod
-    def setup(*args) -> Structure: return Structure()
-    
-    @staticmethod
-    def deduction(s: Structure, io: IOProxy): pass
-    
-    @staticmethod
-    def generation(s: Structure, h: HDLFileModel, io: IOProxy): pass
-    
-    @classmethod
-    def naming(cls, *args): return f"{cls.__name__}_{'_'.join(map(str, args))}" # [NOTICE] use valid string
 
 
 class WiderOutputBinaryOperator(ArgsOperator):
@@ -134,9 +89,9 @@ use IEEE.numeric_std.all;
 
 entity {h.entity_name} is
     port (
-        op1: in {declaration_from_type(op1_type)};
-        op2: in {declaration_from_type(op2_type)};
-        res: out {declaration_from_type(res_type)}
+        op1: in {OperatorUtils.type_decl(op1_type)};
+        op2: in {OperatorUtils.type_decl(op2_type)};
+        res: out {OperatorUtils.type_decl(res_type)}
     );
 end entity;
 
@@ -178,9 +133,9 @@ use IEEE.numeric_std.all;
 
 entity {h.entity_name} is
     port (
-        op1: in {declaration_from_type(op1_type)};
-        op2: in {declaration_from_type(op2_type)};
-        res: {declaration_from_type(res_type)}
+        op1: in {OperatorUtils.type_decl(op1_type)};
+        op2: in {OperatorUtils.type_decl(op2_type)};
+        res: {OperatorUtils.type_decl(res_type)}
     );
 end entity;
 
@@ -218,7 +173,7 @@ class Inverse(ArgsOperator):
     @staticmethod
     def generation(s: Structure, h: HDLFileModel, io: IOProxy):
         op_type = io.op.type
-        type_declaration = declaration_from_type(op_type)
+        type_declaration = OperatorUtils.type_decl(op_type)
         
         if not op_type.bases(SInt) or not op_type.bases(SFixedPoint):
             raise NotImplementedError
@@ -274,8 +229,8 @@ use IEEE.std_logic_1164.all;
 
 entity {h.entity_name} is
     port (
-        op1: in {declaration_from_type(op1_type)};
-        op2: in {declaration_from_type(op2_type)};
+        op1: in {OperatorUtils.type_decl(op1_type)};
+        op2: in {OperatorUtils.type_decl(op2_type)};
         res: out std_logic
     );
 end entity;
@@ -330,8 +285,8 @@ use IEEE.numeric_std.all;
 
 entity {h.entity_name} is
     port (
-        op1: in {declaration_from_type(op1_type)};
-        op2: in {declaration_from_type(op2_type)};
+        op1: in {OperatorUtils.type_decl(op1_type)};
+        op2: in {OperatorUtils.type_decl(op2_type)};
         res: out std_logic
     );
 end entity;
@@ -370,7 +325,7 @@ class Not(ArgsOperator):
     @staticmethod
     def generation(s: Structure, h: HDLFileModel, io: IOProxy):
         op_type = io.op.type
-        type_declaration = declaration_from_type(op_type)
+        type_declaration = OperatorUtils.type_decl(op_type)
         
         if op_type.base != Bits:
             raise NotImplementedError
@@ -416,9 +371,9 @@ use IEEE.std_logic_1164.all;
 
 entity {h.entity_name} is
     port (
-        op1: in {declaration_from_type(op1_type)};
-        op2: in {declaration_from_type(op2_type)};
-        res: out {declaration_from_type(res_type)}
+        op1: in {OperatorUtils.type_decl(op1_type)};
+        op2: in {OperatorUtils.type_decl(op2_type)};
+        res: out {OperatorUtils.type_decl(res_type)}
     );
 end entity;
 
@@ -459,7 +414,7 @@ use IEEE.std_logic_1164.all;
 
 entity {h.entity_name} is
     port (
-        op: in {declaration_from_type(op_type)};
+        op: in {OperatorUtils.type_decl(op_type)};
         res: out std_logic
     );
 end entity;
@@ -493,9 +448,9 @@ use IEEE.std_logic_1164.all;
 
 entity {h.entity_name} is
     port (
-        op1: in {declaration_from_type(op1_type)};
-        op2: in {declaration_from_type(op2_type)};
-        res: out {declaration_from_type(res_type)}
+        op1: in {OperatorUtils.type_decl(op1_type)};
+        op2: in {OperatorUtils.type_decl(op2_type)};
+        res: out {OperatorUtils.type_decl(res_type)}
     );
 end entity;
 
@@ -536,7 +491,7 @@ use IEEE.std_logic_1164.all;
 
 entity {h.entity_name} is
     port (
-        op: in {declaration_from_type(op_type)};
+        op: in {OperatorUtils.type_decl(op_type)};
         res: out std_logic
     );
 end entity;
@@ -579,7 +534,7 @@ class Multiplexer(ArgsOperator):
     @staticmethod
     def generation(s: Structure, h: HDLFileModel, io: IOProxy):
         value_type = io.i0.type
-        type_declaration = declaration_from_type(value_type)
+        type_declaration = OperatorUtils.type_decl(value_type)
         
         h.set_raw(".vhd",
 f"""\
@@ -655,7 +610,7 @@ class Decomposition(ArgsOperator):
         
         path_to_valid_name = lambda path_str: path_str.strip(".").replace(".", "_")
         
-        port_str = ";\n".join([f"        o_{path_to_valid_name(path_str)}: out {declaration_from_type(eval(f"io.o.{path_str.strip(".")}.type"))}" for path_str in s.custom_params["path_strings"]]) # [NOTICE] dont use eval
+        port_str = ";\n".join([f"        o_{path_to_valid_name(path_str)}: out {OperatorUtils.type_decl(eval(f"io.o.{path_str.strip(".")}.type"))}" for path_str in s.custom_params["path_strings"]]) # [NOTICE] dont use eval
         assign_str = "\n".join([f"    o_{path_to_valid_name(path_str)} <= i.{path_str.strip(".")};" for path_str in s.custom_params["path_strings"]])
         
         h.set_raw(".vhd",
@@ -667,7 +622,7 @@ use work.types.all;
 
 entity {h.entity_name} is
     port (
-        i: in {declaration_from_type(input_type)};
+        i: in {OperatorUtils.type_decl(input_type)};
 {port_str}
     );
 end entity;
@@ -742,7 +697,7 @@ class Composition(ArgsOperator):
         
         path_to_valid_name = lambda path_str: path_str.strip(".").replace(".", "_")
         
-        port_str = ";\n".join([f"        i_{path_to_valid_name(path_str)}: in {declaration_from_type(eval(f"io.i.{path_str.strip(".")}.type"))}" for path_str in s.custom_params["path_strings"]]) # [NOTICE] dont use eval
+        port_str = ";\n".join([f"        i_{path_to_valid_name(path_str)}: in {OperatorUtils.type_decl(eval(f"io.i.{path_str.strip(".")}.type"))}" for path_str in s.custom_params["path_strings"]]) # [NOTICE] dont use eval
         assign_str = "\n".join([f"    o.{path_str.strip(".")} <= i_{path_to_valid_name(path_str)};" for path_str in s.custom_params["path_strings"]])
         
         def _assign_zeros(t: SignalType, path: List[str] = []):
@@ -764,7 +719,7 @@ use work.types.all;
 
 entity {h.entity_name} is
     port (
-        o: out {declaration_from_type(output_type)};
+        o: out {OperatorUtils.type_decl(output_type)};
 {port_str}
     );
 end entity;
@@ -807,7 +762,7 @@ class Constant(ArgsOperator):
     def generation(s: Structure, h: HDLFileModel, io: IOProxy):
         constants = s.custom_params["constants"]
         
-        port_str = ";\n".join([f"        c{idx}: out {declaration_from_type(type(c))}" for idx, c in enumerate(constants)])
+        port_str = ";\n".join([f"        c{idx}: out {OperatorUtils.type_decl(type(c))}" for idx, c in enumerate(constants)])
         
         def _assign(sub_wire_name: str, c: Signal):
             res = ""
@@ -886,7 +841,7 @@ class Concatenater(ArgsOperator):
         output_type = io.o.type
         
         if N is not None:
-            port_str = "\n".join([f"        i{idx}: in {declaration_from_type(t)};" for idx, t in enumerate(input_types)])
+            port_str = "\n".join([f"        i{idx}: in {OperatorUtils.type_decl(t)};" for idx, t in enumerate(input_types)])
             assign_str = "    o <= " + " & ".join([f"i{idx}" for idx in range(N)]) + ";"
         else:
             raise NotImplementedError
@@ -901,7 +856,7 @@ use work.types.all;
 entity {h.entity_name} is
     port (
 {port_str}
-        o: out {declaration_from_type(output_type)}
+        o: out {OperatorUtils.type_decl(output_type)}
     );
 end entity;
 
@@ -953,8 +908,8 @@ class BitsOperator(ArgsOperator):
         hdl_content: str = s.custom_params["hdl_content"]
         
         port_str = "\n".join(
-            [f"        i{idx}: in {declaration_from_type(Bits[w])};" for idx, w in enumerate(i_widths)] +
-            [f"        o{idx}: out {declaration_from_type(Bits[w])};" for idx, w in enumerate(o_widths)]
+            [f"        i{idx}: in {OperatorUtils.type_decl(Bits[w])};" for idx, w in enumerate(i_widths)] +
+            [f"        o{idx}: out {OperatorUtils.type_decl(Bits[w])};" for idx, w in enumerate(o_widths)]
         )
         
         if hdl_type == "VHDL":

@@ -1,5 +1,5 @@
 from ..core.signal import *
-from .operator import *
+from .bits import *
 
 
 def Add(t1: SignalType, t2: SignalType) -> Structure:
@@ -8,7 +8,7 @@ def Add(t1: SignalType, t2: SignalType) -> Structure:
 def Subtract(t1: SignalType, t2: SignalType) -> Structure:
     return Subtracter[t1, t2]
 
-def Multiplier_UInt()
+# def Multiplier_UInt()
 
 def Multiplier(t1: SignalType, t2: SignalType) -> Structure:
     s = Structure()
