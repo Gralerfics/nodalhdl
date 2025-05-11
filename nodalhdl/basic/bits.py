@@ -102,7 +102,7 @@ class BitsInverse(ArgsOperator):
             use IEEE.numeric_std.all;
 
             entity {h.entity_name} is
-                port (s
+                port (
                     a: in {OperatorUtils.type_decl(io.a.type)};
                     r: out {OperatorUtils.type_decl(io.r.type)}
                 );
@@ -110,13 +110,15 @@ class BitsInverse(ArgsOperator):
 
             architecture Behavioral of {h.entity_name} is
             begin
-                res <= std_logic_vector(-signed(a));
+                r <= std_logic_vector(-signed(a));
             end architecture;
         """))
 
 
 class BitsEqualTo(ArgsOperator):
     """
+        Same width EQU.
+    
         BitsEqualTo[<a_type (SignalType)>, <b_type (SignalType)>]
         
         Input(s): a (a_type), b (b_type)
@@ -133,73 +135,51 @@ class BitsEqualTo(ArgsOperator):
 
             entity {h.entity_name} is
                 port (
-                    op1: in {OperatorUtils.type_decl(io.a.type)};
-                    op2: in {OperatorUtils.type_decl(io.b.type)};
-                    res: out std_logic
+                    a: in {OperatorUtils.type_decl(io.a.type)};
+                    b: in {OperatorUtils.type_decl(io.b.type)};
+                    r: out std_logic
                 );
             end entity;
 
             architecture Behavioral of {h.entity_name} is
             begin
-                res <= '1' when op1 = op2 else '0';
+                r <= '1' when a = b else '0';
             end architecture;
         """))
 
 
-class LessThan(ArgsOperator):
+class BitsLessThan(ArgsOperator):
     """
-        LessThan[<op1_type (SignalType)>, <op2_type (SignalType)>]
+        Same width LE. (P.S. unsigned)
+
+        BitsLessThan[<a_type (SignalType)>, <b_type (SignalType)>]
         
-        Input(s): op1 (op1_type), op2 (op2_type)
-        Output(s): res (Bit)
+        Input(s): a (a_type), b (b_type)
+        Output(s): r (Bit)
     """
-    @staticmethod
-    def setup(*args) -> Structure:
-        op1_type, op2_type = args[0], args[1]
-        
-        s = Structure()
-        
-        s.add_port("op1", Input[op1_type])
-        s.add_port("op2", Input[op2_type])
-        s.add_port("res", Output[Bit])
-        
-        return s
+    setup = OperatorSetupTemplates.input_type_args_2i1o("a", "b", "r", output_type = Bit)
+    deduction = OperatorDeductionTemplates.equal_inputs("a", "b")
     
     @staticmethod
     def generation(s: Structure, h: HDLFileModel, io: IOProxy):
-        op1_type, op2_type = io.op1.type, io.op2.type
-        
-        if op1_type.bases(UInt) and op2_type.bases(UInt):
-            cond_str = "unsigned(op1) < unsigned(op2)"
-        elif op1_type.bases(SInt) and op2_type.bases(SInt):
-            cond_str = "signed(op1) < signed(op2)"
-        elif op1_type.bases(UFixedPoint) and op2_type.bases(UFixedPoint) and op1_type.W_int == op2_type.W_int and op1_type.W_frac == op2_type.W_frac:
-            cond_str = "unsigned(op1) < unsigned(op2)"
-        elif op1_type.bases(SFixedPoint) and op2_type.bases(SFixedPoint) and op1_type.W_int == op2_type.W_int and op1_type.W_frac == op2_type.W_frac:
-            cond_str = "signed(op1) < signed(op2)"
-        else:
-            raise NotImplementedError
-        
-        h.set_raw(".vhd",
-f"""\
-library IEEE;
-use IEEE.std_logic_1164.all;
-use IEEE.numeric_std.all;
+        h.set_raw(".vhd", textwrap.dedent(f"""\
+            library IEEE;
+            use IEEE.std_logic_1164.all;
+            use IEEE.numeric_std.all;
 
-entity {h.entity_name} is
-    port (
-        op1: in {OperatorUtils.type_decl(op1_type)};
-        op2: in {OperatorUtils.type_decl(op2_type)};
-        res: out std_logic
-    );
-end entity;
+            entity {h.entity_name} is
+                port (
+                    a: in {OperatorUtils.type_decl(io.a.type)};
+                    b: in {OperatorUtils.type_decl(io.b.type)};
+                    r: out std_logic
+                );
+            end entity;
 
-architecture Behavioral of {h.entity_name} is
-begin
-    res <= '1' when {cond_str} else '0';
-end architecture;
-"""
-        )
+            architecture Behavioral of {h.entity_name} is
+            begin
+                r <= '1' when unsigned(a) < unsigned(b) else '0';
+            end architecture;
+        """))
 
 
 class Not(ArgsOperator):
