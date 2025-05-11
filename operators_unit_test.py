@@ -95,6 +95,18 @@ def Test_BitsAnd_BitsOr(s: Structure):
     s.connect(a, u.IO.a)
     s.connect(b, u.IO.b)
     s.connect(u.IO.r, c)
+
+
+@here
+def Test_BitsReductionAnd_BitsReductionOr(s: Structure):
+    a = s.add_port("a", Input[Bits[6]])
+    c = s.add_port("c", Output[Auto])
+
+    # u = s.add_substructure("u", BitsReductionAnd[Auto])
+    u = s.add_substructure("u", BitsReductionOr[Auto])
+
+    s.connect(a, u.IO.a)
+    s.connect(u.IO.r, c)
     
     return True
 

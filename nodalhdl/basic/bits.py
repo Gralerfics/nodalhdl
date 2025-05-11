@@ -249,46 +249,35 @@ class BitsAnd(ArgsOperator):
         """))
 
 
-class ReduceAnd(ArgsOperator):
+class BitsReductionAnd(ArgsOperator):
     """
-        ReduceAnd[<op_type (BitsType)>]
+        Bitwise reduction AND.
+
+        BitsReduceAnd[<a_type (SignalType)>]
         
-        Input(s): op (op_type)
-        Output(s): res (Bit)
+        Input(s): a (a_type)
+        Output(s): r (Bit)
     """
-    @staticmethod
-    def setup(*args) -> Structure:
-        op_type = args[0]
-        
-        s = Structure()
-        
-        s.add_port("op", Input[op_type])
-        s.add_port("res", Output[Bit])
-        
-        return s
+    setup = OperatorSetupTemplates.input_type_args_1i1o("a", "r", output_type = Bit)
     
     @staticmethod
     def generation(s: Structure, h: HDLFileModel, io: IOProxy):
-        op_type = io.op.type
-        
-        h.set_raw(".vhd",
-f"""\
-library IEEE;
-use IEEE.std_logic_1164.all;
+        h.set_raw(".vhd", textwrap.dedent(f"""\
+            library IEEE;
+            use IEEE.std_logic_1164.all;
 
-entity {h.entity_name} is
-    port (
-        op: in {OperatorUtils.type_decl(op_type)};
-        res: out std_logic
-    );
-end entity;
+            entity {h.entity_name} is
+                port (
+                    a: in {OperatorUtils.type_decl(io.a.type)};
+                    r: out std_logic
+                );
+            end entity;
 
-architecture Behavioral of {h.entity_name} is
-begin
-    res <= '1' when (op = (op'range => '1')) else '0';
-end architecture;
-"""
-        )
+            architecture Behavioral of {h.entity_name} is
+            begin
+                r <= '1' when (a = (a'range => '1')) else '0';
+            end architecture;
+        """))
 
 
 class BitsOr(ArgsOperator):
@@ -325,46 +314,35 @@ class BitsOr(ArgsOperator):
         """))
 
 
-class ReduceOr(ArgsOperator):
+class BitsReductionOr(ArgsOperator):
     """
-        ReduceOr[<op_type (BitsType)>]
+        Bitwise reduction OR.
+
+        BitsReductionOr[<a_type (SignalType)>]
         
-        Input(s): op (op_type)
-        Output(s): res (Bit)
+        Input(s): a (a_type)
+        Output(s): r (Bit)
     """
-    @staticmethod
-    def setup(*args) -> Structure:
-        op_type = args[0]
-        
-        s = Structure()
-        
-        s.add_port("op", Input[op_type])
-        s.add_port("res", Output[Bit])
-        
-        return s
+    setup = OperatorSetupTemplates.input_type_args_1i1o("a", "r", output_type = Bit)
     
     @staticmethod
     def generation(s: Structure, h: HDLFileModel, io: IOProxy):
-        op_type = io.op.type
-        
-        h.set_raw(".vhd",
-f"""\
-library IEEE;
-use IEEE.std_logic_1164.all;
+        h.set_raw(".vhd", textwrap.dedent(f"""\
+            library IEEE;
+            use IEEE.std_logic_1164.all;
 
-entity {h.entity_name} is
-    port (
-        op: in {OperatorUtils.type_decl(op_type)};
-        res: out std_logic
-    );
-end entity;
+            entity {h.entity_name} is
+                port (
+                    a: in {OperatorUtils.type_decl(io.a.type)};
+                    r: out std_logic
+                );
+            end entity;
 
-architecture Behavioral of {h.entity_name} is
-begin
-    res <= '1' when (op /= (op'range => '0')) else '0';
-end architecture;
-"""
-        )
+            architecture Behavioral of {h.entity_name} is
+            begin
+                r <= '1' when (a /= (a'range => '0')) else '0';
+            end architecture;
+        """))
 
 
 class Multiplexer(ArgsOperator):
