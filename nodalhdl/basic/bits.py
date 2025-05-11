@@ -89,7 +89,7 @@ class BitsInverse(ArgsOperator):
         BitsInverse[<a_type (SignalType)>]
         
         Input(s): a (a_type)
-        Output(s): r (same width)
+        Output(s): r (same type)
     """
     setup = OperatorSetupTemplates.input_type_args_1i1o("a", "r")
     deduction = OperatorDeductionTemplates.equal_type_1i1o("a", "r")
@@ -182,55 +182,37 @@ class BitsLessThan(ArgsOperator):
         """))
 
 
-class Not(ArgsOperator):
+class BitsNot(ArgsOperator):
     """
-        Not[<op_type (BitsType)>]
+        Bitwise NOT.
+
+        BitsNot[<a_type (SignalType)>]
         
-        Input(s): op (op_type)
-        Output(s): res (op_type)
+        Input(s): a (a_type)
+        Output(s): r (same type)
     """
-    @staticmethod
-    def setup(*args) -> Structure:
-        op_type = args[0]
-        
-        s = Structure()
-        
-        s.add_port("op", Input[op_type])
-        s.add_port("res", Output[op_type])
-        
-        return s
-    
-    @staticmethod
-    def deduction(s: Structure, io: IOProxy):
-        io.res.update(io.op.type)
-        io.op.update(io.res.type)
+    setup = OperatorSetupTemplates.input_type_args_1i1o("a", "r")
+    deduction = OperatorDeductionTemplates.equal_type_1i1o("a", "r")
     
     @staticmethod
     def generation(s: Structure, h: HDLFileModel, io: IOProxy):
-        op_type = io.op.type
-        type_declaration = OperatorUtils.type_decl(op_type)
-        
-        if op_type.base != Bits:
-            raise NotImplementedError
-        
-        h.set_raw(".vhd",
-f"""\
-library IEEE;
-use IEEE.std_logic_1164.all;
+        h.set_raw(".vhd", textwrap.dedent(f"""\
+            library IEEE;
+            use IEEE.std_logic_1164.all;
+            use IEEE.numeric_std.all;
 
-entity {h.entity_name} is
-    port (
-        op: in {type_declaration};
-        res: out {type_declaration}
-    );
-end entity;
+            entity {h.entity_name} is
+                port (
+                    a: in {OperatorUtils.type_decl(io.a.type)};
+                    r: out {OperatorUtils.type_decl(io.r.type)}
+                );
+            end entity;
 
-architecture Behavioral of {h.entity_name} is
-begin
-    res <= not op;
-end architecture;
-"""
-        )
+            architecture Behavioral of {h.entity_name} is
+            begin
+                r <= not a;
+            end architecture;
+        """))
 
 
 class And(ArgsOperator):

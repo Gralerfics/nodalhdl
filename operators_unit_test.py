@@ -71,3 +71,16 @@ def Test_BitsLessThan(s: Structure):
     s.connect(b, u.IO.b)
     s.connect(u.IO.r, c)
 
+
+@here
+def Test_BitsNot(s: Structure):
+    a = s.add_port("a", Input[Bits[6]])
+    c = s.add_port("c", Output[Auto])
+
+    u = s.add_substructure("u", BitsNot[Auto])
+
+    s.connect(a, u.IO.a)
+    s.connect(u.IO.r, c)
+    
+    return True
+
