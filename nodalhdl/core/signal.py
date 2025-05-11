@@ -217,17 +217,20 @@ class BitsType(SignalType):
 class FixedPointType(BitsType):
     W_int: int
     W_frac: int
+    signed: bool
     
     def __getitem__(cls, item) -> 'FixedPointType':
         if isinstance(item, tuple) and len(item) == 2 and isinstance(item[0], int) and isinstance(item[1], int):
             integer_width, fraction_width = item
+            is_signed = cls.equals(SFixedPoint)
             
             new_cls = cls.instantiate_type(
                 f"{cls.__name__}_{integer_width}_{fraction_width}",
                 {
-                    "W": integer_width + fraction_width,
+                    "W": integer_width + fraction_width + int(is_signed),
                     "W_int": integer_width,
-                    "W_frac": fraction_width
+                    "W_frac": fraction_width,
+                    "signed": is_signed
                 }
             )
             new_cls.determined = True
@@ -424,7 +427,7 @@ class UFixedPoint(Bits, metaclass = FixedPointType):
             raise SignalTypeInstantiationException
     
     def __repr__(self):
-        return f"UF{self.W_int}.{self.W_frac}({self.to_float})"
+        return f"Q{self.W_int}.{self.W_frac}({self.to_float})"
     
     def __add__(self, other):
         if isinstance(other, UFixedPoint) and self.W_int == other.W_int and self.W_frac == other.W_frac:
@@ -452,7 +455,7 @@ class UFixedPoint(Bits, metaclass = FixedPointType):
     def to_bits_string(self):
         return NotImplementedError
 
-class SFixedPoint(Bits, metaclass = FixedPointType): # TODO 目前符号位是包括在 W_int 中的，标准中好像一般另算
+class SFixedPoint(Bits, metaclass = FixedPointType): # W = W_int + W_frac + 1 (sign bit, not in W_int)
     @classmethod
     def to_definition_string(cls):
         return f"SFixedPoint[{cls.W_int}, {cls.W_frac}]" if hasattr(cls, 'W_int') and hasattr(cls, 'W_frac') else "SFixedPoint"
@@ -466,7 +469,7 @@ class SFixedPoint(Bits, metaclass = FixedPointType): # TODO 目前符号位是�
             raise SignalTypeInstantiationException
     
     def __repr__(self):
-        return f"SF{self.W_int}.{self.W_frac}({self.to_float})"
+        return f"sQ{self.W_int}.{self.W_frac}({self.to_float})"
     
     def __add__(self, other):
         if isinstance(other, SFixedPoint) and self.W_int == other.W_int and self.W_frac == other.W_frac:
@@ -486,7 +489,7 @@ class SFixedPoint(Bits, metaclass = FixedPointType): # TODO 目前符号位是�
     def set_value(self, value: float):
         value_int = int(value * (1 << self.W_frac))
         half = 1 << self.W - 1
-        self.value = (value_int + half) % (1 << self.W) - half # TODO 整数截断这样截吗？
+        self.value = (value_int + half) % (1 << self.W) - half # TODO 整数截断这样截吗？符号位考虑了吗？
 
     @property
     def to_float(self):
