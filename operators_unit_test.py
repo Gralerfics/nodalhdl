@@ -110,3 +110,23 @@ def Test_BitsReductionAnd_BitsReductionOr(s: Structure):
     
     return True
 
+
+@here
+def Test_BitsVHDLOperator(s: Structure):
+    a = s.add_port("a", Input[Auto])
+    b = s.add_port("b", Input[Bits[5]])
+    c = s.add_port("c", Output[Auto])
+
+    u = s.add_substructure("u", BitsVHDLOperator[
+        (Bits[3], Auto),
+        Bits[8],
+        "t0 <= i0;\nt1 <= i1;\no0 <= t1 & t0;",
+        "signal t0: std_logic_vector(2 downto 0);\nsignal t1: std_logic_vector(4 downto 0);"
+    ])
+    
+    s.connect(a, u.IO.i0)
+    s.connect(b, u.IO.i1)
+    s.connect(u.IO.o0, c)
+    
+    return True
+

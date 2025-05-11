@@ -712,73 +712,72 @@ end architecture;
     # def naming(cls, *args): # TODO 只给出 N 的情况非定态
 
 
-class BitsOperator(ArgsOperator):
+class BitsVHDLOperator(ArgsOperator):
     """
-        Concatenater[(Wi0, Wi1, ...), (Wo0, Wo1, ...), "VHDL", content (str)]
+        Customized bitwise operations in VHDL.
+
+        BitsVHDLOperator[(input_type_0, input_type_1, ...), (output_type_0, output_type_1, ...), arch_body (str), arch_decl (str)]
         
-        Input(s): i0, i1, ...
-        Output(s): o0, o1, ...
+        Input(s): i0 (input_type_0), i1 (input_type_1), ...
+        Output(s): o0 (output_type_0), o1 (output_type_1), ...
     """
     @staticmethod
     def setup(*args) -> Structure:
-        i_widths = args[0]
-        o_widths = args[1]
-        hdl_type = args[2]
-        hdl_content = args[3]
+        assert \
+            len(args) >= 3 and \
+            (isinstance(args[0], tuple) or isinstance(args[0], list) or isinstance(args[0], SignalType)) and \
+            (isinstance(args[1], tuple) or isinstance(args[1], list) or isinstance(args[1], SignalType)) and \
+            isinstance(args[2], str) and \
+            (len(args) == 3 or isinstance(args[3], str))
+        
+        input_types = [args[0]] if isinstance(args[0], SignalType) else args[0]
+        output_types = [args[1]] if isinstance(args[1], SignalType) else args[1]
         
         s = Structure()
         
-        for idx, w in enumerate(i_widths):
-            s.add_port(f"i{idx}", Input[Bits[w]])
+        for idx, t in enumerate(input_types):
+            s.add_port(f"i{idx}", Input[t])
         
-        for idx, w in enumerate(o_widths):
-            s.add_port(f"o{idx}", Output[Bits[w]])
-        
-        s.custom_params["i_widths"] = i_widths
-        s.custom_params["o_widths"] = o_widths
-        s.custom_params["hdl_type"] = hdl_type
-        s.custom_params["hdl_content"] = hdl_content
+        for idx, t in enumerate(output_types):
+            s.add_port(f"o{idx}", Output[t])
         
         return s
     
     @staticmethod
     def generation(s: Structure, h: HDLFileModel, io: IOProxy):
-        i_widths = s.custom_params["i_widths"]
-        o_widths = s.custom_params["o_widths"]
-        hdl_type = s.custom_params["hdl_type"]
-        hdl_content: str = s.custom_params["hdl_content"]
+        args = s.custom_params["_setup_args"]
+        inputs_num = 1 if isinstance(args[0], SignalType) else len(args[0])
+        outputs_num = 1 if isinstance(args[1], SignalType) else len(args[1])
+        arch_body: str = args[2]
+        arch_decl: str = args[3] if len(args) > 3 else None
         
-        port_str = "\n".join(
-            [f"        i{idx}: in {OperatorUtils.type_decl(Bits[w])};" for idx, w in enumerate(i_widths)] +
-            [f"        o{idx}: out {OperatorUtils.type_decl(Bits[w])};" for idx, w in enumerate(o_widths)]
+        port_body = ";\n                    ".join(
+            [f"i{idx}: in {OperatorUtils.type_decl(io.access(f"i{idx}").type)}" for idx in range(inputs_num)] +
+            [f"o{idx}: out {OperatorUtils.type_decl(io.access(f"o{idx}").type)}" for idx in range(outputs_num)]
         )
         
-        if hdl_type == "VHDL":
-            h.set_raw(".vhd",
-f"""\
-library IEEE;
-use IEEE.std_logic_1164.all;
-use IEEE.numeric_std.all;
-use work.types.all;
+        h.set_raw(".vhd", textwrap.dedent(f"""\
+            library IEEE;
+            use IEEE.std_logic_1164.all;
+            use IEEE.numeric_std.all;
+            use work.types.all;
 
-entity {h.entity_name} is
-    port (
-{port_str[:-1]}
-    );
-end entity;
+            entity {h.entity_name} is
+                port (
+                    {port_body}
+                );
+            end entity;
 
-architecture Behavioral of {h.entity_name} is
-begin
-    {hdl_content.replace("\n", "\n    ")}
-end architecture;
-"""
-            )
-        else:
-            raise NotImplementedError
+            architecture Behavioral of {h.entity_name} is
+                {textwrap.dedent(arch_decl).strip().replace("\n", "\n                ") if arch_decl else "-- no declarations"}
+            begin
+                {textwrap.dedent(arch_body).strip().replace("\n", "\n                ")}
+            end architecture;
+        """))
 
     @classmethod
     def naming(cls, *args):
-        return f"{cls.__name__}_{'_'.join([hashlib.md5(str(arg).encode('utf-8')).hexdigest()[:8] for arg in args])}" # [NOTICE] use valid string
+        return f"{cls.__name__}_{hashlib.md5(str(args).encode('utf-8')).hexdigest()[:16]}"
 
 
 # class Slicer(ArgsOperator):
