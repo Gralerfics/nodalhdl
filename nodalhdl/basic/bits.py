@@ -1,9 +1,10 @@
 from ..core.signal import *
 from ..core.structure import Structure, IOProxy
-from ..core.operator import ArgsOperator, OperatorUtils
+from ..core.operators import ArgsOperator, OperatorUtils, OperatorDeductionTemplates
 from ..core.hdl import HDLFileModel
 
 import hashlib
+import textwrap
 
 from typing import Dict, List
 
@@ -11,31 +12,6 @@ from typing import Dict, List
 """
     TODO check the `NotImplementedError`s.
 """
-
-
-class WiderOutputBinaryOperator(ArgsOperator):
-    @staticmethod
-    def setup(*args) -> Structure:
-        op1_type, op2_type = args[0], args[1]
-        
-        s = Structure()
-        
-        s.add_port("op1", Input[op1_type])
-        s.add_port("op2", Input[op2_type])
-        s.add_port("res", Output[Auto])
-        
-        return s
-    
-    @staticmethod
-    def deduction(s: Structure, io: IOProxy):
-        op1_type, op2_type, res_type = io.op1.type, io.op2.type, io.res.type
-        
-        if op1_type.determined and op2_type.determined:
-            io.res.update(op1_type.base[max(op1_type.W, op2_type.W)])
-        elif res_type.determined and op1_type.determined and op1_type.W < res_type.W:
-            io.op2.update(res_type.base[res_type.W])
-        elif res_type.determined and op2_type.determined and op2_type.W < res_type.W:
-            io.op1.update(res_type.base[res_type.W])
 
 
 class EqualBinaryOperator(ArgsOperator):
@@ -59,51 +35,52 @@ class EqualBinaryOperator(ArgsOperator):
         io.op2.update(io.res.type)
 
 
-class Adder(WiderOutputBinaryOperator):
+class BitsAdder(ArgsOperator):
     """
-        Adder[<op1_type (SignalType)>, <op2_type (SignalType)>]
+        BitsAdder[<op1_type (SignalType)>, <op2_type (SignalType)>]
         
-        Input(s): op1 (op1_type), op2 (op2_type)
-        Output(s): res (the wider one)
+        2's complement addition.
+        
+        Input(s): a (op1_type), b (op2_type)
+        Output(s): r
     """
     @staticmethod
+    def setup(*args) -> Structure:
+        a_type, b_type = args[0], args[1]
+        
+        s = Structure()
+        
+        s.add_port("a", Input[a_type])
+        s.add_port("b", Input[b_type])
+        s.add_port("r", Output[Auto])
+        
+        return s
+    
+    deduction = OperatorDeductionTemplates.binary_wider_as_output("a", "b", "r")
+    
+    @staticmethod
     def generation(s: Structure, h: HDLFileModel, io: IOProxy):
-        op1_type, op2_type, res_type = io.op1.type, io.op2.type, io.res.type
-        
-        if op1_type.bases(UInt) and op2_type.bases(UInt):
-            ts = "unsigned"
-        elif op1_type.bases(SInt) and op2_type.bases(SInt):
-            ts = "signed"
-        elif op1_type.bases(UFixedPoint) and op2_type.bases(UFixedPoint) and op1_type.W_int == op2_type.W_int and op1_type.W_frac == op2_type.W_frac:
-            ts = "unsigned"
-        elif op1_type.bases(SFixedPoint) and op2_type.bases(SFixedPoint) and op1_type.W_int == op2_type.W_int and op1_type.W_frac == op2_type.W_frac:
-            ts = "signed"
-        else:
-            raise NotImplementedError
-        
-        h.set_raw(".vhd",
-f"""\
-library IEEE;
-use IEEE.std_logic_1164.all;
-use IEEE.numeric_std.all;
+        h.set_raw(".vhd", textwrap.dedent(f"""\
+            library IEEE;
+            use IEEE.std_logic_1164.all;
+            use IEEE.numeric_std.all;
 
-entity {h.entity_name} is
-    port (
-        op1: in {OperatorUtils.type_decl(op1_type)};
-        op2: in {OperatorUtils.type_decl(op2_type)};
-        res: out {OperatorUtils.type_decl(res_type)}
-    );
-end entity;
+            entity {h.entity_name} is
+                port (
+                    a: in {OperatorUtils.type_decl(io.a.type)};
+                    b: in {OperatorUtils.type_decl(io.b.type)};
+                    r: out {OperatorUtils.type_decl(io.r.type)}
+                );
+            end entity;
 
-architecture Behavioral of {h.entity_name} is
-begin
-    res <= std_logic_vector({ts}(op1) + {ts}(op2));
-end architecture;
-"""
-        )
+            architecture Behavioral of {h.entity_name} is
+            begin
+                r <= std_logic_vector(unsigned(a) + unsigned(b));
+            end architecture;
+        """))
 
 
-class Subtracter(WiderOutputBinaryOperator):
+class Subtracter(ArgsOperator):
     """
         Subtracter[<op1_type (SignalType)>, <op2_type (SignalType)>]
         

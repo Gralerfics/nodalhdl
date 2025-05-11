@@ -1050,11 +1050,25 @@ class IOProxy:
             else: # StructuralNodes
                 self._proxy[k] = IOProxy(v, runtime_id, flipped)
     
-    def __getattr__(self, name):
+    def __getattr__(self, name) -> Union[NodeProxy, 'IOProxy']:
         if name in self._proxy.keys():
             return self._proxy[name]
         else:
-            super().__getattr__(name)
+            super(type(self), self).__getattr__(name)
+    
+    def __getitem__(self, name) -> Union[NodeProxy, 'IOProxy']:
+        if name in self._proxy.keys():
+            return self._proxy[name]
+        else:
+            raise ValueError
+    
+    def access(self, path: Union[str, list, tuple]) -> Union[NodeProxy, 'IOProxy']:
+        if isinstance(path, list) or isinstance(path, tuple):
+            return eval("self." + ".".join(path)) # TODO 不要用 eval 实现
+        elif isinstance(path, str):
+            return self.access(path.strip(".").split("."))
+        else:
+            raise ValueError
 
 class StructureProxy:
     """

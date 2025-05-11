@@ -10,11 +10,27 @@ operators_pool: Dict[str, Structure] = {} # all operators should be defined in m
 
 class OperatorUtils:
     @staticmethod
-    def type_decl(t, hdl = "vhdl"):
+    def type_decl(t: SignalType, hdl: str = "vhdl"):
         if hdl == "vhdl":
             return t.__name__ if t.bases(Bundle) else f"std_logic_vector({t.W - 1} downto 0)"
+        elif hdl == "verilog":
+            return t.__name__ if t.bases(Bundle) else f"[{t.W - 1}:0]"
         else:
             raise NotImplementedError
+
+
+class OperatorDeductionTemplates:
+    @staticmethod
+    def binary_wider_as_output(input_path_1: str, input_path_2: str, output_path: str):
+        def _deduction(s: Structure, io: IOProxy):
+            i1, i2, o = io.access(input_path_1), io.access(input_path_2), io.access(output_path)
+            
+            merged_base = i1.type.base.merges(i2.type.base).merges(o.type.base)
+            o.update(merged_base[max(i1.type.W, i2.type.W)] if hasattr(i1.type, "W") and hasattr(i2.type, "W") else merged_base)
+            i1.update(merged_base[o.type.W] if hasattr(i2.type, "W") and hasattr(o.type, "W") and i2.type.W < o.type.W else merged_base)
+            i2.update(merged_base[o.type.W] if hasattr(i1.type, "W") and hasattr(o.type, "W") and i1.type.W < o.type.W else merged_base)
+        
+        return _deduction
 
 
 class ArgsOperatorMeta(type):

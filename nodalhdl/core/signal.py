@@ -38,7 +38,7 @@ class SignalType(type):
     """
         Class properties.
     """
-    determined = False # width-determined w.r.t. signals
+    determined = False # width-determined w.r.t. signals TODO 目前定义好像不止, 例如 SFixedPoint[W] 位宽确定了但具体划分没有确定, 这种情况影响类型推导, 但确实可以生成, 要算吗?
     io_wrapper_included = False # whether IO Wrapper is included
     perfectly_io_wrapped = False # whether is perfectly IO-wrapped
     
@@ -118,13 +118,17 @@ class SignalType(type):
             if not a.base.belongs(b.base) and not b.base.belongs(a.base): # 基类型无继承关系, 不可合并
                 return None
             if getattr(a, "W", None) == getattr(b, "W", None): # 有相同位宽或都没有位宽, 取基类型具体的
-                return a if a.base.belongs(b.base) else b
+                # 要考虑 e.g. Bits[W]/SFixedPoint[W] 和 SFixedPoint[W_int, W_frac] 这种情况, 取后者细分的位宽信息 TODO 感觉条件写得不太好
+                if a.base.equals(b.base):
+                    return a if a.determined else b
+                else:
+                    return a if a.base.belongs(b.base) else b
             elif (hasattr(a, "W") and not hasattr(b, "W")) or (not hasattr(a, "W") and hasattr(b, "W")): # 仅一个有位宽
                 w, wo = (a, b) if hasattr(a, "W") else (b, a)
-                if wo.bases(Bits) or wo.bases(UInt) or wo.bases(SInt):
+                if wo.belongs(Bits):
                     return wo.base[w.W] if wo.base.belongs(w.base) else w # wo 能加位宽而且其基类型更具体, 则组合 wo 基类型和 w 的位宽信息
                 else:
-                    return w # wo 没法加位宽, 则只保留 w (TODO 例如 FloatingPoint 等, 信息被浪费了)
+                    return w # wo 没法加位宽, 则只保留 w [NOTICE] 目前没有这种情况, 只有 Bits 所谓的为 single_type (Auto 下的非 Bundle 类型), 除非后续添加
             else:
                 return None
         
@@ -195,7 +199,7 @@ class SignalType(type):
         else: # ordinary
             return cls
 
-class BitsType(SignalType):
+class BitsType(SignalType): # every type whose width can be defined by base[W] should inherit Bits(Type)
     W: int # not assigned, not exist, only for type-hinting
     
     def __getitem__(cls, item) -> 'BitsType':
@@ -220,7 +224,21 @@ class FixedPointType(BitsType):
     signed: bool
     
     def __getitem__(cls, item) -> 'FixedPointType':
-        if isinstance(item, tuple) and len(item) == 2 and isinstance(item[0], int) and isinstance(item[1], int):
+        if isinstance(item, int): # only width
+            width = item
+            is_signed = cls.equals(SFixedPoint)
+            
+            new_cls = cls.instantiate_type(
+                f"{cls.__name__}_{width}",
+                {
+                    "W": width,
+                    "signed": is_signed
+                }
+            )
+            new_cls.determined = False
+            
+            return new_cls
+        elif isinstance(item, tuple) and len(item) == 2 and isinstance(item[0], int) and isinstance(item[1], int): # int width and frac width
             integer_width, fraction_width = item
             is_signed = cls.equals(SFixedPoint)
             
@@ -244,6 +262,18 @@ class FloatingPointType(BitsType):
     W_frac: int
     
     def __getitem__(cls, item) -> 'FloatingPointType':
+        if isinstance(item, int): # only width
+            width = item
+            
+            new_cls = cls.instantiate_type(
+                f"{cls.__name__}_{width}",
+                {
+                    "W": width
+                }
+            )
+            new_cls.determined = False
+            
+            return new_cls
         if isinstance(item, tuple) and len(item) == 2 and isinstance(item[0], int) and isinstance(item[1], int):
             exponent_width, fraction_width = item
             
