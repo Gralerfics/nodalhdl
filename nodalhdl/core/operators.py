@@ -19,9 +19,43 @@ class OperatorUtils:
             raise NotImplementedError
 
 
+class OperatorSetupTemplates:
+    @staticmethod
+    def input_type_args_2i1o(input_name_1: str, input_name_2: str, output_name: str, output_type: SignalType = Auto):
+        def _setup(*args):
+            assert 1 <= len(args) <= 2 and all([isinstance(item, SignalType) for item in args])
+            input_type_1 = args[0]
+            input_type_2 = args[1] if len(args) == 2 else input_type_1
+            
+            s = Structure()
+            
+            s.add_port(input_name_1, Input[input_type_1])
+            s.add_port(input_name_2, Input[input_type_2])
+            s.add_port(output_name, Output[output_type])
+            
+            return s
+        
+        return _setup
+    
+    @staticmethod
+    def input_type_args_1i1o(input_name: str = "a", output_name: str = "r", output_type: SignalType = Auto):
+        def _setup(*args):
+            assert len(args) == 1 and isinstance(args[0], SignalType)
+            input_type = args[0]
+            
+            s = Structure()
+            
+            s.add_port(input_name, Input[input_type])
+            s.add_port(output_name, Output[output_type])
+            
+            return s
+        
+        return _setup
+
+
 class OperatorDeductionTemplates:
     @staticmethod
-    def binary_wider_as_output(input_path_1: str, input_path_2: str, output_path: str):
+    def wider_as_output_2i1o(input_path_1: str, input_path_2: str, output_path: str):
         def _deduction(s: Structure, io: IOProxy):
             i1, i2, o = io.access(input_path_1), io.access(input_path_2), io.access(output_path)
             
@@ -29,6 +63,41 @@ class OperatorDeductionTemplates:
             o.update(merged_base[max(i1.type.W, i2.type.W)] if hasattr(i1.type, "W") and hasattr(i2.type, "W") else merged_base)
             i1.update(merged_base[o.type.W] if hasattr(i2.type, "W") and hasattr(o.type, "W") and i2.type.W < o.type.W else merged_base)
             i2.update(merged_base[o.type.W] if hasattr(i1.type, "W") and hasattr(o.type, "W") and i1.type.W < o.type.W else merged_base)
+        
+        return _deduction
+    
+    @staticmethod
+    def equal_type_2i1o(input_path_1: str, input_path_2: str, output_path: str):
+        def _deduction(s: Structure, io: IOProxy):
+            i1, i2, o = io.access(input_path_1), io.access(input_path_2), io.access(output_path)
+            
+            o.update(i1.type)
+            o.update(i2.type)
+            i1.update(o.type)
+            i2.update(o.type)
+        
+        return _deduction
+    
+    @staticmethod
+    def equal_type_1i1o(input_path: str, output_path: str):
+        def _deduction(s: Structure, io: IOProxy):
+            i, o = io.access(input_path), io.access(output_path)
+            
+            o.update(i.type)
+            i.update(o.type)
+        
+        return _deduction
+    
+    @staticmethod
+    def equal_inputs(*input_paths):
+        def _deduction(s: Structure, io: IOProxy):
+            I = [io.access(path) for path in input_paths]
+            
+            full_type = Auto
+            for i in I:
+                full_type = full_type.merges(i.type)
+            for i in I:
+                i.update(full_type)
         
         return _deduction
 

@@ -1,6 +1,6 @@
 from ..core.signal import *
 from ..core.structure import Structure, IOProxy
-from ..core.operators import ArgsOperator, OperatorUtils, OperatorDeductionTemplates
+from ..core.operators import ArgsOperator, OperatorUtils, OperatorSetupTemplates, OperatorDeductionTemplates
 from ..core.hdl import HDLFileModel
 
 import hashlib
@@ -10,53 +10,21 @@ from typing import Dict, List
 
 
 """
-    TODO check the `NotImplementedError`s.
+    check the `NotImplementedError`s.
 """
 
 
-class EqualBinaryOperator(ArgsOperator):
-    @staticmethod
-    def setup(*args) -> Structure:
-        op1_type, op2_type = args[0], args[1]
-        
-        s = Structure()
-        
-        s.add_port("op1", Input[op1_type])
-        s.add_port("op2", Input[op2_type])
-        s.add_port("res", Output[Auto])
-        
-        return s
-    
-    @staticmethod
-    def deduction(s: Structure, io: IOProxy):
-        io.res.update(io.op1.type)
-        io.res.update(io.op2.type)
-        io.op1.update(io.res.type)
-        io.op2.update(io.res.type)
-
-
-class BitsAdder(ArgsOperator):
+class BitsAdd(ArgsOperator):
     """
-        BitsAdder[<op1_type (SignalType)>, <op2_type (SignalType)>]
-        
         2's complement addition.
         
-        Input(s): a (op1_type), b (op2_type)
-        Output(s): r
+        BitsAddition[<a_type (SignalType)>, <b_type (SignalType)>]
+        
+        Input(s): a (a_type), b (b_type)
+        Output(s): r (wider width)
     """
-    @staticmethod
-    def setup(*args) -> Structure:
-        a_type, b_type = args[0], args[1]
-        
-        s = Structure()
-        
-        s.add_port("a", Input[a_type])
-        s.add_port("b", Input[b_type])
-        s.add_port("r", Output[Auto])
-        
-        return s
-    
-    deduction = OperatorDeductionTemplates.binary_wider_as_output("a", "b", "r")
+    setup = OperatorSetupTemplates.input_type_args_2i1o("a", "b", "r")
+    deduction = OperatorDeductionTemplates.wider_as_output_2i1o("a", "b", "r")
     
     @staticmethod
     def generation(s: Structure, h: HDLFileModel, io: IOProxy):
@@ -80,144 +48,102 @@ class BitsAdder(ArgsOperator):
         """))
 
 
-class Subtracter(ArgsOperator):
+class BitsSubtract(ArgsOperator):
     """
-        Subtracter[<op1_type (SignalType)>, <op2_type (SignalType)>]
+        2's complement subtraction.
         
-        Input(s): op1 (op1_type), op2 (op2_type)
-        Output(s): res (the wider one)
+        BitsSubtract[<a_type (SignalType)>, <b_type (SignalType)>]
+        
+        Input(s): a (a_type), b (b_type)
+        Output(s): r (wider width)
     """
-    @staticmethod
-    def generation(s: Structure, h: HDLFileModel, io: IOProxy):
-        op1_type, op2_type, res_type = io.op1.type, io.op2.type, io.res.type
-        
-        if op1_type.bases(UInt) and op2_type.bases(UInt):
-            ts = "unsigned"
-        elif op1_type.bases(SInt) and op2_type.bases(SInt):
-            ts = "signed"
-        elif op1_type.bases(UFixedPoint) and op2_type.bases(UFixedPoint) and op1_type.W_int == op2_type.W_int and op1_type.W_frac == op2_type.W_frac:
-            ts = "unsigned"
-        elif op1_type.bases(SFixedPoint) and op2_type.bases(SFixedPoint) and op1_type.W_int == op2_type.W_int and op1_type.W_frac == op2_type.W_frac:
-            ts = "signed"
-        else:
-            raise NotImplementedError
-        
-        h.set_raw(".vhd",
-f"""\
-library IEEE;
-use IEEE.std_logic_1164.all;
-use IEEE.numeric_std.all;
-
-entity {h.entity_name} is
-    port (
-        op1: in {OperatorUtils.type_decl(op1_type)};
-        op2: in {OperatorUtils.type_decl(op2_type)};
-        res: {OperatorUtils.type_decl(res_type)}
-    );
-end entity;
-
-architecture Behavioral of {h.entity_name} is
-begin
-    res <= std_logic_vector({ts}(op1) - {ts}(op2));
-end architecture;
-"""
-        )
-
-
-class Inverse(ArgsOperator):
-    """
-        Inverse[<op_type (SignalType)>]
-        
-        Input(s): op (input_type)
-        Output(s): res (input_type)
-    """
-    @staticmethod
-    def setup(*args) -> Structure:
-        op_type = args[0]
-        
-        s = Structure()
-        
-        s.add_port("op", Input[op_type])
-        s.add_port("res", Output[op_type])
-        
-        return s
-    
-    @staticmethod
-    def deduction(s: Structure, io: IOProxy):
-        io.res.update(io.op.type)
-        io.op.update(io.res.type)
+    setup = OperatorSetupTemplates.input_type_args_2i1o("a", "b", "r")
+    deduction = OperatorDeductionTemplates.wider_as_output_2i1o("a", "b", "r")
     
     @staticmethod
     def generation(s: Structure, h: HDLFileModel, io: IOProxy):
-        op_type = io.op.type
-        type_declaration = OperatorUtils.type_decl(op_type)
-        
-        if not op_type.bases(SInt) or not op_type.bases(SFixedPoint):
-            raise NotImplementedError
-        
-        h.set_raw(".vhd",
-f"""\
-library IEEE;
-use IEEE.std_logic_1164.all;
-use IEEE.numeric_std.all;
+        h.set_raw(".vhd", textwrap.dedent(f"""\
+            library IEEE;
+            use IEEE.std_logic_1164.all;
+            use IEEE.numeric_std.all;
 
-entity {h.entity_name} is
-    port (
-        op: in {type_declaration};
-        res: out {type_declaration}
-    );
-end entity;
+            entity {h.entity_name} is
+                port (
+                    a: in {OperatorUtils.type_decl(io.a.type)};
+                    b: in {OperatorUtils.type_decl(io.b.type)};
+                    r: out {OperatorUtils.type_decl(io.r.type)}
+                );
+            end entity;
 
-architecture Behavioral of {h.entity_name} is
-begin
-    res <= std_logic_vector(-signed(op));
-end architecture;
-"""
-        )
+            architecture Behavioral of {h.entity_name} is
+            begin
+                r <= std_logic_vector(unsigned(a) - unsigned(b));
+            end architecture;
+        """))
 
 
-class EqualTo(ArgsOperator):
+class BitsInverse(ArgsOperator):
     """
-        EqualTo[<op1_type (SignalType)>, <op2_type (SignalType)>]
+        2's complement inverse. (r = ~a + 1)
         
-        Input(s): op1 (op1_type), op2 (op2_type)
-        Output(s): res (Bit)
+        BitsInverse[<a_type (SignalType)>]
+        
+        Input(s): a (a_type)
+        Output(s): r (same width)
     """
-    @staticmethod
-    def setup(*args) -> Structure:
-        op1_type, op2_type = args[0], args[1]
-        
-        s = Structure()
-        
-        s.add_port("op1", Input[op1_type])
-        s.add_port("op2", Input[op2_type])
-        s.add_port("res", Output[Bit])
-        
-        return s
+    setup = OperatorSetupTemplates.input_type_args_1i1o("a", "r")
+    deduction = OperatorDeductionTemplates.equal_type_1i1o("a", "r")
     
     @staticmethod
     def generation(s: Structure, h: HDLFileModel, io: IOProxy):
-        op1_type, op2_type = io.op1.type, io.op2.type
+        h.set_raw(".vhd", textwrap.dedent(f"""\
+            library IEEE;
+            use IEEE.std_logic_1164.all;
+            use IEEE.numeric_std.all;
+
+            entity {h.entity_name} is
+                port (s
+                    a: in {OperatorUtils.type_decl(io.a.type)};
+                    r: out {OperatorUtils.type_decl(io.r.type)}
+                );
+            end entity;
+
+            architecture Behavioral of {h.entity_name} is
+            begin
+                res <= std_logic_vector(-signed(a));
+            end architecture;
+        """))
+
+
+class BitsEqualTo(ArgsOperator):
+    """
+        BitsEqualTo[<a_type (SignalType)>, <b_type (SignalType)>]
         
-        h.set_raw(".vhd",
-f"""\
-library IEEE;
-use IEEE.std_logic_1164.all;
+        Input(s): a (a_type), b (b_type)
+        Output(s): r (Bit)
+    """
+    setup = OperatorSetupTemplates.input_type_args_2i1o("a", "b", "r", output_type = Bit)
+    deduction = OperatorDeductionTemplates.equal_inputs("a", "b")
+    
+    @staticmethod
+    def generation(s: Structure, h: HDLFileModel, io: IOProxy):
+        h.set_raw(".vhd", textwrap.dedent(f"""\
+            library IEEE;
+            use IEEE.std_logic_1164.all;
 
-entity {h.entity_name} is
-    port (
-        op1: in {OperatorUtils.type_decl(op1_type)};
-        op2: in {OperatorUtils.type_decl(op2_type)};
-        res: out std_logic
-    );
-end entity;
+            entity {h.entity_name} is
+                port (
+                    op1: in {OperatorUtils.type_decl(io.a.type)};
+                    op2: in {OperatorUtils.type_decl(io.b.type)};
+                    res: out std_logic
+                );
+            end entity;
 
-architecture Behavioral of {h.entity_name} is
-begin
-    res <= '1' when op1 = op2 else '0';
-end architecture;
-"""
-        )
+            architecture Behavioral of {h.entity_name} is
+            begin
+                res <= '1' when op1 = op2 else '0';
+            end architecture;
+        """))
 
 
 class LessThan(ArgsOperator):
@@ -327,13 +253,15 @@ end architecture;
         )
 
 
-class And(EqualBinaryOperator):
+class And(ArgsOperator):
     """
         And[<op1_type (BitsType)>, <op2_type (BitsType)>]
         
         Input(s): op1 (op1_type), op2 (op2_type)
         Output(s): res (the wider one)
     """
+    deduction = OperatorDeductionTemplates.equal_type_2i1o("a", "b", "r")
+    
     @staticmethod
     def generation(s: Structure, h: HDLFileModel, io: IOProxy):
         op1_type, op2_type, res_type = io.op1.type, io.op2.type, io.res.type
@@ -404,13 +332,15 @@ end architecture;
         )
 
 
-class Or(EqualBinaryOperator):
+class Or(ArgsOperator):
     """
         Or[<op1_type (BitsType)>, <op2_type (BitsType)>]
         
         Input(s): op1 (op1_type), op2 (op2_type)
         Output(s): res (the wider one)
     """
+    deduction = OperatorDeductionTemplates.equal_type_2i1o("a", "b", "r")
+    
     @staticmethod
     def generation(s: Structure, h: HDLFileModel, io: IOProxy):
         op1_type, op2_type, res_type = io.op1.type, io.op2.type, io.res.type
