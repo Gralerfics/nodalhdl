@@ -26,10 +26,10 @@ class ArgsOperatorMeta(type):
         
         s.custom_deduction = cls.deduction
         s.custom_generation = cls.generation
+        s.custom_params["_setup_args"] = args
         
         rid = RuntimeId.create()
         s.deduction(rid)
-        
         if s.is_runtime_applicable:
             s.apply_runtime(rid)
         
@@ -220,7 +220,7 @@ class Inverse(ArgsOperator):
         op_type = io.op.type
         type_declaration = declaration_from_type(op_type)
         
-        if not op_type.bases(SInt):
+        if not op_type.bases(SInt) or not op_type.bases(SFixedPoint):
             raise NotImplementedError
         
         h.set_raw(".vhd",
@@ -314,6 +314,10 @@ class LessThan(ArgsOperator):
         if op1_type.bases(UInt) and op2_type.bases(UInt):
             cond_str = "unsigned(op1) < unsigned(op2)"
         elif op1_type.bases(SInt) and op2_type.bases(SInt):
+            cond_str = "signed(op1) < signed(op2)"
+        elif op1_type.bases(UFixedPoint) and op2_type.bases(UFixedPoint) and op1_type.W_int == op2_type.W_int and op1_type.W_frac == op2_type.W_frac:
+            cond_str = "unsigned(op1) < unsigned(op2)"
+        elif op1_type.bases(SFixedPoint) and op2_type.bases(SFixedPoint) and op1_type.W_int == op2_type.W_int and op1_type.W_frac == op2_type.W_frac:
             cond_str = "signed(op1) < signed(op2)"
         else:
             raise NotImplementedError
@@ -912,22 +916,6 @@ end architecture;
     # def naming(cls, *args): # TODO 只给出 N 的情况非定态
 
 
-# class Slicer(ArgsOperator):
-#     """
-#         Slicer[input_type (SignalType), wire_1 (SignalType), ...]
-        
-#         Output(s): c0 (type(constant_0)), c1 (type(constant_1)), ...
-#     """
-#     pass
-
-
-# class Shifter(ArgsOperator):
-#     """
-#         TODO 暂时只考虑 UInt, SInt 和 Bits
-#     """
-#     pass
-
-
 class BitsOperator(ArgsOperator):
     """
         Concatenater[(Wi0, Wi1, ...), (Wo0, Wo1, ...), "VHDL", content (str)]
@@ -995,4 +983,20 @@ end architecture;
     @classmethod
     def naming(cls, *args):
         return f"{cls.__name__}_{'_'.join([hashlib.md5(str(arg).encode('utf-8')).hexdigest()[:8] for arg in args])}" # [NOTICE] use valid string
+
+
+# class Slicer(ArgsOperator):
+#     """
+#         Slicer[input_type (SignalType), wire_1 (SignalType), ...]
+        
+#         Output(s): c0 (type(constant_0)), c1 (type(constant_1)), ...
+#     """
+#     pass
+
+
+# class Shifter(ArgsOperator):
+#     """
+#         TODO 暂时只考虑 UInt, SInt 和 Bits
+#     """
+#     pass
 

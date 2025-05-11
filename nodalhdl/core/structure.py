@@ -962,7 +962,7 @@ class Structure:
                 The names are the raw names, instead of the full names (with layer information).
                 StructuralNodes().nodes() will add the layer information to the returned full names.
             """
-            if t.belongs(IOWrapper):
+            if t.bases(Input) or t.bases(Output):
                 return Node(key, t.flip_io(), is_port = True, located_structure = self, layered_name = prefix + key) # (1.) io is flipped in ports_inside_flipped, (2.) ports inside are connected with internal nodes/nets, so located_structure is set to self
             elif t.bases(Bundle):
                 return StructuralNodes({k: _extract(k, v, prefix = prefix + key + "_") for k, v in t._bundle_types.items()})

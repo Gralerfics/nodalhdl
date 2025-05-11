@@ -8,13 +8,20 @@ def Add(t1: SignalType, t2: SignalType) -> Structure:
 def Subtract(t1: SignalType, t2: SignalType) -> Structure:
     return Subtracter[t1, t2]
 
+def Multiplier_UInt()
+
 def Multiplier(t1: SignalType, t2: SignalType) -> Structure:
     s = Structure()
     op1 = s.add_port("op1", Input[t1])
     op2 = s.add_port("op2", Input[t2])
+    # res = 
     
-    if t1.bases(UFixedPoint) and t2.bases(UFixedPoint) and t1.W_int == t2.W_int and t1.W_frac == t2.W_frac:
-        raise NotImplementedError
+    if t1.bases(UInt) and t2.bases(UInt):
+        pass # TODO
+    elif t1.bases(SInt) and t2.bases(SInt):
+        pass # TODO
+    elif t1.bases(UFixedPoint) and t2.bases(UFixedPoint) and t1.W_int == t2.W_int and t1.W_frac == t2.W_frac:
+        pass # TODO
     elif t1.bases(SFixedPoint) and t2.bases(SFixedPoint) and t1.W_int == t2.W_int and t1.W_frac == t2.W_frac:
         pass # TODO
     else:
