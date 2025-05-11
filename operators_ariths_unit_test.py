@@ -1,24 +1,29 @@
 from nodalhdl.core.signal import *
 from nodalhdl.core.structure import *
-from nodalhdl.basic.bits import *
+from nodalhdl.basic.arith import *
+
 from nodalhdl.timing.sta import *
 from nodalhdl.timing.pipelining import *
 
 
-def info(s: Structure, show_hdl = False):
+def info(s: Structure, show_hdl = None):
     rid = RuntimeId.create()
     s.deduction(rid)
     print(s.runtime_info(rid))
 
     model = s.generation(rid)
     if show_hdl:
-        print(model.emit_vhdl()["hdl_root_u.vhd"])
-        # emit_to_files(model_s.emit_vhdl(), "C:/Workspace/test_project/test_project.srcs/sources_1/new")
+        vhdl = model.emit_vhdl()
+        print(vhdl.get(show_hdl, vhdl.keys()))
+        # emit_to_files(vhdl, "C:/Workspace/test_project/test_project.srcs/sources_1/new")
 
 def here(f):
     print(f"<<<<<<<<<<<<<<<<<<<< {f.__name__} >>>>>>>>>>>>>>>>>>>>")
     s = Structure()
-    info(s, show_hdl = bool(f(s)))
+    r = f(s)
+    if r is not None and not isinstance(r, str):
+        r = "hdl_root_u.vhd"
+    info(s, show_hdl = r if r else None)
 
 
 @here
@@ -107,26 +112,63 @@ def Test_BitsReductionAnd_BitsReductionOr(s: Structure):
 
     s.connect(a, u.IO.a)
     s.connect(u.IO.r, c)
-    
-    return True
 
 
 @here
-def Test_BitsVHDLOperator(s: Structure):
+def Test_CustomVHDLOperator(s: Structure):
     a = s.add_port("a", Input[Auto])
     b = s.add_port("b", Input[Bits[5]])
     c = s.add_port("c", Output[Auto])
 
-    u = s.add_substructure("u", BitsVHDLOperator[
+    u = s.add_substructure("u", CustomVHDLOperator[
         (Bits[3], Auto),
         Bits[8],
         "t0 <= i0;\nt1 <= i1;\no0 <= t1 & t0;",
         "signal t0: std_logic_vector(2 downto 0);\nsignal t1: std_logic_vector(4 downto 0);"
     ])
-    
+
     s.connect(a, u.IO.i0)
     s.connect(b, u.IO.i1)
     s.connect(u.IO.o0, c)
+
+
+@here
+def Test_Arith_Constants(s: Structure):
+    a = s.add_port("a", Output[Auto])
+    b = s.add_port("b", Output[Auto])
+    c = s.add_port("c", Output[Auto])
+
+    P = Bundle[{
+        "a": UInt[4],
+        "b": Bits[8],
+        "c": Bundle[{
+            "x": SInt[3],
+            "y": SInt[5],
+            "z": Bundle[{
+                "n": UInt[8]
+            }]
+        }]
+    }]
+
+    p = P({
+        "a": 20,
+        "b": "00010010",
+        "c": {
+            "x": -5,
+            "y": -2
+        }
+    })
+
+    u = s.add_substructure("u", Constants(
+        aaa = UInt[8](42),
+        bbb = p,
+        ccc = SFixedPoint[4, 2](1.5)
+    ))
+
+    s.connect(u.IO.aaa, a)
+    s.connect(u.IO.bbb, b)
+    s.connect(u.IO.ccc, c)
     
-    return True
+    # return "hdl_CustomVHDLOperator_f3392e90eda2bdf2.vhd"
+    # return "hdl_root.vhd"
 

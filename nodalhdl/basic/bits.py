@@ -6,7 +6,7 @@ from ..core.hdl import HDLFileModel
 import hashlib
 import textwrap
 
-from typing import Dict, List
+from typing import List
 
 
 """
@@ -580,70 +580,6 @@ end architecture;
             return f"{cls.__name__}_{args[0].__name__[7:15]}_{"_".join([path_str.strip(".").replace(".", "_") for path_str in args[1:]])}"
 
 
-class Constant(ArgsOperator):
-    """
-        Constant[constant_0 (Signal), constant_1 (Signal), ...]
-        
-        Output(s): c0 (type(constant_0)), c1 (type(constant_1)), ...
-    """
-    @staticmethod
-    def setup(*args) -> Structure:
-        assert all([isinstance(arg, Signal) for arg in args])
-        
-        s = Structure()
-        
-        for idx, signal in enumerate(args):
-            s.add_port(f"c{idx}", Output[type(signal)])
-        
-        s.custom_params["constants"] = args
-        
-        return s
-    
-    @staticmethod
-    def generation(s: Structure, h: HDLFileModel, io: IOProxy):
-        constants = s.custom_params["constants"]
-        
-        port_str = ";\n".join([f"        c{idx}: out {OperatorUtils.type_decl(type(c))}" for idx, c in enumerate(constants)])
-        
-        def _assign(sub_wire_name: str, c: Signal):
-            res = ""
-            if isinstance(c, Bundle):
-                for k, v in c._bundle_objects.items():
-                    res += _assign(sub_wire_name + "." + k, v)
-            elif isinstance(c, Bits):
-                res += f"    {sub_wire_name} <= \"{c.to_bits_string()}\";\n"
-            return res
-        
-        assign_str = ""
-        for idx, c in enumerate(constants):
-            assign_str += _assign(f"c{idx}", c)
-        assign_str = assign_str[:-1]
-
-        h.set_raw(".vhd",
-f"""\
-library IEEE;
-use IEEE.std_logic_1164.all;
-use IEEE.numeric_std.all;
-use work.types.all;
-
-entity {h.entity_name} is
-    port (
-{port_str}
-    );
-end entity;
-
-architecture Behavioral of {h.entity_name} is
-begin
-{assign_str}
-end architecture;
-"""
-        )
-    
-    @classmethod
-    def naming(cls, *args):
-        return f"{cls.__name__}_{'_'.join([hashlib.md5(str(arg).encode('utf-8')).hexdigest()[:8] for arg in args])}" # [NOTICE] use valid string
-
-
 class Concatenater(ArgsOperator):
     """
         Concatenater[N (int)]: N-inputs, Auto type
@@ -712,11 +648,11 @@ end architecture;
     # def naming(cls, *args): # TODO 只给出 N 的情况非定态
 
 
-class BitsVHDLOperator(ArgsOperator):
+class CustomVHDLOperator(ArgsOperator):
     """
         Customized bitwise operations in VHDL.
 
-        BitsVHDLOperator[(input_type_0, input_type_1, ...), (output_type_0, output_type_1, ...), arch_body (str), arch_decl (str)]
+        CustomVHDLOperator[(input_type_0, input_type_1, ...), (output_type_0, output_type_1, ...), arch_body (str), arch_decl (str)]
         
         Input(s): i0 (input_type_0), i1 (input_type_1), ...
         Output(s): o0 (output_type_0), o1 (output_type_1), ...

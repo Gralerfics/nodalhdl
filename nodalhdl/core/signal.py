@@ -232,6 +232,8 @@ class FixedPointType(BitsType):
                 f"{cls.__name__}_{width}",
                 {
                     "W": width,
+                    "W_int": None,
+                    "W_frac": None,
                     "signed": is_signed
                 }
             )
@@ -461,13 +463,13 @@ class UFixedPoint(Bits, metaclass = FixedPointType):
     
     def __add__(self, other):
         if isinstance(other, UFixedPoint) and self.W_int == other.W_int and self.W_frac == other.W_frac:
-            return UFixedPoint[self.W_int, self.W_frac](self.to_float + other.to_float)
+            return UFixedPoint[self.W_int, self.W_frac](self.to_float + other.to_float) # TODO 这样不一定符合实际结果
         else:
             raise SignalOperationException
     
     def __sub__(self, other):
         if isinstance(other, UFixedPoint) and self.W_int == other.W_int and self.W_frac == other.W_frac:
-            return UFixedPoint[self.W_int, self.W_frac](self.to_float - other.to_float)
+            return UFixedPoint[self.W_int, self.W_frac](self.to_float - other.to_float) # TODO 同上
         else:
             raise SignalOperationException
     
@@ -481,9 +483,6 @@ class UFixedPoint(Bits, metaclass = FixedPointType):
     @property
     def to_float(self):
         return self.value / (1 << self.W_frac)
-    
-    def to_bits_string(self):
-        return NotImplementedError
 
 class SFixedPoint(Bits, metaclass = FixedPointType): # W = W_int + W_frac + 1 (sign bit, not in W_int)
     @classmethod
@@ -503,30 +502,33 @@ class SFixedPoint(Bits, metaclass = FixedPointType): # W = W_int + W_frac + 1 (s
     
     def __add__(self, other):
         if isinstance(other, SFixedPoint) and self.W_int == other.W_int and self.W_frac == other.W_frac:
-            return SFixedPoint[self.W_int, self.W_frac](self.to_float + other.to_float)
+            return SFixedPoint[self.W_int, self.W_frac](self.to_float + other.to_float) # TODO 同上
         else:
             raise SignalOperationException
     
     def __sub__(self, other):
         if isinstance(other, SFixedPoint) and self.W_int == other.W_int and self.W_frac == other.W_frac:
-            return SFixedPoint[self.W_int, self.W_frac](self.to_float - other.to_float)
+            return SFixedPoint[self.W_int, self.W_frac](self.to_float - other.to_float) # TODO 同上
         else:
             raise SignalOperationException
     
     __radd__ = __add__
     __rsub__ = __sub__
-    
-    def set_value(self, value: float):
-        value_int = int(value * (1 << self.W_frac))
-        half = 1 << self.W - 1
-        self.value = (value_int + half) % (1 << self.W) - half # TODO 整数截断这样截吗？符号位考虑了吗？
 
     @property
     def to_float(self):
         return self.value / (1 << self.W_frac)
     
-    def to_bits_string(self):
-        return NotImplementedError
+    def set_value(self, value: float):
+        value_int = int(value * (1 << self.W_frac))
+        half = 1 << self.W - 1
+        self.value = (value_int + half) % (1 << self.W) - half # TODO 整数截断这样截吗？符号位考虑了吗？
+    
+    def to_bits_string(self): # TODO 需要检查
+        num = self.value
+        if num < 0:
+            num = (1 << self.W) + num
+        return bin(num)[2:].zfill(self.W)[-self.W:]
 
 class FloatingPoint(Bits, metaclass = FloatingPointType):
     @classmethod
