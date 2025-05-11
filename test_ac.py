@@ -1,6 +1,6 @@
 from nodalhdl.core.signal import UInt, Input, Output, Auto, SignalType
 from nodalhdl.core.structure import Structure, RuntimeId, StructureProxy
-from nodalhdl.basic.bits import Adder
+from nodalhdl.basic.arith import *
 from nodalhdl.timing.sta import VivadoSTA
 from nodalhdl.timing.pipelining import retiming
 
@@ -17,19 +17,19 @@ def AddChain(n: int, t: SignalType) -> Structure:
     
     adder: list[StructureProxy] = []
     for idx in range(n - 1):
-        adder.append(s.add_substructure(f"adder{idx}", Adder[t, t]))
+        adder.append(s.add_substructure(f"adder{idx}", BitsAdd[t, t]))
         
-        s.connect(adder[-2].IO.res if idx > 0 else i[0], adder[-1].IO.op1)
-        s.connect(i[idx + 1], adder[-1].IO.op2)
+        s.connect(adder[-2].IO.r if idx > 0 else i[0], adder[-1].IO.a)
+        s.connect(i[idx + 1], adder[-1].IO.b)
     
-    s.connect(adder[-1].IO.res, o)
+    s.connect(adder[-1].IO.r, o)
 
     return s
 
 
 ns = [10, 100, 200, 500, 1000]
-skips = [False, False, False, False, False]
-# skips = [True, True, True, True, True]
+# skips = [False, False, False, False, False]
+skips = [True, True, True, True, True]
 level = 10
 op_type = UInt[4]
 

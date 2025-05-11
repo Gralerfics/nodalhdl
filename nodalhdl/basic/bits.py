@@ -9,11 +9,6 @@ import textwrap
 from typing import List
 
 
-"""
-    check the `NotImplementedError`s.
-"""
-
-
 class BitsAdd(ArgsOperator):
     """
         2's complement addition.
@@ -345,58 +340,52 @@ class BitsReductionOr(ArgsOperator):
         """))
 
 
-class Multiplexer(ArgsOperator):
+class BinaryMultiplexer(ArgsOperator):
     """
-        Multiplexer[<value_type (SignalType)>]: two-way MUX
+        Two-way MUX.
+    
+        BinaryMultiplexer[<value_type (SignalType)>]
         
-        Input(s): i0 (value_type), i1 (value_type), s (Bit)
+        Input(s): i0 (value_type), i1 (value_type), sel (Bit)
         Output(s): o
     """
     @staticmethod
     def setup(*args) -> Structure:
+        assert len(args) == 1 and isinstance(args[0], SignalType)
+        
         value_type = args[0]
         
         s = Structure()
         
         s.add_port("i0", Input[value_type])
         s.add_port("i1", Input[value_type])
-        s.add_port("s", Input[Bit])
+        s.add_port("sel", Input[Bit])
         s.add_port("o", Output[value_type])
         
         return s
     
-    @staticmethod
-    def deduction(s: Structure, io: IOProxy):
-        io.o.update(io.i0.type)
-        io.o.update(io.i1.type)
-        io.i0.update(io.o.type)
-        io.i1.update(io.o.type)
+    deduction = OperatorDeductionTemplates.equal_types("i0", "i1", "o")
     
     @staticmethod
     def generation(s: Structure, h: HDLFileModel, io: IOProxy):
-        value_type = io.i0.type
-        type_declaration = OperatorUtils.type_decl(value_type)
-        
-        h.set_raw(".vhd",
-f"""\
-library IEEE;
-use IEEE.std_logic_1164.all;
+        h.set_raw(".vhd", textwrap.dedent(f"""\
+            library IEEE;
+            use IEEE.std_logic_1164.all;
 
-entity {h.entity_name} is
-    port (
-        i0: in {type_declaration};
-        i1: in {type_declaration};
-        s: in std_logic;
-        o: out {type_declaration}
-    );
-end entity;
+            entity {h.entity_name} is
+                port (
+                    i0: in {OperatorUtils.type_decl(io.i0.type)};
+                    i1: in {OperatorUtils.type_decl(io.i1.type)};
+                    s: in std_logic;
+                    o: out {OperatorUtils.type_decl(io.o.type)}
+                );
+            end entity;
 
-architecture Behavioral of {h.entity_name} is
-begin
-    o <= i1 when s = '1' else i0;
-end architecture;
-"""
-        )
+            architecture Behavioral of {h.entity_name} is
+            begin
+                o <= i1 when s = '1' else i0;
+            end architecture;
+        """))
 
 
 class Decomposition(ArgsOperator):
@@ -406,6 +395,8 @@ class Decomposition(ArgsOperator):
 
         Input(s): i (BundleType)
         Output(s): o (structural)
+        
+        TODO 重构
     """
     @staticmethod
     def setup(*args) -> Structure:
@@ -489,6 +480,8 @@ class Composition(ArgsOperator):
         
         Input(s): i (structural)
         Output(s): o (BundleType)
+        
+        TODO 重构
     """
     @staticmethod
     def setup(*args) -> Structure:
@@ -587,6 +580,8 @@ class Concatenater(ArgsOperator):
         
         Input(s): i0, i1, ...
         Output(s): o (Bits[...])
+        
+        TODO 重构
     """
     @staticmethod
     def setup(*args) -> Structure:

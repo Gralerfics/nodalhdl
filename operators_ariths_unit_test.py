@@ -172,3 +172,20 @@ def Test_Arith_Constants(s: Structure):
     # return "hdl_CustomVHDLOperator_f3392e90eda2bdf2.vhd"
     # return "hdl_root.vhd"
 
+
+@here
+def Test_CustomVHDLOperator(s: Structure):
+    a = s.add_port("a", Input[Auto])
+    b = s.add_port("b", Input[Auto])
+    sel = s.add_port("sel", Input[Bit])
+    c = s.add_port("c", Output[Auto])
+
+    u = s.add_substructure("u", BinaryMultiplexer[UInt[12]])
+
+    s.connect(a, u.IO.i0)
+    s.connect(b, u.IO.i1)
+    s.connect(sel, u.IO.sel)
+    s.connect(c, u.IO.o)
+    
+    return "hdl_BinaryMultiplexer_UInt_12.vhd"
+

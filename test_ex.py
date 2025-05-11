@@ -1,6 +1,6 @@
 from nodalhdl.core.signal import UInt, SInt, Bits, Bit, Float, Bundle, Input, Output, Auto, SignalType
 from nodalhdl.core.structure import Structure, RuntimeId, StructureProxy
-from nodalhdl.basic.bits import *
+from nodalhdl.basic.arith import *
 from nodalhdl.core.hdl import HDLFileModel
 from nodalhdl.timing.sta import VivadoSTA
 from nodalhdl.timing.pipelining import pipelining
@@ -18,14 +18,14 @@ def AddU4U4U4() -> Structure:
     op3 = s.add_port("op3", Input[UInt[4]])
     res = s.add_port("res", Output[Auto])
     
-    add_12 = s.add_substructure("add_12", Adder[UInt[4], UInt[4]])
-    add_123 = s.add_substructure("add_123", Adder[UInt[4], UInt[4]])
+    add_12 = s.add_substructure("add_12", BitsAdd[UInt[4], UInt[4]])
+    add_123 = s.add_substructure("add_123", BitsAdd[UInt[4], UInt[4]])
     
-    s.connect(op1, add_12.IO.op1)
-    s.connect(op2, add_12.IO.op2)
-    s.connect(add_12.IO.res, add_123.IO.op1)
-    s.connect(op3, add_123.IO.op2)
-    s.connect(add_123.IO.res, res)
+    s.connect(op1, add_12.IO.a)
+    s.connect(op2, add_12.IO.b)
+    s.connect(add_12.IO.r, add_123.IO.a)
+    s.connect(op3, add_123.IO.b)
+    s.connect(add_123.IO.r, res)
     
     return s
 
@@ -39,16 +39,16 @@ def M1() -> Structure:
     c = s.add_port("c", Input[UInt[4]])
     o = s.add_port("o", Output[Auto])
     
-    x = s.add_substructure("x", Adder[UInt[4], UInt[4]])
+    x = s.add_substructure("x", BitsAdd[UInt[4], UInt[4]])
     y = s.add_substructure("y", add_u4_u4_u4)
-    z = s.add_substructure("z", Constant[UInt[4](10)])
+    z = s.add_substructure("z", Constants(c0 = UInt[4](10)))
     
-    s.connect(z.IO.c0, x.IO.op1)
+    s.connect(z.IO.c0, x.IO.a)
     s.connect(a, y.IO.op1)
     s.connect(b, y.IO.op2)
     s.connect(c, y.IO.op3)
-    s.connect(y.IO.res, x.IO.op2)
-    s.connect(x.IO.res, o)
+    s.connect(y.IO.res, x.IO.b)
+    s.connect(x.IO.r, o)
 
     return s
 
@@ -61,11 +61,11 @@ def AddWrapper(t1: SignalType, t2: SignalType) -> Structure:
     i2 = s.add_port("i2", Input[t2])
     o = s.add_port("o", Output[Auto])
     
-    adder = s.add_substructure("adder", Adder[Auto, Auto])
+    adder = s.add_substructure("adder", BitsAdd[Auto, Auto])
     
-    s.connect(i1, adder.IO.op1)
-    s.connect(i2, adder.IO.op2)
-    s.connect(o, adder.IO.res)
+    s.connect(i1, adder.IO.a)
+    s.connect(i2, adder.IO.b)
+    s.connect(o, adder.IO.r)
 
     return s
 
@@ -122,8 +122,8 @@ def M3() -> Structure:
     ro = s.add_port("ro", Output[Auto])
     
     p = s.add_substructure("p", addw)
-    q = s.add_substructure("q", Adder[Auto, Auto])
-    r = s.add_substructure("r", Adder[UInt[4], UInt[4]])
+    q = s.add_substructure("q", BitsAdd[Auto, Auto])
+    r = s.add_substructure("r", BitsAdd[UInt[4], UInt[4]])
     
     Nipq = s.add_node("Nipq", Auto)
     s.connect(ipq, Nipq)
@@ -132,13 +132,13 @@ def M3() -> Structure:
     s.connect(ip, p.IO.i2)
     s.connect(p.IO.o, po)
     
-    s.connect(iq, q.IO.op1)
-    s.connect(Nipq, q.IO.op2)
-    s.connect(q.IO.res, qo)
+    s.connect(iq, q.IO.a)
+    s.connect(Nipq, q.IO.b)
+    s.connect(q.IO.r, qo)
     
-    s.connect(ir1, r.IO.op1)
-    s.connect(ir2, r.IO.op2)
-    s.connect(r.IO.res, ro)
+    s.connect(ir1, r.IO.a)
+    s.connect(ir2, r.IO.b)
+    s.connect(r.IO.r, ro)
 
     return s
 
