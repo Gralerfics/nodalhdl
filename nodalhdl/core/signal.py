@@ -18,7 +18,11 @@ class SignalType(type):
             3. The properties defined in SignalType will be inherited as class properties in STs.
             4. The methods defined in SignalType will be inherited as classmethods in STs, i.e. the first argument is `cls`.
     """
-    base: 'SignalType'
+    _base: 'SignalType'
+    
+    @property
+    def base(cls):
+        return getattr(cls, "_base", cls)
     
     type_pool = {} # ensuring singularity
     
@@ -26,7 +30,7 @@ class SignalType(type):
         if not new_cls_name in cls.type_pool.keys():
             new_cls = SignalType(f"{new_cls_name}", (cls, ), {
                 **properties,
-                "base": cls
+                "_base": cls
             })
             cls.type_pool[new_cls_name] = new_cls
         return cls.type_pool.get(new_cls_name)
@@ -78,7 +82,7 @@ class SignalType(type):
         return cls is other
     
     def bases(cls: 'SignalType', other: 'SignalType'):
-        return cls.equals(other) or (hasattr(cls, "base") and cls.base.equals(other))
+        return cls.base.equals(other)
     
     def belongs(cls: 'SignalType', other: 'SignalType'):
         """
@@ -89,12 +93,9 @@ class SignalType(type):
             P.S. "information":
                 Some STs have more information that others, e.g. UInt[8] is more useful than UInt or Auto.
                 Such kind of relationship can be described by the inheritance relationship.
-            
-            TODO 重构其他地方 belongs 的使用，基类型判断尽量使用 .bases(...)
-            TODO 后半部分判断放到单类型合并，belongs 或可直接弃用
         """
         cls, other = cls.normalize(), other.normalize()
-        return issubclass(cls, other) or (hasattr(cls, "W") and hasattr(other, "W") and cls.W == other.W and issubclass(cls.base, other.base))
+        return issubclass(cls, other)
     
     def merges(cls: 'SignalType', other: 'SignalType'):
         """
@@ -114,11 +115,16 @@ class SignalType(type):
             `cls` could have IO wrappers, and the IO wrappers in `other` will be ignored.
         """
         def _single_type_merges(a: 'SignalType', b: 'SignalType'):
-            # TODO 单类型的合并 添加例如 Bits[8] 和 UInt 合并得 UInt[8] 这样情况的考虑；或许应该放到类型的类方法里？
-            if a.belongs(b):
-                return a
-            elif b.belongs(a):
-                return b
+            if not a.base.belongs(b.base) and not b.base.belongs(a.base): # 基类型无继承关系, 不可合并
+                return None
+            if getattr(a, "W", None) == getattr(b, "W", None): # 有相同位宽或都没有位宽, 取基类型具体的
+                return a if a.base.belongs(b.base) else b
+            elif (hasattr(a, "W") and not hasattr(b, "W")) or (not hasattr(a, "W") and hasattr(b, "W")): # 仅一个有位宽
+                w, wo = (a, b) if hasattr(a, "W") else (b, a)
+                if wo.bases(Bits) or wo.bases(UInt) or wo.bases(SInt):
+                    return wo.base[w.W] if wo.base.belongs(w.base) else w # wo 能加位宽而且其基类型更具体, 则组合 wo 基类型和 w 的位宽信息
+                else:
+                    return w # wo 没法加位宽, 则只保留 w (TODO 例如 FloatingPoint 等, 信息被浪费了)
             else:
                 return None
         
@@ -134,10 +140,9 @@ class SignalType(type):
                 return Input[_apply(d_port.T, d_rtst)]
             elif d_port.bases(Output):
                 return Output[_apply(d_port.T, d_rtst)]
-            elif d_port.bases(Bundle) and d_rtst.bases(Bundle):
+            elif d_port.bases(Bundle) and d_rtst.bases(Bundle): # Bundles
                 if d_port._bundle_types.keys() != d_rtst._bundle_types.keys():
                     return None
-                
                 return Bundle[{key: _apply(T1, T2) for (key, T1), (_, T2) in zip(d_port._bundle_types.items(), d_rtst._bundle_types.items())}]
             elif not d_port.bases(Bundle) and not d_rtst.bases(Bundle):
                 return _single_type_merges(d_port, d_rtst)
@@ -322,7 +327,7 @@ class Bits(Auto, metaclass = BitsType):
         elif isinstance(value, str):
             self.set_value(int(value[-self.W:], base = 2))
         else:
-            raise SignalTypeInstantiationException # TODO
+            raise SignalTypeInstantiationException
     
     def __repr__(self):
         return "b" + self.to_bits_string()
@@ -348,13 +353,13 @@ class UInt(Bits):
         if isinstance(other, UInt):
             return UInt[max(self.W, other.W)](self.value + other.value)
         else:
-            raise SignalOperationException # TODO
+            raise SignalOperationException
     
     def __sub__(self, other):
         if isinstance(other, UInt):
             return UInt[max(self.W, other.W)](self.value - other.value)
         else:
-            raise SignalOperationException # TODO
+            raise SignalOperationException
     
     __radd__ = __add__
     __rsub__ = __sub__
@@ -379,13 +384,13 @@ class SInt(Bits):
         if isinstance(other, SInt):
             return SInt[max(self.W, other.W)](self.value + other.value)
         else:
-            raise SignalOperationException # TODO
+            raise SignalOperationException
     
     def __sub__(self, other):
         if isinstance(other, SInt):
             return SInt[max(self.W, other.W)](self.value - other.value)
         else:
-            raise SignalOperationException # TODO
+            raise SignalOperationException
     
     __radd__ = __add__
     __rsub__ = __sub__
@@ -416,7 +421,7 @@ class UFixedPoint(Bits, metaclass = FixedPointType):
         elif isinstance(value, str):
             self.set_value(int(value[-self.W:], base = 2))
         else:
-            raise SignalTypeInstantiationException # TODO
+            raise SignalTypeInstantiationException
     
     def __repr__(self):
         return f"UF{self.W_int}.{self.W_frac}({self.to_float})"
@@ -425,13 +430,13 @@ class UFixedPoint(Bits, metaclass = FixedPointType):
         if isinstance(other, UFixedPoint) and self.W_int == other.W_int and self.W_frac == other.W_frac:
             return UFixedPoint[self.W_int, self.W_frac](self.to_float + other.to_float)
         else:
-            raise SignalOperationException # TODO
+            raise SignalOperationException
     
     def __sub__(self, other):
         if isinstance(other, UFixedPoint) and self.W_int == other.W_int and self.W_frac == other.W_frac:
             return UFixedPoint[self.W_int, self.W_frac](self.to_float - other.to_float)
         else:
-            raise SignalOperationException # TODO
+            raise SignalOperationException
     
     __radd__ = __add__
     __rsub__ = __sub__
@@ -458,7 +463,7 @@ class SFixedPoint(Bits, metaclass = FixedPointType): # TODO 目前符号位是�
         elif isinstance(value, str):
             self.set_value(int(value[-self.W:], base = 2))
         else:
-            raise SignalTypeInstantiationException # TODO
+            raise SignalTypeInstantiationException
     
     def __repr__(self):
         return f"SF{self.W_int}.{self.W_frac}({self.to_float})"
@@ -467,13 +472,13 @@ class SFixedPoint(Bits, metaclass = FixedPointType): # TODO 目前符号位是�
         if isinstance(other, SFixedPoint) and self.W_int == other.W_int and self.W_frac == other.W_frac:
             return SFixedPoint[self.W_int, self.W_frac](self.to_float + other.to_float)
         else:
-            raise SignalOperationException # TODO
+            raise SignalOperationException
     
     def __sub__(self, other):
         if isinstance(other, SFixedPoint) and self.W_int == other.W_int and self.W_frac == other.W_frac:
             return SFixedPoint[self.W_int, self.W_frac](self.to_float - other.to_float)
         else:
-            raise SignalOperationException # TODO
+            raise SignalOperationException
     
     __radd__ = __add__
     __rsub__ = __sub__
