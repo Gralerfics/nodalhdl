@@ -567,9 +567,10 @@ class Structure:
         return runtime_id in self.runtimes.keys() and all([subs.is_runtime_integrate(runtime_id.next(sub_inst_name)) for sub_inst_name, subs in self.substructures.items()])
     
     def is_determined(self, runtime_id: RuntimeId): # all ports and substructures are determined
-        ports_determined = all([p.is_determined(runtime_id) for _, p in self.ports_inside_flipped.nodes()])
+        ports_inside_determined = all([p.is_determined(runtime_id) for _, p in self.ports_inside_flipped.nodes()])
         substructures_determined = all([s.is_determined(runtime_id.next(n)) for n, s in self.substructures.items()])
-        return ports_determined and substructures_determined
+        substructures_ports_outside_determined = all([p.is_determined(runtime_id) for sub_inst_name in self.substructures.keys() for _, p in self.get_subs_ports_outside(sub_inst_name).nodes()])
+        return ports_inside_determined and substructures_determined and substructures_ports_outside_determined
     
     def runtime_info(self, runtime_id: RuntimeId, indent: int = 0, fqn: str = "<root>"):
         res = " " * indent + f"{fqn} ({self.id[:8]}, {self.instance_number} ref(s){", R" if self.is_reusable else ""}), IO: {self.ports_inside_flipped.runtime_info(runtime_id)}.\n"
