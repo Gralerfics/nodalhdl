@@ -85,6 +85,10 @@ class ArgsOperatorMeta(type):
         if not isinstance(args, list) and not isinstance(args, tuple):
             args = [args]
         
+        unique_name = cls.naming(*args) # should be a valid string and unique across all operators
+        if unique_name in operators_pool: # return existed reusable structure (will not be in the pool if not reusable)
+            return operators_pool[unique_name]
+        
         s: Structure = cls.setup(*args)
         
         s.custom_deduction = cls.deduction
@@ -96,13 +100,9 @@ class ArgsOperatorMeta(type):
         if s.is_runtime_applicable:
             s.apply_runtime(rid)
         
-        if s.is_reusable:
-            unique_name = cls.naming(*args) # should be a valid string and unique across all operators
-            if unique_name in operators_pool:
-                return operators_pool[unique_name]
-            else:
-                s.unique_name = unique_name
-                operators_pool[unique_name] = s
+        if s.is_reusable: # only save reusable structures
+            s.unique_name = unique_name
+            operators_pool[unique_name] = s
         
         return s
 

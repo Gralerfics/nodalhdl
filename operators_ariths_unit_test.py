@@ -1,5 +1,6 @@
 from nodalhdl.core.signal import *
 from nodalhdl.core.structure import *
+from nodalhdl.basic.bits import *
 from nodalhdl.basic.arith import *
 
 from nodalhdl.timing.sta import *
@@ -14,8 +15,10 @@ def info(s: Structure, show_hdl = None):
     model = s.generation(rid)
     if show_hdl:
         vhdl = model.emit_vhdl()
-        print(vhdl.get(show_hdl, vhdl.keys()))
-        # emit_to_files(vhdl, "C:/Workspace/test_project/test_project.srcs/sources_1/new")
+        if show_hdl == "emit":
+            emit_to_files(vhdl, "C:/Workspace/test_project/test_project.srcs/sources_1/new")
+        else:
+            print(vhdl.get(show_hdl, vhdl.keys()))
 
 def here(f):
     print(f"<<<<<<<<<<<<<<<<<<<< {f.__name__} >>>>>>>>>>>>>>>>>>>>")
@@ -188,4 +191,19 @@ def Test_BinaryMultiplexer(s: Structure):
     s.connect(c, u.IO.o)
     
     # return "hdl_BinaryMultiplexer_UInt_12.vhd"
+
+
+@here
+def Test_Multiply_Bits(s: Structure):
+    a = s.add_port("a", Input[Auto])
+    b = s.add_port("b", Input[Auto])
+    c = s.add_port("c", Output[Auto])
+
+    u = s.add_substructure("u", Multiply(Bits[5], Bits[7]))
+
+    s.connect(a, u.IO.a)
+    s.connect(b, u.IO.b)
+    s.connect(c, u.IO.r)
+    
+    return "emit"
 

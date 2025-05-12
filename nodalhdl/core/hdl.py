@@ -245,6 +245,9 @@ class HDLFileModel:
         })
     
     def add_signal(self, name: str, t: SignalType):
+        if t.__name__ == "Auto":
+            print(" ========== ", name)
+        
         if t.bases(Bundle):
             self.global_info.add_type(t) # 添加类型到全局信息
         
