@@ -17,8 +17,8 @@ def AddChain(n: int, t: SignalType) -> Structure:
     
     adder: list[StructureProxy] = []
     for idx in range(n - 1):
-        adder.append(s.add_substructure(f"adder{idx}", BitsAdd[t, t]))
-        
+        adder.append(s.add_substructure(f"adder{idx}", BitsAdd(t, t)))
+
         s.connect(adder[-2].IO.r if idx > 0 else i[0], adder[-1].IO.a)
         s.connect(i[idx + 1], adder[-1].IO.b)
     

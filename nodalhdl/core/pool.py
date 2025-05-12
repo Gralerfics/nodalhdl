@@ -5,7 +5,7 @@ from .hdl import HDLFileModel
 from typing import Dict
 
 
-operators_pool: Dict[str, Structure] = {} # all operators should be defined in methods in .core.operator (here)
+unique_named_reusable_structure_pool: Dict[str, Structure] = {}
 
 
 class OperatorUtils:
@@ -22,10 +22,12 @@ class OperatorUtils:
 class OperatorSetupTemplates:
     @staticmethod
     def input_type_args_2i1o(input_name_1: str, input_name_2: str, output_name: str, output_type: SignalType = Auto):
-        def _setup(*args):
-            assert 1 <= len(args) <= 2 and all([isinstance(item, SignalType) for item in args])
-            input_type_1 = args[0]
-            input_type_2 = args[1] if len(args) == 2 else input_type_1
+        def _setup(input_type_1: SignalType = Auto, input_type_2: SignalType = None):
+            # assert 1 <= len(args) <= 2 and all([isinstance(item, SignalType) for item in args])
+            # input_type_1 = args[0]
+            # input_type_2 = args[1] if len(args) == 2 else input_type_1
+            if input_type_2 is None:
+                input_type_2 = input_type_1
             
             s = Structure()
             
@@ -39,10 +41,9 @@ class OperatorSetupTemplates:
     
     @staticmethod
     def input_type_args_1i1o(input_name: str = "a", output_name: str = "r", output_type: SignalType = Auto):
-        def _setup(*args):
-            assert len(args) == 1 and isinstance(args[0], SignalType)
-            input_type = args[0]
-            
+        def _setup(input_type: SignalType = Auto):
+            # assert len(args) == 1 and isinstance(args[0], SignalType)
+            # input_type = args[0]
             s = Structure()
             
             s.add_port(input_name, Input[input_type])
@@ -80,45 +81,61 @@ class OperatorDeductionTemplates:
         return _deduction
 
 
-class ArgsOperatorMeta(type):
-    def __getitem__(cls, args):
+class UniquelyNamedReusableMeta(type):
+    def __call__(cls, *args, **kwargs):
         if not isinstance(args, list) and not isinstance(args, tuple):
             args = [args]
         
-        unique_name = cls.naming(*args) # should be a valid string and unique across all operators
-        if unique_name in operators_pool: # return existed reusable structure (will not be in the pool if not reusable)
-            return operators_pool[unique_name]
+        # return existed reusable structure (will not be in the pool if not reusable)
+        maybe_unique_name = cls.naming(*args) # should be a valid string and unique across all operators
+        if maybe_unique_name in unique_named_reusable_structure_pool:
+            return unique_named_reusable_structure_pool[maybe_unique_name]
         
-        s: Structure = cls.setup(*args)
+        # setup
+        s: Structure = cls.setup(*args, **kwargs)
         
-        s.custom_deduction = cls.deduction
-        s.custom_generation = cls.generation
+        # save arguments
         s.custom_params["_setup_args"] = args
+        s.custom_params["_setup_kwargs"] = kwargs
         
+        # for operators
+        s.custom_deduction = getattr(cls, "deduction", None)
+        s.custom_generation = getattr(cls, "generation", None)
+        if s.custom_deduction is None and s.custom_generation is not None: # custom_deduction can be passed
+            s.custom_deduction = lambda s, io: None
+        if s.custom_generation is None and s.custom_deduction is not None: # custom_generation is necessary
+            raise Exception("generation method must be defined for an operator (only deduction method provided now)")
+        
+        # deduction and apply
         rid = RuntimeId.create()
         s.deduction(rid)
         if s.is_runtime_applicable:
             s.apply_runtime(rid)
         
-        if s.is_reusable: # only save reusable structures
-            s.unique_name = unique_name
-            operators_pool[unique_name] = s
+        # only save reusable structures to the pool
+        if s.is_reusable:
+            s.unique_name = maybe_unique_name
+            unique_named_reusable_structure_pool[maybe_unique_name] = s
         
         return s
 
 
-class ArgsOperator(metaclass = ArgsOperatorMeta):
+class UniquelyNamedReusable(metaclass = UniquelyNamedReusableMeta):
     @staticmethod
-    def setup(*args) -> Structure:
+    def setup(*args, **kwargs) -> Structure:
         return Structure()
+    
+    """
+    Define the following two methods to make it an operator:
     
     @staticmethod
     def deduction(s: Structure, io: IOProxy): ...
     
     @staticmethod
     def generation(s: Structure, h: HDLFileModel, io: IOProxy): ...
+    """
     
     @classmethod
     def naming(cls, *args):
-        return f"{cls.__name__}_{'_'.join(map(str, args))}" # [NOTICE] use valid string
+        return f"{cls.__name__}_{'_'.join(map(str, args))}"
 

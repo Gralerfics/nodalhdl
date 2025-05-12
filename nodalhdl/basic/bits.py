@@ -1,6 +1,6 @@
 from ..core.signal import *
 from ..core.structure import Structure, IOProxy
-from ..core.operators import ArgsOperator, OperatorUtils, OperatorSetupTemplates, OperatorDeductionTemplates
+from ..core.pool import UniquelyNamedReusable, OperatorUtils, OperatorSetupTemplates, OperatorDeductionTemplates
 from ..core.hdl import HDLFileModel
 
 import hashlib
@@ -9,11 +9,11 @@ import textwrap
 from typing import List
 
 
-class BitsAdd(ArgsOperator):
+class BitsAdd(UniquelyNamedReusable):
     """
         2's complement addition.
         
-        BitsAddition[<a_type (SignalType)>, <b_type (SignalType)>]
+        BitsAdd(<a_type (SignalType)>, <b_type (SignalType)>)
         
         Input(s): a (a_type), b (b_type)
         Output(s): r (wider width)
@@ -43,11 +43,11 @@ class BitsAdd(ArgsOperator):
         """))
 
 
-class BitsSubtract(ArgsOperator):
+class BitsSubtract(UniquelyNamedReusable):
     """
         2's complement subtraction.
         
-        BitsSubtract[<a_type (SignalType)>, <b_type (SignalType)>]
+        BitsSubtract(<a_type (SignalType)>, <b_type (SignalType)>)
         
         Input(s): a (a_type), b (b_type)
         Output(s): r (wider width)
@@ -77,11 +77,11 @@ class BitsSubtract(ArgsOperator):
         """))
 
 
-class BitsInverse(ArgsOperator):
+class BitsInverse(UniquelyNamedReusable):
     """
         2's complement inverse. (r = ~a + 1)
         
-        BitsInverse[<a_type (SignalType)>]
+        BitsInverse(<a_type (SignalType)>)
         
         Input(s): a (a_type)
         Output(s): r (same type)
@@ -110,11 +110,11 @@ class BitsInverse(ArgsOperator):
         """))
 
 
-class BitsEqualTo(ArgsOperator):
+class BitsEqualTo(UniquelyNamedReusable):
     """
         Same width EQU.
     
-        BitsEqualTo[<a_type (SignalType)>, <b_type (SignalType)>]
+        BitsEqualTo(<a_type (SignalType)>, <b_type (SignalType)>)
         
         Input(s): a (a_type), b (b_type)
         Output(s): r (Bit)
@@ -143,11 +143,11 @@ class BitsEqualTo(ArgsOperator):
         """))
 
 
-class BitsLessThan(ArgsOperator):
+class BitsLessThan(UniquelyNamedReusable):
     """
         Same width LE. (P.S. unsigned)
 
-        BitsLessThan[<a_type (SignalType)>, <b_type (SignalType)>]
+        BitsLessThan(<a_type (SignalType)>, <b_type (SignalType)>)
         
         Input(s): a (a_type), b (b_type)
         Output(s): r (Bit)
@@ -177,11 +177,11 @@ class BitsLessThan(ArgsOperator):
         """))
 
 
-class BitsNot(ArgsOperator):
+class BitsNot(UniquelyNamedReusable):
     """
         Bitwise NOT.
 
-        BitsNot[<a_type (SignalType)>]
+        BitsNot(<a_type (SignalType)>)
         
         Input(s): a (a_type)
         Output(s): r (same type)
@@ -210,11 +210,11 @@ class BitsNot(ArgsOperator):
         """))
 
 
-class BitsAnd(ArgsOperator):
+class BitsAnd(UniquelyNamedReusable):
     """
         Bitwise AND.
 
-        BitsAnd[<a_type (SignalType)>, <b_type (SignalType)>]
+        BitsAnd(<a_type (SignalType)>, <b_type (SignalType)>)
         
         Input(s): a (a_type), b (b_type)
         Output(s): r (same type)
@@ -244,11 +244,11 @@ class BitsAnd(ArgsOperator):
         """))
 
 
-class BitsReductionAnd(ArgsOperator):
+class BitsReductionAnd(UniquelyNamedReusable):
     """
         Bitwise reduction AND.
 
-        BitsReduceAnd[<a_type (SignalType)>]
+        BitsReduceAnd(<a_type (SignalType)>)
         
         Input(s): a (a_type)
         Output(s): r (Bit)
@@ -275,11 +275,11 @@ class BitsReductionAnd(ArgsOperator):
         """))
 
 
-class BitsOr(ArgsOperator):
+class BitsOr(UniquelyNamedReusable):
     """
         Bitwise OR.
 
-        BitsOr[<a_type (SignalType)>, <b_type (SignalType)>]
+        BitsOr(<a_type (SignalType)>, <b_type (SignalType)>)
         
         Input(s): a (a_type), b (b_type)
         Output(s): r (same type)
@@ -309,11 +309,11 @@ class BitsOr(ArgsOperator):
         """))
 
 
-class BitsReductionOr(ArgsOperator):
+class BitsReductionOr(UniquelyNamedReusable):
     """
         Bitwise reduction OR.
 
-        BitsReductionOr[<a_type (SignalType)>]
+        BitsReductionOr(<a_type (SignalType)>)
         
         Input(s): a (a_type)
         Output(s): r (Bit)
@@ -340,11 +340,11 @@ class BitsReductionOr(ArgsOperator):
         """))
 
 
-class BinaryMultiplexer(ArgsOperator):
+class BinaryMultiplexer(UniquelyNamedReusable):
     """
         Two-way MUX.
     
-        BinaryMultiplexer[<value_type (SignalType)>]
+        BinaryMultiplexer(<value_type (SignalType)>)
         
         Input(s): i0 (value_type), i1 (value_type), sel (Bit)
         Output(s): o
@@ -388,16 +388,16 @@ class BinaryMultiplexer(ArgsOperator):
         """))
 
 
-class CustomVHDLOperator(ArgsOperator):
+class CustomVHDLOperator(UniquelyNamedReusable):
     """
         Customized bitwise operations in VHDL.
 
-        CustomVHDLOperator[
+        CustomVHDLOperator(
             {input_name_0: input_type_0, ...}
             {output_name_0: output_type_0, ...},
             arch_body (str),
             arch_decl (str)
-        ]
+        )
         
         TODO 结构化端口, 直接放个带 IOWrapper 的完善 Bundle 进来, 合适吗? 为保兼容性应保留原方式.
         
@@ -405,7 +405,7 @@ class CustomVHDLOperator(ArgsOperator):
         Output(s): <output_name_0> (output_type_0), ...
     """
     @staticmethod
-    def setup(*args) -> Structure:
+    def setup(*args, **kwargs) -> Structure:
         assert \
             len(args) >= 3 and \
             isinstance(args[0], dict) and \
@@ -461,16 +461,16 @@ class CustomVHDLOperator(ArgsOperator):
 
 
 # TODO 重构
-class Decomposition(ArgsOperator):
+class Decomposition(UniquelyNamedReusable):
     """
-        Decomposition[<input_type (BundleType)>]: all shallow members
-        Decomposition[<input_type (BundleType)>, <path_0 (str)>, <path_1 (str)>, ...]
+        Decomposition(<input_type (BundleType)>): all shallow members
+        Decomposition(<input_type (BundleType)>, <path_0 (str)>, <path_1 (str)>, ...)
 
         Input(s): i (BundleType)
         Output(s): o (structural)
     """
     @staticmethod
-    def setup(*args) -> Structure:
+    def setup(*args, **kwargs) -> Structure:
         assert len(args) - 1 >= 0
         
         # arguments
@@ -545,15 +545,15 @@ end architecture;
             return f"{cls.__name__}_{args[0].__name__[7:15]}_{"_".join([path_str.strip(".").replace(".", "_") for path_str in args[1:]])}"
 
 # TODO 重构
-class Composition(ArgsOperator):
+class Composition(UniquelyNamedReusable):
     """
-        Composition[<output_type (BundleType)>, <path_0 (str)>, ...]
+        Composition(<output_type (BundleType)>, <path_0 (str)>, ...)
         
         Input(s): i (structural)
         Output(s): o (BundleType)
     """
     @staticmethod
-    def setup(*args) -> Structure:
+    def setup(*args, **kwargs) -> Structure:
         assert len(args) - 1 >= 0
         
         # arguments

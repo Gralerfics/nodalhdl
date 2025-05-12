@@ -42,11 +42,11 @@ def Constants(**constants) -> Structure:
     
     ports = [s.add_port(name, Output[type(value)]) for name, value in pairs]
     
-    opt = s.add_substructure("opt", CustomVHDLOperator[
+    opt = s.add_substructure("opt", CustomVHDLOperator(
         {},
         {name: type(value) for name, value in constants.items()},
         "\n".join([line for name, value in pairs for line in _assign(name, value)])
-    ])
+    ))
     
     for port in ports:
         s.connect(opt.IO.access(port.name), port)
@@ -58,15 +58,15 @@ def Add(t1: SignalType, t2: SignalType) -> Structure:
     assert t1.determined and t2.determined
     
     if t1.bases(Bits) and t2.bases(Bits):
-        return BitsAdd[t1, t2]
+        return BitsAdd(t1, t2)
     if t1.bases(UInt) and t2.bases(UInt) and t1.W == t2.W:
-        return BitsAdd[t1, t2]
+        return BitsAdd(t1, t2)
     elif t1.bases(SInt) and t2.bases(SInt) and t1.W == t2.W:
-        return BitsAdd[t1, t2]
+        return BitsAdd(t1, t2)
     elif t1.bases(UFixedPoint) and t2.bases(UFixedPoint) and t1.W_int == t2.W_int and t1.W_frac == t2.W_frac:
-        return BitsAdd[t1, t2]
+        return BitsAdd(t1, t2)
     elif t1.bases(SFixedPoint) and t2.bases(SFixedPoint) and t1.W_int == t2.W_int and t1.W_frac == t2.W_frac:
-        return BitsAdd[t1, t2]
+        return BitsAdd(t1, t2)
     else:
         raise NotImplementedError
 
@@ -108,13 +108,13 @@ def Multiply(t1: SignalType, t2: SignalType) -> Structure:
         lW, sW = max(t1.W, t2.W), min(t1.W, t2.W)
         lP, sP = (a, b) if t1.W > t2.W else (b, a)
         
-        gen = s.add_substructure("gen_addends", CustomVHDLOperator[
+        gen = s.add_substructure("gen_addends", CustomVHDLOperator(
             {"long": Bits[lW], "short": Bits[sW]},
             {f"addend_{idx}": Bits[lW + idx + 1] for idx in range(sW)}, # plus 1 to avoid overflow
             f"long_shifted <= long & \"{"0" * (sW - 1)}\";" +
                 "\n".join([f"addend_{idx} <= \"0\" & long_shifted({lW + sW - 2} downto {sW - idx - 1}) when short({idx}) = '1' else (others => '0');" for idx in range(sW)]),
             f"signal long_shifted: std_logic_vector({lW + sW - 2} downto 0);"
-        ])
+        ))
         
         s.connect(lP, gen.IO.long)
         s.connect(sP, gen.IO.short)
@@ -126,10 +126,15 @@ def Multiply(t1: SignalType, t2: SignalType) -> Structure:
             last_P, P = P, []
             
             for i in range(1, len(last_P), 2): # add adjacent ports
-                new_adder = s.add_substructure(f"adder_{adder_idx}", BitsAdd[last_P[i - 1].origin_signal_type.T, last_P[i].origin_signal_type.T])
+                new_adder = s.add_substructure(
+                    f"adder_{adder_idx}",
+                    BitsAdd(last_P[i - 1].origin_signal_type.T, last_P[i].origin_signal_type.T)
+                )
+                
                 s.connect(last_P[i - 1], new_adder.IO.a)
                 s.connect(last_P[i], new_adder.IO.b)
                 P.append(new_adder.IO.r)
+                
                 adder_idx += 1
             
             if len(last_P) % 2 == 1: # fallout port
@@ -141,11 +146,11 @@ def Multiply(t1: SignalType, t2: SignalType) -> Structure:
         r = s.add_port("r", Output[UInt[t1.W]])
         
         bits_mul = s.add_substructure("bits_mul", Multiply(Bits[t1.W], Bits[t2.W]))
-        tc = s.add_substructure("tc", CustomVHDLOperator[
+        tc = s.add_substructure("tc", CustomVHDLOperator(
             {"i": Bits[t1.W + t2.W]},
             {"o": Bits[t1.W]},
             f"o <= i({t1.W - 1} downto 0)"
-        ])
+        ))
         
         s.connect(a, bits_mul.IO.a)
         s.connect(b, bits_mul.IO.b)
@@ -159,11 +164,11 @@ def Multiply(t1: SignalType, t2: SignalType) -> Structure:
         r = s.add_port("r", Output[UInt[t1.W]])
         
         bits_mul = s.add_substructure("bits_mul", Multiply(Bits[t1.W], Bits[t2.W]))
-        tc = s.add_substructure("tc", CustomVHDLOperator[
+        tc = s.add_substructure("tc", CustomVHDLOperator(
             {"i": Bits[t1.W + t2.W]},
             {"o": Bits[t1.W]},
             f"o <= i({t1.W_frac + t1.W - 1} downto {t1.W_frac})"
-        ])
+        ))
         
         s.connect(a, bits_mul.IO.a)
         s.connect(b, bits_mul.IO.b)

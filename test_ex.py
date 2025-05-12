@@ -1,5 +1,6 @@
 from nodalhdl.core.signal import UInt, SInt, Bits, Bit, Float, Bundle, Input, Output, Auto, SignalType
 from nodalhdl.core.structure import Structure, RuntimeId, StructureProxy
+from nodalhdl.basic.bits import *
 from nodalhdl.basic.arith import *
 from nodalhdl.core.hdl import HDLFileModel
 from nodalhdl.timing.sta import VivadoSTA
@@ -18,8 +19,8 @@ def AddU4U4U4() -> Structure:
     op3 = s.add_port("op3", Input[UInt[4]])
     res = s.add_port("res", Output[Auto])
     
-    add_12 = s.add_substructure("add_12", BitsAdd[UInt[4], UInt[4]])
-    add_123 = s.add_substructure("add_123", BitsAdd[UInt[4], UInt[4]])
+    add_12 = s.add_substructure("add_12", BitsAdd(UInt[4], UInt[4]))
+    add_123 = s.add_substructure("add_123", BitsAdd(UInt[4], UInt[4]))
     
     s.connect(op1, add_12.IO.a)
     s.connect(op2, add_12.IO.b)
@@ -39,7 +40,7 @@ def M1() -> Structure:
     c = s.add_port("c", Input[UInt[4]])
     o = s.add_port("o", Output[Auto])
     
-    x = s.add_substructure("x", BitsAdd[UInt[4], UInt[4]])
+    x = s.add_substructure("x", BitsAdd(UInt[4], UInt[4]))
     y = s.add_substructure("y", add_u4_u4_u4)
     z = s.add_substructure("z", Constants(c0 = UInt[4](10)))
     
@@ -61,7 +62,7 @@ def AddWrapper(t1: SignalType, t2: SignalType) -> Structure:
     i2 = s.add_port("i2", Input[t2])
     o = s.add_port("o", Output[Auto])
     
-    adder = s.add_substructure("adder", BitsAdd[Auto, Auto])
+    adder = s.add_substructure("adder", BitsAdd(Auto, Auto))
     
     s.connect(i1, adder.IO.a)
     s.connect(i2, adder.IO.b)
@@ -87,7 +88,7 @@ def M2() -> Structure:
     
     u1 = s.add_substructure("u1", m1)
     u2 = s.add_substructure("u2", addw)
-    u3 = s.add_substructure("u3", Decomposition[B_t, ".xy.y", "z"])
+    u3 = s.add_substructure("u3", Decomposition(B_t, ".xy.y", "z"))
     
     s.connect(a, u1.IO.a)
     s.connect(b, u1.IO.b)
@@ -122,8 +123,8 @@ def M3() -> Structure:
     ro = s.add_port("ro", Output[Auto])
     
     p = s.add_substructure("p", addw)
-    q = s.add_substructure("q", BitsAdd[Auto, Auto])
-    r = s.add_substructure("r", BitsAdd[UInt[4], UInt[4]])
+    q = s.add_substructure("q", BitsAdd(Auto, Auto))
+    r = s.add_substructure("r", BitsAdd(UInt[4], UInt[4]))
     
     Nipq = s.add_node("Nipq", Auto)
     s.connect(ipq, Nipq)

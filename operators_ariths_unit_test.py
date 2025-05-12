@@ -35,8 +35,8 @@ def Test_BitsAdd_BitsSubtract(s: Structure):
     b = s.add_port("b", Input[Auto])
     c = s.add_port("c", Output[Bits[6]])
 
-    u = s.add_substructure("u", BitsAdd[Auto])
-    # u = s.add_substructure("u", BitsSubtract[Auto])
+    u = s.add_substructure("u", BitsAdd(Auto))
+    # u = s.add_substructure("u", BitsSubtract(Auto))
 
     s.connect(a, u.IO.a)
     s.connect(b, u.IO.b)
@@ -48,7 +48,7 @@ def Test_BitsInverse(s: Structure):
     a = s.add_port("a", Input[Bits[6]])
     c = s.add_port("c", Output[Auto])
 
-    u = s.add_substructure("u", BitsInverse[Auto])
+    u = s.add_substructure("u", BitsInverse(Auto))
 
     s.connect(a, u.IO.a)
     s.connect(u.IO.r, c)
@@ -60,7 +60,7 @@ def Test_BitsEqualTo(s: Structure):
     b = s.add_port("b", Input[Auto])
     c = s.add_port("c", Output[Auto])
 
-    u = s.add_substructure("u", BitsEqualTo[Auto])
+    u = s.add_substructure("u", BitsEqualTo(Auto))
 
     s.connect(a, u.IO.a)
     s.connect(b, u.IO.b)
@@ -73,7 +73,7 @@ def Test_BitsLessThan(s: Structure):
     b = s.add_port("b", Input[Auto])
     c = s.add_port("c", Output[Auto])
 
-    u = s.add_substructure("u", BitsLessThan[Auto])
+    u = s.add_substructure("u", BitsLessThan(Auto))
 
     s.connect(a, u.IO.a)
     s.connect(b, u.IO.b)
@@ -85,7 +85,7 @@ def Test_BitsNot(s: Structure):
     a = s.add_port("a", Input[Bits[6]])
     c = s.add_port("c", Output[Auto])
 
-    u = s.add_substructure("u", BitsNot[Auto])
+    u = s.add_substructure("u", BitsNot(Auto))
 
     s.connect(a, u.IO.a)
     s.connect(u.IO.r, c)
@@ -97,8 +97,8 @@ def Test_BitsAnd_BitsOr(s: Structure):
     b = s.add_port("b", Input[Auto])
     c = s.add_port("c", Output[Auto])
 
-    u = s.add_substructure("u", BitsAnd[Auto])
-    # u = s.add_substructure("u", BitsOr[Auto])
+    u = s.add_substructure("u", BitsAnd(Auto))
+    # u = s.add_substructure("u", BitsOr(Auto))
 
     s.connect(a, u.IO.a)
     s.connect(b, u.IO.b)
@@ -110,11 +110,28 @@ def Test_BitsReductionAnd_BitsReductionOr(s: Structure):
     a = s.add_port("a", Input[Bits[6]])
     c = s.add_port("c", Output[Auto])
 
-    # u = s.add_substructure("u", BitsReductionAnd[Auto])
-    u = s.add_substructure("u", BitsReductionOr[Auto])
+    # u = s.add_substructure("u", BitsReductionAnd(Auto))
+    u = s.add_substructure("u", BitsReductionOr(Auto))
 
     s.connect(a, u.IO.a)
     s.connect(u.IO.r, c)
+
+
+@here
+def Test_BinaryMultiplexer(s: Structure):
+    a = s.add_port("a", Input[Auto])
+    b = s.add_port("b", Input[Auto])
+    sel = s.add_port("sel", Input[Bit])
+    c = s.add_port("c", Output[Auto])
+
+    u = s.add_substructure("u", BinaryMultiplexer(UInt[12]))
+
+    s.connect(a, u.IO.i0)
+    s.connect(b, u.IO.i1)
+    s.connect(sel, u.IO.sel)
+    s.connect(c, u.IO.o)
+    
+    # return "hdl_BinaryMultiplexer_UInt_12.vhd"
 
 
 @here
@@ -123,12 +140,12 @@ def Test_CustomVHDLOperator(s: Structure):
     b = s.add_port("b", Input[Bits[5]])
     c = s.add_port("c", Output[Auto])
 
-    u = s.add_substructure("u", CustomVHDLOperator[
+    u = s.add_substructure("u", CustomVHDLOperator(
         {"aa": Bits[3], "bb": Auto},
         {"cc": Bits[8]},
         "t0 <= aa;\nt1 <= bb;\ncc <= t1 & t0;",
         "signal t0: std_logic_vector(2 downto 0);\nsignal t1: std_logic_vector(4 downto 0);"
-    ])
+    ))
 
     s.connect(a, u.IO.aa)
     s.connect(b, u.IO.bb)
@@ -177,24 +194,7 @@ def Test_Arith_Constants(s: Structure):
 
 
 @here
-def Test_BinaryMultiplexer(s: Structure):
-    a = s.add_port("a", Input[Auto])
-    b = s.add_port("b", Input[Auto])
-    sel = s.add_port("sel", Input[Bit])
-    c = s.add_port("c", Output[Auto])
-
-    u = s.add_substructure("u", BinaryMultiplexer[UInt[12]])
-
-    s.connect(a, u.IO.i0)
-    s.connect(b, u.IO.i1)
-    s.connect(sel, u.IO.sel)
-    s.connect(c, u.IO.o)
-    
-    # return "hdl_BinaryMultiplexer_UInt_12.vhd"
-
-
-@here
-def Test_Multiply_Bits(s: Structure):
+def Test_Multiply(s: Structure):
     a = s.add_port("a", Input[Auto])
     b = s.add_port("b", Input[Auto])
     c = s.add_port("c", Output[Auto])
@@ -205,5 +205,6 @@ def Test_Multiply_Bits(s: Structure):
     s.connect(b, u.IO.b)
     s.connect(c, u.IO.r)
     
-    return "emit"
+    # return "emit"
+    return "hdl_Arith_Multiply_Bits_5_Bits_7.vhd"
 
