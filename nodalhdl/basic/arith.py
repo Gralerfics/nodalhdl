@@ -23,7 +23,7 @@ import textwrap
 """
 
 
-class Constants(UniquelyNamedReusable):
+class Constants(UniquelyNamedReusable): # TODO 改成直接返回一个 CustomVHDLOperator？那样 unique_name 没了，考虑一下
     @staticmethod
     def setup(**constants) -> Structure:
         """
@@ -100,11 +100,11 @@ def Subtract(t1: SignalType, t2: SignalType) -> Structure:
 # ConstantMul?
 
 
-class Multiply(UniquelyNamedReusable):
+class Multiply(UniquelyNamedReusable): # TODO 改: https://blog.csdn.net/m0_51783792/article/details/123970639
     """
         1. 任意宽 Bits 相乘, 当作无符号乘法, 输出位宽为输入位宽之和, 即不截断.
         2. 任意宽 UInt 相乘, 同 Bits, int_truncate 决定是否截断 (若截断则按较长操作数位宽截断).
-        3. 任意宽 SInt 相乘, 有符号乘法, int_truncate 决定是否截断 (若截断则按较长操作数位宽截断 TODO 对吗?).
+        3. 任意宽 SInt 相乘, 有符号乘法, int_truncate 决定是否截断 (若截断则按较长操作数位宽截断).
         4. 同形式 UFixedPoint 相乘, 按 Bits (或 UInt 不截断) 相乘后原格式截断.
         5. 同形式 SFixedPoint 相乘, 按 SInt 相乘后原格式截断.
     """
@@ -203,7 +203,7 @@ class Multiply(UniquelyNamedReusable):
                 for i in range(1, len(last_P), 2): # add adjacent ports
                     new_adder = s.add_substructure(
                         f"adder_{adder_idx}",
-                        Add(last_P[i - 1].origin_signal_type.T, last_P[i].origin_signal_type.T)
+                        BitsAdd(last_P[i - 1].origin_signal_type.T, last_P[i].origin_signal_type.T)
                     )
                     s.connect(last_P[i - 1], new_adder.IO.a)
                     s.connect(last_P[i], new_adder.IO.b)
@@ -216,7 +216,7 @@ class Multiply(UniquelyNamedReusable):
             
             subtractor = s.add_substructure(
                 f"subtractor",
-                Subtract(last_P[i - 1].origin_signal_type.T, last_P[i].origin_signal_type.T)
+                BitsSubtract(last_P[i - 1].origin_signal_type.T, last_P[i].origin_signal_type.T)
             )
             s.connect(P[0], subtractor.IO.a)
             s.connect(gen.IO.access("subend"), subtractor.IO.b)
@@ -266,4 +266,19 @@ class Multiply(UniquelyNamedReusable):
             raise NotImplementedError
         
         return s
+
+
+class Division(UniquelyNamedReusable):
+    """
+        # 1. 任意宽 Bits 相乘, 当作无符号乘法, 输出位宽为输入位宽之和, 即不截断.
+        # 2. 任意宽 UInt 相乘, 同 Bits, int_truncate 决定是否截断 (若截断则按较长操作数位宽截断).
+        # 3. 任意宽 SInt 相乘, 有符号乘法, int_truncate 决定是否截断 (若截断则按较长操作数位宽截断).
+        # 4. 同形式 UFixedPoint 相乘, 按 Bits (或 UInt 不截断) 相乘后原格式截断.
+        # 5. 同形式 SFixedPoint 相乘, 按 SInt 相乘后原格式截断.
+        TODO
+        1. 
+    """
+    @staticmethod
+    def setup(t1: SignalType, t2: SignalType) -> Structure:
+        pass
 

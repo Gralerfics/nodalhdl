@@ -115,6 +115,8 @@ class SignalType(type):
             `cls` could have IO wrappers, and the IO wrappers in `other` will be ignored.
         """
         def _single_type_merges(a: 'SignalType', b: 'SignalType'):
+            assert a.belongs(Bits) and b.belongs(Bits) # Single type ~ Bits (or its children)
+            
             # if not a.base.belongs(b.base) and not b.base.belongs(a.base): # 基类型无继承关系, 不可合并 TODO 改了，可以合成祖宗
             #     return None
             if getattr(a, "W", None) == getattr(b, "W", None): # 有相同位宽或都没有位宽, 取基类型具体的
@@ -128,7 +130,11 @@ class SignalType(type):
             elif (hasattr(a, "W") and not hasattr(b, "W")) or (not hasattr(a, "W") and hasattr(b, "W")): # 仅一个有位宽
                 w, wo = (a, b) if hasattr(a, "W") else (b, a)
                 if wo.belongs(Bits):
-                    return wo.base[w.W] if wo.base.belongs(w.base) else w # wo 能加位宽而且其基类型更具体, 则组合 wo 基类型和 w 的位宽信息
+                    if wo.base.belongs(w.base): # and not wo.base.equals(w.base): # wo 能加位宽而且其基类型更具体, 则组合 wo 基类型和 w 的位宽信息
+                        # TODO 为什么会进来 wo = SFixedPoint 和 w = SFixedPoint_16_12？
+                        return wo.base[w.W]
+                    else:
+                        return w
                 else:
                     return w # wo 没法加位宽, 则只保留 w [NOTICE] 目前没有这种情况, 只有 Bits 所谓的为 single_type (Auto 下的非 Bundle 类型), 除非后续添加
             else:
@@ -272,7 +278,9 @@ class FloatingPointType(BitsType):
             new_cls = cls.instantiate_type(
                 f"{cls.__name__}_{width}",
                 {
-                    "W": width
+                    "W": width,
+                    "W_exp": None,
+                    "W_frac": None
                 }
             )
             new_cls.determined = False
@@ -447,10 +455,15 @@ Int16 = SInt[16]
 Int32 = SInt[32]
 Int64 = SInt[64]
 
-class UFixedPoint(Bits, metaclass = FixedPointType):
+class UFixedPoint(UInt, metaclass = FixedPointType):
     @classmethod
     def to_definition_string(cls):
-        return f"UFixedPoint[{cls.W_int}, {cls.W_frac}]" if hasattr(cls, 'W_int') and hasattr(cls, 'W_frac') else "UFixedPoint"
+        if getattr(cls, "W_int", None) is not None and getattr(cls, "W_frac", None) is not None:
+            return f"UFixedPoint[{cls.W_int}, {cls.W_frac}]"
+        elif getattr(cls, "W", None) is not None:
+            return f"UFixedPoint[{cls.W}]"
+        else:
+            return "UFixedPoint"
         
     def __init__(self, value = 0.0):
         if isinstance(value, float):
@@ -486,13 +499,18 @@ class UFixedPoint(Bits, metaclass = FixedPointType):
     def to_float(self):
         return self.value / (1 << self.W_frac)
 
-class SFixedPoint(Bits, metaclass = FixedPointType): # W = W_int + W_frac + 1 (sign bit, not in W_int)
+class SFixedPoint(SInt, metaclass = FixedPointType): # W = W_int + W_frac + 1 (sign bit, not in W_int)
     @classmethod
     def to_definition_string(cls):
-        return f"SFixedPoint[{cls.W_int}, {cls.W_frac}]" if hasattr(cls, 'W_int') and hasattr(cls, 'W_frac') else "SFixedPoint"
+        if getattr(cls, "W_int", None) is not None and getattr(cls, "W_frac", None) is not None:
+            return f"SFixedPoint[{cls.W_int}, {cls.W_frac}]"
+        elif getattr(cls, "W", None) is not None:
+            return f"SFixedPoint[{cls.W}]"
+        else:
+            return "SFixedPoint"
     
     def __init__(self, value = 0.0):
-        if isinstance(value, float):
+        if isinstance(value, float) or isinstance(value, int):
             self.set_value(value)
         elif isinstance(value, str):
             self.set_value(int(value[-self.W:], base = 2))
@@ -526,16 +544,21 @@ class SFixedPoint(Bits, metaclass = FixedPointType): # W = W_int + W_frac + 1 (s
         half = 1 << self.W - 1
         self.value = (value_int + half) % (1 << self.W) - half # TODO 整数截断这样截吗？符号位考虑了吗？
     
-    def to_bits_string(self): # TODO 需要检查
-        num = self.value
-        if num < 0:
-            num = (1 << self.W) + num
-        return bin(num)[2:].zfill(self.W)[-self.W:]
+    # def to_bits_string(self): # TODO 需要检查
+    #     num = self.value
+    #     if num < 0:
+    #         num = (1 << self.W) + num
+    #     return bin(num)[2:].zfill(self.W)[-self.W:]
 
 class FloatingPoint(Bits, metaclass = FloatingPointType):
     @classmethod
     def to_definition_string(cls):
-        return f"FloatingPoint[{cls.W_exp}, {cls.W_frac}]" if hasattr(cls, 'W_exp') and hasattr(cls, 'W_frac') else "FloatingPoint"
+        if getattr(cls, "W_exp", None) is not None and getattr(cls, "W_frac", None) is not None:
+            return f"FloatingPoint[{cls.W_exp}, {cls.W_frac}]"
+        elif getattr(cls, "W", None) is not None:
+            return f"FloatingPoint[{cls.W}]"
+        else:
+            return "FloatingPoint"
     
     def to_bits_string(self):
         return NotImplementedError

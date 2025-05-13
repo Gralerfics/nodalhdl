@@ -8,6 +8,9 @@ class RetimingException(Exception): pass
 class PipeliningException(Exception): pass
 
 
+# TODO 只有线网、只有一端（常数）等情况，不需要转到电路模型.
+
+
 def to_extended_circuit(s: Structure, root_runtime_id: RuntimeId):
     """
         The structure `s` should be flattened and timing-analysed.

@@ -1009,8 +1009,13 @@ class Structure:
         
         return StructureProxy(structure, self.id, inst_name)
     
-    def connect(self, node_1: Node, node_2: Node):
-        node_1.merge(node_2)
+    def connect(self, node_1: Union[Node, StructuralNodes], node_2: Union[Node, StructuralNodes]):
+        if isinstance(node_1, Node) and isinstance(node_2, Node):
+            node_1.merge(node_2)
+        elif isinstance(node_1, StructuralNodes) and isinstance(node_2, StructuralNodes):
+            node_1.connect(node_2) # TODO to be verified
+        else:
+            raise Exception("Nodes/StructuralNodes not match.")
     
     def connects(self, nodes: List[Node]):
         for idx, node in enumerate(nodes):

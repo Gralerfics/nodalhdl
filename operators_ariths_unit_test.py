@@ -3,8 +3,7 @@ from nodalhdl.core.structure import *
 from nodalhdl.basic.bits import *
 from nodalhdl.basic.arith import *
 
-from nodalhdl.timing.sta import *
-from nodalhdl.timing.pipelining import *
+from nodalhdl.core.hdl import emit_to_files
 
 
 def info(s: Structure, show_hdl = None):
