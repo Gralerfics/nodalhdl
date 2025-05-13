@@ -115,14 +115,16 @@ class SignalType(type):
             `cls` could have IO wrappers, and the IO wrappers in `other` will be ignored.
         """
         def _single_type_merges(a: 'SignalType', b: 'SignalType'):
-            if not a.base.belongs(b.base) and not b.base.belongs(a.base): # 基类型无继承关系, 不可合并
-                return None
+            # if not a.base.belongs(b.base) and not b.base.belongs(a.base): # 基类型无继承关系, 不可合并 TODO 改了，可以合成祖宗
+            #     return None
             if getattr(a, "W", None) == getattr(b, "W", None): # 有相同位宽或都没有位宽, 取基类型具体的
                 # 要考虑 e.g. Bits[W]/SFixedPoint[W] 和 SFixedPoint[W_int, W_frac] 这种情况, 取后者细分的位宽信息 TODO 感觉条件写得不太好
-                if a.base.equals(b.base):
-                    return a if a.determined else b
-                else:
-                    return a if a.base.belongs(b.base) else b
+                if a.base.belongs(b.base): # 基类型有从属取从属的
+                    return a
+                elif b.base.belongs(a.base): # 同上
+                    return b
+                else: # 没有从属关系，合成最近公共祖先，这里先用老祖宗 Bits 代着，以后来细细重构，乱七八糟的
+                    return Bits[a.W] if hasattr(a, "W") else Bits
             elif (hasattr(a, "W") and not hasattr(b, "W")) or (not hasattr(a, "W") and hasattr(b, "W")): # 仅一个有位宽
                 w, wo = (a, b) if hasattr(a, "W") else (b, a)
                 if wo.belongs(Bits):

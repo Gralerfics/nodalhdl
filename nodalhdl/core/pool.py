@@ -126,7 +126,7 @@ class UniquelyNamedReusable(metaclass = UniquelyNamedReusableMeta):
         return Structure()
     
     """
-    Define the following two methods to make it an operator:
+    Define the following two methods to make it an operator (do not decomment here):
     
     @staticmethod
     def deduction(s: Structure, io: IOProxy): ...

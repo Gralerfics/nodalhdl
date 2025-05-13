@@ -13,6 +13,8 @@ import textwrap
     只是将不同类型的同类操作合并到一个函数，省得写多个名字类似的函数；
     调用时都应该给定态类型（部分例如 Add 等给 Auto 其实也不会有问题，但还是定死吧）。
     这里有点像用类型携带一些配置信息的意思。
+            就是说这里参数的类型不见得是和类型推导有关系，只是给用户当信息传入。
+            TODO 要不不用类型传了用字符串传省得混淆，然后全 Bits。
         比如原始一点可以用一个参数表示乘法器输出是否要截断，下面则是通过判断传入的是 Bits 还是 XInt 决定，前者完整，后者要求输入等长并且输出截断。
         这样合理吗? 是否显得多余还降低了灵活性? 但这样比设定原始的参数简洁, 后者光给参数命名就很抽象了（但 IP 核貌似就算这种路子）。
         没事反正 arith 里不是唯一的生成方式，需要的话可以到别处创建个 HighlyParameterizedMultiplier 之流，这里只提供基本的。
@@ -82,15 +84,15 @@ def Subtract(t1: SignalType, t2: SignalType) -> Structure:
     assert t1.determined and t2.determined
     
     if t1.bases(Bits) and t2.bases(Bits):
-        return BitsSubtract[t1, t2]
+        return BitsSubtract(t1, t2)
     if t1.bases(UInt) and t2.bases(UInt) and t1.W == t2.W: # TODO 不等宽?
-        return BitsSubtract[t1, t2]
+        return BitsSubtract(t1, t2)
     elif t1.bases(SInt) and t2.bases(SInt) and t1.W == t2.W: # TODO 不等宽?
-        return BitsSubtract[t1, t2]
+        return BitsSubtract(t1, t2)
     elif t1.bases(UFixedPoint) and t2.bases(UFixedPoint) and t1.W_int == t2.W_int and t1.W_frac == t2.W_frac:
-        return BitsSubtract[t1, t2]
+        return BitsSubtract(t1, t2)
     elif t1.bases(SFixedPoint) and t2.bases(SFixedPoint) and t1.W_int == t2.W_int and t1.W_frac == t2.W_frac:
-        return BitsSubtract[t1, t2]
+        return BitsSubtract(t1, t2)
     else:
         raise NotImplementedError
 
@@ -124,9 +126,9 @@ class Multiply(UniquelyNamedReusable):
             gen = s.add_substructure("gen_addends", CustomVHDLOperator(
                 {"long": Bits[lW], "short": Bits[sW]},
                 {f"addend_{idx}": Bits[lW + idx + 1] for idx in range(sW)}, # plus 1 to avoid overflow
-                f"long_shifted <= long & \"{"0" * (sW - 1)}\";" +
-                    "\n".join([f"addend_{idx} <= \"0\" & long_shifted({lW + sW - 2} downto {sW - idx - 1}) when short({idx}) = '1' else (others => '0');" for idx in range(sW)]),
-                f"signal long_shifted: std_logic_vector({lW + sW - 2} downto 0);"
+                f"long_shifted <= '0' & long & (1 to {sW - 1} => '0');\n" +
+                    "\n".join([f"addend_{idx} <= long_shifted({lW + sW - 1} downto {sW - idx - 1}) when short({idx}) = '1' else (others => '0');" for idx in range(sW)]),
+                f"signal long_shifted: std_logic_vector({lW + sW - 1} downto 0);"
             ))
             s.connect(lP, gen.IO.long)
             s.connect(sP, gen.IO.short)
@@ -156,48 +158,52 @@ class Multiply(UniquelyNamedReusable):
         elif t1.bases(UInt) and t2.bases(UInt):
             r = s.add_port("r", Output[UInt[lW if int_truncate else t1.W + t2.W]]) # 输出位宽与截断与否有关
                 
-            sints_mul = s.add_substructure("bits_mul", Multiply(Bits[t1.W], Bits[t2.W]))
-            s.connect(a, sints_mul.IO.a)
-            s.connect(b, sints_mul.IO.b)
+            sint_mul = s.add_substructure("bits_mul", Multiply(Bits[t1.W], Bits[t2.W]))
+            s.connect(a, sint_mul.IO.a)
+            s.connect(b, sint_mul.IO.b)
             
             if int_truncate: # 按高位截断
                 tc = s.add_substructure("tc", CustomVHDLOperator(
                     {"i": Bits[t1.W + t2.W]},
                     {"o": Bits[lW]},
-                    f"o <= i({lW - 1} downto 0)"
+                    f"o <= i({lW - 1} downto 0);"
                 ))
-                s.connect(sints_mul.IO.r, tc.IO.i)
+                s.connect(sint_mul.IO.r, tc.IO.i)
                 s.connect(tc.IO.o, r)
             else: # 不截断直接连接
-                s.connect(sints_mul.IO.r, r)
+                s.connect(sint_mul.IO.r, r)
         
-        elif t1.bases(SInt) and t2.bases(SInt):
+        elif t1.bases(SInt) and t2.bases(SInt): # https://www.cnblogs.com/jiaotaiyang/p/17576277.html
             r = s.add_port("r", Output[SInt[lW if int_truncate else t1.W + t2.W]]) # 同上
-            
-            lW, sW = max(t1.W, t2.W), min(t1.W, t2.W)
-            lP, sP = (a, b) if t1.W > t2.W else (b, a)
             
             gen = s.add_substructure("gen_addends", CustomVHDLOperator(
                 {"long": Bits[lW], "short": Bits[sW]},
-                {f"addend_{idx}": Bits[lW + idx + 1] for idx in range(sW)}, # plus 1 to avoid overflow
-                # TODO 改成有符号数相乘的 addends
-                # f"long_shifted <= long & \"{"0" * (sW - 1)}\";" +
-                #     "\n".join([f"addend_{idx} <= \"0\" & long_shifted({lW + sW - 2} downto {sW - idx - 1}) when short({idx}) = '1' else (others => '0');" for idx in range(sW)]),
-                # f"signal long_shifted: std_logic_vector({lW + sW - 2} downto 0);"
+                {
+                    **{f"addend_{idx}": SInt[lW + sW] for idx in range(sW - 1)},
+                    "subend": SInt[lW + sW]
+                },
+                f"long_shifted <= long & (1 to {sW - 1} => '0');\n" +
+                    f"long_sign <= long(long'high);\n" +
+                    "\n".join([
+                        (f"addend_{idx}" if idx < sW - 1 else "subend") + 
+                        f" <= (1 to {sW - idx} => long_sign) & long_shifted({lW + sW - 2} downto {sW - idx - 1}) when short({idx}) = '1' else (others => '0');"
+                    for idx in range(sW)]),
+                f"signal long_shifted: std_logic_vector({lW + sW - 2} downto 0);\n" +
+                    f"signal long_sign: std_logic;"
             ))
             s.connect(lP, gen.IO.long)
             s.connect(sP, gen.IO.short)
             
             adder_idx = 0
             last_P = []
-            P = [gen.IO.access(f"addend_{idx}") for idx in range(sW)]
+            P = [gen.IO.access(f"addend_{idx}") for idx in range(sW - 1)]
             while len(P) > 1:
                 last_P, P = P, []
                 
                 for i in range(1, len(last_P), 2): # add adjacent ports
                     new_adder = s.add_substructure(
                         f"adder_{adder_idx}",
-                        BitsAdd(last_P[i - 1].origin_signal_type.T, last_P[i].origin_signal_type.T)
+                        Add(last_P[i - 1].origin_signal_type.T, last_P[i].origin_signal_type.T)
                     )
                     s.connect(last_P[i - 1], new_adder.IO.a)
                     s.connect(last_P[i], new_adder.IO.b)
@@ -208,45 +214,52 @@ class Multiply(UniquelyNamedReusable):
                 if len(last_P) % 2 == 1: # fallout port
                     P.append(last_P[-1])
             
+            subtractor = s.add_substructure(
+                f"subtractor",
+                Subtract(last_P[i - 1].origin_signal_type.T, last_P[i].origin_signal_type.T)
+            )
+            s.connect(P[0], subtractor.IO.a)
+            s.connect(gen.IO.access("subend"), subtractor.IO.b)
+            
             if int_truncate: # 按高位截断
                 tc = s.add_substructure("tc", CustomVHDLOperator(
                     {"i": Bits[t1.W + t2.W]},
                     {"o": Bits[lW]},
-                    f"o <= i({lW - 1} downto 0)"
+                    f"o <= i({lW - 1} downto 0);"
                 ))
-                s.connect(P[0], tc.IO.i)
+                s.connect(subtractor.IO.r, tc.IO.i)
                 s.connect(tc.IO.o, r)
             else: # 不截断直接连接
-                s.connect(P[0], r)
+                s.connect(subtractor.IO.r, r)
         
         elif t1.bases(UFixedPoint) and t2.bases(UFixedPoint) and t1.W_int == t2.W_int and t1.W_frac == t2.W_frac:
             r = s.add_port("r", Output[t1])
             
-            sints_mul = s.add_substructure("bits_mul", Multiply(Bits[t1.W], Bits[t2.W]))
-            s.connect(a, sints_mul.IO.a)
-            s.connect(b, sints_mul.IO.b)
+            bits_mul = s.add_substructure("bits_mul", Multiply(Bits[t1.W], Bits[t2.W]))
+            s.connect(a, bits_mul.IO.a)
+            s.connect(b, bits_mul.IO.b)
             
             tc = s.add_substructure("tc", CustomVHDLOperator(
                 {"i": Bits[t1.W + t2.W]},
-                {"o": Bits[t1.W]},
-                f"o <= i({t1.W_frac + t1.W - 1} downto {t1.W_frac})"
+                {"o": t1},
+                f"o <= i({t1.W_frac + t1.W - 1} downto {t1.W_frac});"
             ))
-            s.connect(sints_mul.IO.r, tc.IO.i)
+            s.connect(bits_mul.IO.r, tc.IO.i)
             s.connect(tc.IO.o, r)
         
         elif t1.bases(SFixedPoint) and t2.bases(SFixedPoint) and t1.W_int == t2.W_int and t1.W_frac == t2.W_frac:
             r = s.add_port("r", Output[t1])
             
-            sints_mul = s.add_substructure("sints_mul", Multiply(SInt[t1.W], SInt[t2.W], int_truncate = False))
-            s.connect(a, sints_mul.IO.a)
-            s.connect(b, sints_mul.IO.b)
+            sint_mul = s.add_substructure("sint_mul", Multiply(SInt[t1.W], SInt[t2.W], int_truncate = False))
+            s.connect(a, sint_mul.IO.a)
+            s.connect(b, sint_mul.IO.b)
             
             tc = s.add_substructure("tc", CustomVHDLOperator(
                 {"i": Bits[t1.W + t2.W]},
                 {"o": Bits[t1.W]},
-                f"o <= i({t1.W_frac + t1.W - 1} downto {t1.W_frac})"
+                f"o <= i({t1.W_frac + t1.W - 1} downto {t1.W_frac});"
             ))
-            s.connect(sints_mul.IO.r, tc.IO.i)
+            s.connect(sint_mul.IO.r, tc.IO.i)
             s.connect(tc.IO.o, r)
         
         else:

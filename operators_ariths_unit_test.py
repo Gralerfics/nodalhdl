@@ -194,7 +194,7 @@ def Test_Arith_Constants(s: Structure):
 
 
 @here
-def Test_Multiply(s: Structure):
+def Test_Multiply_Bits(s: Structure):
     a = s.add_port("a", Input[Auto])
     b = s.add_port("b", Input[Auto])
     c = s.add_port("c", Output[Auto])
@@ -205,6 +205,36 @@ def Test_Multiply(s: Structure):
     s.connect(b, u.IO.b)
     s.connect(c, u.IO.r)
     
-    return "emit"
+    # return "emit"
     # return "hdl_Multiply_Bits_5_Bits_7.vhd"
+
+
+@here
+def Test_Multiply_SInt(s: Structure):
+    a = s.add_port("a", Input[Auto])
+    b = s.add_port("b", Input[Auto])
+    c = s.add_port("c", Output[Auto])
+
+    u = s.add_substructure("u", Multiply(SInt[3], SInt[5], int_truncate = False))
+
+    s.connect(a, u.IO.a)
+    s.connect(b, u.IO.b)
+    s.connect(c, u.IO.r)
+    
+    # return "emit"
+
+
+@here
+def Test_Multiply_SFixedPoint(s: Structure):
+    a = s.add_port("a", Input[Auto])
+    b = s.add_port("b", Input[Auto])
+    c = s.add_port("c", Output[Auto])
+
+    u = s.add_substructure("u", Multiply(SFixedPoint[7, 4], SFixedPoint[7, 4]))
+
+    s.connect(a, u.IO.a)
+    s.connect(b, u.IO.b)
+    s.connect(c, u.IO.r)
+    
+    return "emit"
 
