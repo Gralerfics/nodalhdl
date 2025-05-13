@@ -273,6 +273,13 @@ class Node:
     def is_driver(self):
         return self.origin_signal_type.bases(Output)
     
+    # @property
+    # def full_name(self): # the unique 
+    #     if self.of_structure_inst_name is not None: # self.is_port:
+    #         return self.of_structure_inst_name + 
+    #     else:
+    #         return self.name
+    
     def is_determined(self, runtime_id: RuntimeId):
         return self.get_type(runtime_id).determined
 

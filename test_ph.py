@@ -11,19 +11,34 @@ from nodalhdl.timing.pipelining import pipelining
 T = SFixedPoint[16, 12] # 目前要求 W_int <= 45 且 8 <= W_frac <= 20
 
 
-def ArithmeticShifter(n: int): # n > 0: move left, else right
+# def ArithmeticShifter(n: int): # n > 0: move left, else right
+#     return CustomVHDLOperator(
+#         {"i": T},
+#         {"o": T},
+#         f"o <= i {"sla" if n >= 0 else "sra"} {abs(n)};"
+#     )
+
+
+def Fract():
     return CustomVHDLOperator(
         {"i": T},
         {"o": T},
-        f"o <= i {"sla" if n >= 0 else "sra"} {abs(n)};"
+        f"o({T.W_frac - 1} downto 0) <= i({T.W_frac - 1} downto 0);\n" + # TODO 限制了 W_frac > 0
+            f"o(o'left downto {T.W_frac}) <= (others => '0');"
     )
-
-
-# def 
 
 
 def Shader() -> Structure:
     s = Structure()
+
+    def ArithmeticShifter(i: Node, n: int): # n > 0: move left, else right
+        u = s.add_substructure(f"arith_shifter_", CustomVHDLOperator(
+            {"i": T},
+            {"o": T},
+            f"o <= i {"sla" if n >= 0 else "sra"} {abs(n)};"
+        ))
+        s.connect(i, u.IO.i)
+        return u.IO.o
     
     iTime_ms = s.add_port("iTimeUs", Input[UInt[64]])
     fragCoord = s.add_port("fragCoord", Bundle[{"x": Input[T], "y": Input[T]}])
@@ -43,14 +58,13 @@ def Shader() -> Structure:
     consts = s.add_substructure("consts", Constants(**{f"c{str(c).replace(".", "_")}": T(c) for c in constants}))
     
     # ax
-    fcx_sra_9 = s.add_substructure("fcx_sra_9", ArithmeticShifter(-9))
-    fcx_sra_7 = s.add_substructure("fcx_sra_7", ArithmeticShifter(-7))
+    fcx_sra_9 = ArithmeticShifter(fragCoord.x, -9)
+    fcx_sra_7 = ArithmeticShifter(fragCoord.x, -7)
+    
     fcx_sra_add = s.add_substructure("fcx_sra_add", Add(T, T))
     ax_const_sub = s.add_substructure("fcx_const_sub", Subtract(T, T))
-    s.connect(fragCoord.x, fcx_sra_9.IO.i)
-    s.connect(fragCoord.x, fcx_sra_7.IO.i)
-    s.connect(fcx_sra_9.IO.o, fcx_sra_add.IO.a)
-    s.connect(fcx_sra_7.IO.o, fcx_sra_add.IO.b)
+    s.connect(fcx_sra_9, fcx_sra_add.IO.a)
+    s.connect(fcx_sra_7, fcx_sra_add.IO.b)
     s.connect(fcx_sra_add.IO.r, ax_const_sub.IO.a)
     s.connect(consts.IO.c5, ax_const_sub.IO.b)
     ax = ax_const_sub.IO.r
@@ -77,14 +91,15 @@ def Shader() -> Structure:
     s.connect(ay, ax_add_ay.IO.b)
     ux_const_add = s.add_substructure("ux_const_add", Add(T, T))
     s.connect(ax_sub_ay.IO.r, ux_const_add.IO.a)
-    s.connect(consts.IO.C5, ux_const_add.IO.b)
+    s.connect(consts.IO.c5, ux_const_add.IO.b)
     uy_const_add = s.add_substructure("uy_const_add", Add(T, T))
     s.connect(ax_add_ay.IO.r, uy_const_add.IO.a)
-    s.connect(consts.IO.C5, uy_const_add.IO.b)
+    s.connect(consts.IO.c5, uy_const_add.IO.b)
     ux = ux_const_add.IO.r
     uy = uy_const_add.IO.r
     
     # fx, fy
+    
     
     # fragColor -> 24bit and output
     color_24bit_cvt = s.add_substructure("color_24bit_cvt", CustomVHDLOperator(
