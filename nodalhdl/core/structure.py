@@ -505,6 +505,7 @@ class Structure:
         # references (internal structure)
         self.ports_inside_flipped: StructuralNodes = StructuralNodes() # to be connected to internal nodes, IO flipped (EEB)
         self.substructures: Dict[str, 'Structure'] = {} # instance_name -> structure
+        # self.substructures_expandable_flags: Dict[str, bool] = {} TODO 默认 True，为 False 的不展开，对 operator 失效；手动指定或可减少节点数减低 retiming 压力；除非提升 retiming 效率
         self.nodes: Set[Node] = set() # non-IO nodes
         
         # references (external structure)

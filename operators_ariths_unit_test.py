@@ -205,6 +205,6 @@ def Test_Multiply(s: Structure):
     s.connect(b, u.IO.b)
     s.connect(c, u.IO.r)
     
-    # return "emit"
-    return "hdl_Arith_Multiply_Bits_5_Bits_7.vhd"
+    return "emit"
+    # return "hdl_Multiply_Bits_5_Bits_7.vhd"
 
