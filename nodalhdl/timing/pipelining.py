@@ -51,9 +51,9 @@ def to_extended_circuit(s: Structure, root_runtime_id: RuntimeId):
         out_ports = subs_ports_outside.nodes(filter = "out") # TODO 加个功能让一次能两个一起返回了吧
         
         timing_info = subs.get_runtime(root_runtime_id.next(subs_inst_name)).timing_info
-        for pi_full_name, pi in in_ports:
-            for po_full_name, po in out_ports:
-                delay = timing_info.get((pi_full_name, po_full_name))
+        for pi_layered_name, pi in in_ports:
+            for po_layered_name, po in out_ports:
+                delay = timing_info.get((pi_layered_name, po_layered_name))
                 if delay is not None:
                     e_ins = [external_edges_map[pi]]
                     e_outs = [external_edges_map[po_load] for po_load in po.located_net.get_loads()]

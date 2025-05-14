@@ -250,7 +250,7 @@ class VivadoSTA(StaticTimingAnalyser):
         
         #  - add timing paths
         tcl += f"set paths {{}}\n"
-        added_paths: List[Tuple] = [] # [(inst_name, pi_full_name, po_full_name, ), ]
+        added_paths: List[Tuple] = [] # [(inst_name, pi_layered_name, po_layered_name, ), ]
         for subs_inst_name, subs in s.substructures.items():
             subs.get_runtime(root_runtime_id.next(subs_inst_name)).timing_info = {}
             # if subs.timing_info is not None: # [NOTICE] 分析过的结构不用再分析 ?
@@ -262,7 +262,7 @@ class VivadoSTA(StaticTimingAnalyser):
             in_ports = subs_ports_outside.nodes(filter = "in")
             out_ports = subs_ports_outside.nodes(filter = "out")
             
-            for pi_full_name, pi in in_ports:
+            for pi_layered_name, pi in in_ports:
                 if not pi.located_net.has_driver: # input port not connected (NC)
                     continue
                 
@@ -273,14 +273,14 @@ class VivadoSTA(StaticTimingAnalyser):
                     desc_1 = from_po.layered_name
                 through_1 = f"reg*d*{desc_1}*/C"
                 
-                for po_full_name, _ in out_ports:
-                    desc_2 = f"{subs_inst_name}_io_{po_full_name}"
+                for po_layered_name, _ in out_ports:
+                    desc_2 = f"{subs_inst_name}_io_{po_layered_name}"
                     through_2 = f"reg*d*{desc_2}*/D"
                     
                     tcl += f"catch {{ set paths [concat $paths [get_timing_paths -through [get_pins -hier {through_1}] -through [get_pins -hier {through_2}] -delay_type max -max_paths 1 -nworst 1 -unique_pins]] }}\n"
 
                     # record keys for the instance, I-port and O-port for storing
-                    added_paths.append((subs_inst_name, pi_full_name, po_full_name, desc_1, desc_2)) # desc_x for checking if the timing path exists in the report, or it should be skipped
+                    added_paths.append((subs_inst_name, pi_layered_name, po_layered_name, desc_1, desc_2)) # desc_x for checking if the timing path exists in the report, or it should be skipped
         tcl += "\n"
         
         #  - report timing
@@ -306,7 +306,7 @@ class VivadoSTA(StaticTimingAnalyser):
                 report_lines = f.readlines()
             report = VivadoSTA.TimingReport.parse_lines(report_lines)
             
-            # process and store timing info (TODO 理论上没问题, 或者 added_paths 里面存为 Dict[(desc_1, desc_2): (inst_name, pi_full_name, po_full_name)]? 这样要求 desc_x 可以直接由 src/dest 还原.)
+            # process and store timing info (TODO 理论上没问题, 或者 added_paths 里面存为 Dict[(desc_1, desc_2): (inst_name, pi_layered_name, po_layered_name)]? 这样要求 desc_x 可以直接由 src/dest 还原.)
             added_paths_ptr = 0
             for idx, p in enumerate(report.paths):
                 while p.source.find(added_paths[added_paths_ptr][3]) < 0 or p.destination.find(added_paths[added_paths_ptr][4]) < 0: # skip this added path
@@ -326,11 +326,11 @@ class VivadoSTA(StaticTimingAnalyser):
                     delay = p.details[-2]["path_ns"] - p.details[2]["path_ns"]
                 
                 # store into structure
-                subs_inst_name, pi_full_name, po_full_name = added_paths[added_paths_ptr][0:3]
+                subs_inst_name, pi_layered_name, po_layered_name = added_paths[added_paths_ptr][0:3]
                 runtime = s.substructures[subs_inst_name].get_runtime(root_runtime_id.next(subs_inst_name))
                 if runtime.timing_info is None:
                     runtime.timing_info = {}
-                runtime.timing_info[(pi_full_name, po_full_name)] = delay
+                runtime.timing_info[(pi_layered_name, po_layered_name)] = delay
                 runtime.timing_info[('_simple_in', '_simple_out')] = max(delay, runtime.timing_info.get(('_simple_in', '_simple_out'), 0))
                 
                 # next added path

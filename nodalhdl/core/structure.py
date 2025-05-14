@@ -273,12 +273,17 @@ class Node:
     def is_driver(self):
         return self.origin_signal_type.bases(Output)
     
-    # @property
-    # def full_name(self): # the unique 
-    #     if self.of_structure_inst_name is not None: # self.is_port:
-    #         return self.of_structure_inst_name + 
-    #     else:
-    #         return self.name
+    @property
+    def full_name(self):
+        """
+            The unique name under the current structure.
+            For ports (outside): inst_name _ layered_name
+            For nodes or ports (inside): name
+        """
+        if self.of_structure_inst_name is not None:
+            return self.of_structure_inst_name + "_" + self.layered_name
+        else:
+            return self.name
     
     def is_determined(self, runtime_id: RuntimeId):
         return self.get_type(runtime_id).determined
@@ -899,12 +904,12 @@ class Structure:
                 net_wires[port.located_net][1].append([wire_name, port.latency]) # add load
         
         # add ports into model according to ports_inside_flipped
-        for port_full_name, port in self.ports_inside_flipped.nodes():
+        for port_layered_name, port in self.ports_inside_flipped.nodes():
             direction = "out" if port.origin_signal_type.bases(Input) else "in" # ports_inside_flipped is IO flipped
-            model.add_port(f"{port_full_name}", direction, port.get_type(runtime_id)) # use full name
+            model.add_port(f"{port_layered_name}", direction, port.get_type(runtime_id)) # use full name
             
             # fill net_wires
-            fill_net_wires(port, wire_name = port_full_name)
+            fill_net_wires(port, wire_name = port_layered_name)
         
         # substructures
         if self.is_operator:
@@ -914,9 +919,9 @@ class Structure:
             # universal generation for non-operators
             for sub_inst_name, subs in self.substructures.items():
                 mapping = {}
-                for port_full_name, port in subs.ports_outside[(self.id, sub_inst_name)].nodes(): # must use subs.ports_outside, which locates in self
-                    port_wire_name = f"{sub_inst_name}_io_{port_full_name}" # inst_name_io_node_full_name
-                    mapping[port_full_name] = port_wire_name
+                for port_layered_name, port in subs.ports_outside[(self.id, sub_inst_name)].nodes(): # must use subs.ports_outside, which locates in self
+                    port_wire_name = f"{sub_inst_name}_io_{port_layered_name}" # inst_name_io_node_layered_name
+                    mapping[port_layered_name] = port_wire_name
                     model.add_signal(port_wire_name, port.get_type(runtime_id)) # add signal for port wire
 
                     # fill net_wires

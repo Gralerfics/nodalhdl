@@ -1,8 +1,9 @@
 from ..core.signal import *
 from ..core.structure import Structure, RuntimeId
-from ..core.pool import UniquelyNamedReusable
+from ..core.pool import UniquelyNamedReusable, UniqueNamingTemplates
 from .bits import BitsAdd, BitsSubtract, CustomVHDLOperator
 
+import hashlib
 import textwrap
 
 
@@ -54,6 +55,8 @@ class Constants(UniquelyNamedReusable): # TODO 改成直接返回一个 CustomVH
             s.connect(opt.IO.access(port.name), port)
         
         return s
+    
+    naming = UniqueNamingTemplates.args_kwargs_md5_16
 
 
 def Add(t1: SignalType, t2: SignalType) -> Structure: # [NOTICE] 不需要套一层 UniquelyNamedReusable, 就用里面的 BitsAdd 即可
@@ -266,6 +269,8 @@ class Multiply(UniquelyNamedReusable): # TODO 改: https://blog.csdn.net/m0_5178
             raise NotImplementedError
         
         return s
+    
+    naming = UniqueNamingTemplates.args_kwargs_all_values
 
 
 class Division(UniquelyNamedReusable):
@@ -281,4 +286,6 @@ class Division(UniquelyNamedReusable):
     @staticmethod
     def setup(t1: SignalType, t2: SignalType) -> Structure:
         pass
+    
+    naming = UniqueNamingTemplates.args_kwargs_all_values
 

@@ -131,7 +131,6 @@ class SignalType(type):
                 w, wo = (a, b) if hasattr(a, "W") else (b, a)
                 if wo.belongs(Bits):
                     if wo.base.belongs(w.base): # and not wo.base.equals(w.base): # wo 能加位宽而且其基类型更具体, 则组合 wo 基类型和 w 的位宽信息
-                        # TODO 为什么会进来 wo = SFixedPoint 和 w = SFixedPoint_16_12？
                         return wo.base[w.W]
                     else:
                         return w
@@ -245,7 +244,7 @@ class FixedPointType(BitsType):
                     "signed": is_signed
                 }
             )
-            new_cls.determined = False
+            new_cls.determined = True # False TODO !!!!!!!! 依托
             
             return new_cls
         elif isinstance(item, tuple) and len(item) == 2 and isinstance(item[0], int) and isinstance(item[1], int): # int width and frac width
@@ -283,7 +282,7 @@ class FloatingPointType(BitsType):
                     "W_frac": None
                 }
             )
-            new_cls.determined = False
+            new_cls.determined = True # False TODO !!!!!!!! 依托
             
             return new_cls
         if isinstance(item, tuple) and len(item) == 2 and isinstance(item[0], int) and isinstance(item[1], int):

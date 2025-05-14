@@ -87,7 +87,7 @@ class UniquelyNamedReusableMeta(type):
             args = [args]
         
         # return existed reusable structure (will not be in the pool if not reusable)
-        maybe_unique_name = cls.naming(*args) # should be a valid string and unique across all operators
+        maybe_unique_name = cls.naming(cls, *args, **kwargs) # should be a valid string and unique across all operators
         if maybe_unique_name in unique_named_reusable_structure_pool:
             return unique_named_reusable_structure_pool[maybe_unique_name]
         
@@ -120,6 +120,19 @@ class UniquelyNamedReusableMeta(type):
         return s
 
 
+class UniqueNamingTemplates:
+    @staticmethod
+    def args_kwargs_md5_16(cls, *args, **kwargs):
+        return f"{cls.__name__}_{hashlib.md5((str(args) + str(kwargs)).encode('utf-8')).hexdigest()[:16]}"
+    
+    @staticmethod
+    def args_kwargs_all_values(cls, *args, **kwargs):
+        res = f"{cls.__name__}"
+        res = res + "_" + "_".join(map(str, args)) if len(args) > 0 else res
+        res = res + "_" + "_".join(map(str, kwargs.values())) if len(kwargs) > 0 else res
+        return res
+
+
 class UniquelyNamedReusable(metaclass = UniquelyNamedReusableMeta):
     @staticmethod
     def setup(*args, **kwargs) -> Structure:
@@ -134,8 +147,6 @@ class UniquelyNamedReusable(metaclass = UniquelyNamedReusableMeta):
     @staticmethod
     def generation(s: Structure, h: HDLFileModel, io: IOProxy): ...
     """
-    
-    @classmethod
-    def naming(cls, *args):
-        return f"{cls.__name__}_{'_'.join(map(str, args))}"
+
+    naming = UniqueNamingTemplates.args_kwargs_md5_16
 

@@ -1,6 +1,6 @@
 from ..core.signal import *
 from ..core.structure import Structure, IOProxy
-from ..core.pool import UniquelyNamedReusable, OperatorUtils, OperatorSetupTemplates, OperatorDeductionTemplates
+from ..core.pool import UniquelyNamedReusable, OperatorUtils, OperatorSetupTemplates, OperatorDeductionTemplates, UniqueNamingTemplates
 from ..core.hdl import HDLFileModel
 
 import hashlib
@@ -41,6 +41,8 @@ class BitsAdd(UniquelyNamedReusable):
                 r <= std_logic_vector(unsigned(a) + unsigned(b));
             end architecture;
         """))
+    
+    naming = UniqueNamingTemplates.args_kwargs_all_values
 
 
 class BitsSubtract(UniquelyNamedReusable):
@@ -75,6 +77,8 @@ class BitsSubtract(UniquelyNamedReusable):
                 r <= std_logic_vector(unsigned(a) - unsigned(b));
             end architecture;
         """))
+    
+    naming = UniqueNamingTemplates.args_kwargs_all_values
 
 
 class BitsInverse(UniquelyNamedReusable):
@@ -108,6 +112,8 @@ class BitsInverse(UniquelyNamedReusable):
                 r <= std_logic_vector(-signed(a));
             end architecture;
         """))
+    
+    naming = UniqueNamingTemplates.args_kwargs_all_values
 
 
 class BitsEqualTo(UniquelyNamedReusable):
@@ -141,6 +147,8 @@ class BitsEqualTo(UniquelyNamedReusable):
                 r <= '1' when a = b else '0';
             end architecture;
         """))
+    
+    naming = UniqueNamingTemplates.args_kwargs_all_values
 
 
 class BitsLessThan(UniquelyNamedReusable):
@@ -175,6 +183,8 @@ class BitsLessThan(UniquelyNamedReusable):
                 r <= '1' when unsigned(a) < unsigned(b) else '0';
             end architecture;
         """))
+    
+    naming = UniqueNamingTemplates.args_kwargs_all_values
 
 
 class BitsNot(UniquelyNamedReusable):
@@ -208,6 +218,8 @@ class BitsNot(UniquelyNamedReusable):
                 r <= not a;
             end architecture;
         """))
+    
+    naming = UniqueNamingTemplates.args_kwargs_all_values
 
 
 class BitsAnd(UniquelyNamedReusable):
@@ -242,6 +254,8 @@ class BitsAnd(UniquelyNamedReusable):
                 r <= a and b;
             end architecture;
         """))
+    
+    naming = UniqueNamingTemplates.args_kwargs_all_values
 
 
 class BitsReductionAnd(UniquelyNamedReusable):
@@ -273,6 +287,8 @@ class BitsReductionAnd(UniquelyNamedReusable):
                 r <= '1' when (a = (a'range => '1')) else '0';
             end architecture;
         """))
+    
+    naming = UniqueNamingTemplates.args_kwargs_all_values
 
 
 class BitsOr(UniquelyNamedReusable):
@@ -307,6 +323,8 @@ class BitsOr(UniquelyNamedReusable):
                 r <= a or b;
             end architecture;
         """))
+    
+    naming = UniqueNamingTemplates.args_kwargs_all_values
 
 
 class BitsReductionOr(UniquelyNamedReusable):
@@ -338,6 +356,8 @@ class BitsReductionOr(UniquelyNamedReusable):
                 r <= '1' when (a /= (a'range => '0')) else '0';
             end architecture;
         """))
+    
+    naming = UniqueNamingTemplates.args_kwargs_all_values
 
 
 class BinaryMultiplexer(UniquelyNamedReusable):
@@ -386,6 +406,8 @@ class BinaryMultiplexer(UniquelyNamedReusable):
                 o <= i1 when s = '1' else i0;
             end architecture;
         """))
+    
+    naming = UniqueNamingTemplates.args_kwargs_all_values
 
 
 class CustomVHDLOperator(UniquelyNamedReusable):
@@ -454,10 +476,8 @@ class CustomVHDLOperator(UniquelyNamedReusable):
                 {textwrap.dedent(arch_body).strip().replace("\n", "\n                ")}
             end architecture;
         """))
-
-    @classmethod
-    def naming(cls, *args):
-        return f"{cls.__name__}_{hashlib.md5(str(args).encode('utf-8')).hexdigest()[:16]}"
+    
+    naming = UniqueNamingTemplates.args_kwargs_md5_16
 
 
 # TODO 重构
