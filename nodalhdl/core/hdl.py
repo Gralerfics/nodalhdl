@@ -1,4 +1,4 @@
-from .signal import SignalType, BundleType, Signal, Bundle, Bits
+from .signal import SignalType, BundleType, Signal, Bundle, Bits, Bit
 
 import os
 import shutil
@@ -87,6 +87,8 @@ class HDLFileModel:
         self.assignments: List[Tuple[str, str]] = [] # List[Tuple[目标信号, 源信号]]
         self.registers: Set[Tuple[str, str, SignalType]] = set() # Set[<reg_next_name>, <reg_name>, <signal_type>], <signal_type> for initial value generation
         
+        self.reg_enable_signal_name: str = None # 寄存器时钟使能信号名, 为 None 时无时钟使能信号
+        
         self.raw: bool = False # 是否直接使用 HDL 定义 (即使使用 HDL 定义也应当声明 entity_name; port 应与 substructure 相符)
         self.raw_suffix: str = None
         self.raw_content: str = None
@@ -168,7 +170,12 @@ class HDLFileModel:
                         return res
                     
                     seq_process += _generate(reg_name, signal_type)
-                seq_process += "        elsif rising_edge(clock) then\n"
+                
+                if self.reg_enable_signal_name is not None:
+                    seq_process += f"        elsif rising_edge(clock) and {self.reg_enable_signal_name} = '1' then\n"
+                else:
+                    seq_process += "        elsif rising_edge(clock) then\n"
+                
                 for reg_next_name, reg_name, _ in model.registers:
                     seq_process += f"            {reg_name} <= {reg_next_name};\n"
                 seq_process += "        end if;\n    end process;\n"
@@ -222,6 +229,7 @@ class HDLFileModel:
     def add_port(self, name: str, direction: str, t: SignalType):
         """
             不需要在 custom_generation 中使用, generation 时会根据结构自动调用.
+            direction: "in", "out"
         """
         if t.bases(Bundle):
             self.global_info.add_type(t) # 添加类型到全局信息
@@ -272,6 +280,15 @@ class HDLFileModel:
     
     def add_assignment(self, target: str, value: str):
         self.assignments.append((target, value))
+    
+    def set_register_enable_signal_name(self, name: str = None):
+        if self.reg_enable_signal_name is not None and self.reg_enable_signal_name in self.signals.keys():
+            del self.signals[self.reg_enable_signal_name]
+        
+        if name is not None:
+            self.add_signal(name, Bit)
+        
+        self.reg_enable_signal_name = name
     
     def set_raw(self, file_suffix: str, content: str):
         self.raw = True

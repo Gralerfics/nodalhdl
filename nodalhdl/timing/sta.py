@@ -92,30 +92,30 @@ class VivadoSTA(StaticTimingAnalyser):
                     rvs = re.split(r'\s{2,}', line.strip()) # raw_values
                     if len(rvs) == 4:
                         # e.g. "                         LUT4 (Prop_lut4_I0_O)        0.317     1.457 r  u1_z_add_123/res[3]_INST_0_i_1/O"
-                        r_tag = False
-                        if rvs[2][-1] == "r":
-                            r_tag = True
+                        strange_tag = None
+                        if not rvs[2][-1].isdigit():
+                            strange_tag = rvs[2][-1]
                             rvs[2] = rvs[2][:-2]
                         
                         line_entry["delay_type"] = rvs[0]
                         line_entry["incr_ns"] = float(rvs[1])
                         line_entry["path_ns"] = float(rvs[2])
-                        line_entry["netlist_resources"].append((r_tag, rvs[3]))
+                        line_entry["netlist_resources"].append((strange_tag, rvs[3]))
                     elif len(rvs) == 3:
                         # e.g. "                         FDCE                                         r  reg_0_d_u1_z_add_123_io_res_reg[3]/D"
                         line_entry["delay_type"] = rvs[0]
-                        line_entry["netlist_resources"].append((True, rvs[2]))
+                        line_entry["netlist_resources"].append(("?", rvs[2])) # TODO ?
                     elif len(rvs) == 2:
                         # e.g. (1.) "                                                                      r  u1_z_add_123/res[3]_INST_0/I0"
                         # e.g. (2.) "                         FDCE                                            reg_0_d_u1_z_add_123_io_res_reg[3]/D"
                         if rvs[0] == "r": # (1.)
-                            line_entry["netlist_resources"].append((True, rvs[1]))
+                            line_entry["netlist_resources"].append(("?", rvs[1])) # TODO ?
                         else: # (2.)
                             line_entry["delay_type"] = rvs[0]
-                            line_entry["netlist_resources"].append((False, rvs[1]))
+                            line_entry["netlist_resources"].append((None, rvs[1]))
                     elif len(rvs) == 1:
                         # e.g. "                                                                         u1_z_add_123/res[3]_INST_0/I0"
-                        line_entry["netlist_resources"].append((False, rvs[0]))
+                        line_entry["netlist_resources"].append((None, rvs[0]))
                     else:
                         pass # ?
                     

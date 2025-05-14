@@ -312,6 +312,9 @@ class Node:
     def _structural_modification(self):
         self.located_structure._structural_modified()
     
+    def _hdl_modification(self):
+        self.located_structure._hdl_modified()
+    
     def set_origin_type(self, signal_type: SignalType, safe_modification: bool = False):
         # [NOTICE] 去掉 safe_modification? apply_runtime 时可以最后用 rid 再重新跑一遍 deduction 来恢复其有效性.
         if self.origin_signal_type is signal_type: # no change
@@ -374,12 +377,14 @@ class Node:
         self._structural_modification() # structural modification
 
     """
-        Latency setting will not change the structural information (i.e. influence runtime type infos). Types are passed through the registers.
+        Latency setting will not change the structural information, but will influence reusable_hdl.
     """
     def set_latency(self, latency: int):
         if not self.is_port:
             raise StructureException("Cannot set latency for non-port node")
         self.latency = latency
+        
+        self._hdl_modification() # hdl modification
     
     def incr_latency(self, incr: int):
         self.set_latency(self.latency + incr)
@@ -494,9 +499,12 @@ class Structure:
     def clear_runtimes(self):
         self.runtimes.clear()
     
+    def _hdl_modified(self):
+        self.reusable_hdl = None
+    
     def _structural_modified(self):
         self.clear_runtimes() # clear runtime info
-        self.reusable_hdl = None
+        self._hdl_modified()
     
     def __init__(self, unique_name: str = None):
         # properties
@@ -871,7 +879,7 @@ class Structure:
             if not structure_runtime.deduction_effective: # no change, stop
                 break
     
-    def generation(self, runtime_id: RuntimeId, top_module_name: str = "root") -> HDLFileModel: # `top_module_name` is better to be called `prefix` for sub-levels
+    def generation(self, runtime_id: RuntimeId, top_module_name: str = "root", is_top: bool = True) -> HDLFileModel: # `top_module_name` is better to be called `prefix` for sub-levels
         """
             Generate HDL file model.
             prefix: e.g. this structure is instanced in somewhere as "bar" under "layer_xxx_foo_", then the prefix should be "layer_xxx_foo_bar_".
@@ -883,7 +891,7 @@ class Structure:
             raise StructureGenerationException("Invalid (not integrate) runtime ID")
         
         # naming
-        if self.is_reusable:
+        if self.is_reusable and not is_top: # top module must use the given top_module_name
             if self.reusable_hdl is not None:
                 return self.reusable_hdl
             else:
@@ -927,7 +935,7 @@ class Structure:
                     # fill net_wires
                     fill_net_wires(port, wire_name = port_wire_name)
                 
-                model.inst_component(sub_inst_name, subs.generation(runtime_id.next(sub_inst_name), top_module_name + "_" + sub_inst_name), mapping)
+                model.inst_component(sub_inst_name, subs.generation(runtime_id.next(sub_inst_name), top_module_name + "_" + sub_inst_name, is_top = False), mapping)
         
         # build nets according to net_wires
         for net, ((driver_wire_name, driver_latency), loads_info) in net_wires.items():

@@ -1,4 +1,6 @@
+from ..core.signal import *
 from ..core.structure import RuntimeId, Structure, Node
+from ..core.hdl import HDLFileModel
 from .retiming import ExtendedCircuit, SimpleCircuit
 
 from typing import Union, Dict, List, Tuple
@@ -69,7 +71,7 @@ def to_simple_circuit(s: Structure, root_runtime_id: RuntimeId):
         The structure `s` should be flattened and timing-analysed.
     """
     if not s.is_flattened: # or not s.is_flatly_timed: TODO
-        raise RetimingException("Only flattened and timing-analysed structures can be converted")
+        raise RetimingException("Only flattened can be converted")
     
     G = SimpleCircuit()
     
@@ -165,13 +167,45 @@ def pipelining(s: Structure, root_runtime_id: RuntimeId, levels: int = None, per
             pi.set_latency(levels)
         
         # retiming
-        return retiming(s, root_runtime_id, period = "min", model = model)
+        Phi_Gr = retiming(s, root_runtime_id, period = "min", model = model)
+    
     else: # period is not None
         # estimate? binary search?
         pass # TODO
         
+        # levels = ...
+        
         # retiming
-        # return retiming(s, root_runtime_id, period = TODO, model = model)
+        # Phi_Gr = retiming(s, root_runtime_id, period = TODO, model = model)
+    
+    # ready_valid_chain:
+    
+    return levels, Phi_Gr
+
+def insert_ready_valid_chain(model: HDLFileModel, levels: int, prev_ready_name = "in_ready", prev_valid_name = "in_valid", post_ready_name = "out_ready", post_valid_name = "out_valid", valid_regs_name = "valid_chain"):
+    # if in_valid_name is not None and out_valid_name is not None: ... # TODO 四个信号名可以为 None, 为 None 时不构建相关功能
+    
+    model.add_port(prev_ready_name, "out", Bit)
+    model.add_port(prev_valid_name, "in", Bit)
+    model.add_port(post_ready_name, "in", Bit)
+    model.add_port(post_valid_name, "out", Bit)
+    
+    # valid chain
+    reg_valid_next_name, reg_valid_name = model.add_register(valid_regs_name, Bit, latency = levels)
+    model.add_assignment(reg_valid_next_name, prev_valid_name)
+    model.add_assignment(post_valid_name, reg_valid_name)
+    
+    # prev_ready
+    prev_ready_buffer_name = f"{prev_ready_name}_buffer"
+    model.add_signal(prev_ready_buffer_name, Bit)
+    model.add_assignment(prev_ready_buffer_name, f"(not {reg_valid_name}) or {post_ready_name}")
+    model.add_assignment(prev_ready_name, prev_ready_buffer_name)
+
+    # enable
+    enable_signal_name = f"{prev_ready_name}_and_{prev_valid_name}"
+    model.set_register_enable_signal_name(enable_signal_name)
+    model.add_assignment(enable_signal_name, f"{prev_ready_buffer_name} and {prev_valid_name}")
+
 
 """
     pipelining 的话 structure 必须是 not is_sequential 的,

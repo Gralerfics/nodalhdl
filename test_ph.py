@@ -5,7 +5,7 @@ from nodalhdl.basic.arith import *
 
 from nodalhdl.core.hdl import emit_to_files
 from nodalhdl.timing.sta import VivadoSTA
-from nodalhdl.timing.pipelining import pipelining
+from nodalhdl.timing.pipelining import pipelining, insert_ready_valid_chain
 
 
 T = SFixedPoint[16, 12] # 目前要求 W_int <= 45 且 8 <= W_frac <= 20
@@ -227,12 +227,37 @@ def Shader() -> Structure:
     return s
 
 
+# construct
 shader = Shader()
+# rid = RuntimeId.create()
+# shader.deduction(rid)
+# print(shader.runtime_info(rid))
 
+
+# expand
+# shader.singletonize()
+# shader.expand()
 rid = RuntimeId.create()
 shader.deduction(rid)
 print(shader.runtime_info(rid))
 
-model = shader.generation(rid)
-emit_to_files(model.emit_vhdl(), "C:/Workspace/test_project/test_project.srcs/sources_1/new")
+
+# # STA
+# sta = VivadoSTA(part_name = "xc7a200tfbg484-1", temporary_workspace_path = ".vivado_sta_shader", vivado_executable_path = "vivado.bat")
+# sta.analyse(shader, rid)
+# # sta.analyse(shader, rid, skip_emitting_and_script_running = True)
+
+
+# # pipelining, 慢可以手动指定 c 只跑 FEAS
+# levels, Phi_Gr = pipelining(shader, rid, 100, model = "simple") # , model = "extended")
+# print("Phi_Gr", Phi_Gr)
+
+
+# # generation
+# model = shader.generation(rid)
+# insert_ready_valid_chain(model, levels)
+
+
+# # emit
+# emit_to_files(model.emit_vhdl(), "C:/Workspace/test_project/test_project.srcs/sources_1/new")
 

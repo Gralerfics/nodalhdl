@@ -88,7 +88,7 @@ class UniquelyNamedReusableMeta(type):
         
         # return existed reusable structure (will not be in the pool if not reusable)
         maybe_unique_name = cls.naming(cls, *args, **kwargs) # should be a valid string and unique across all operators
-        if maybe_unique_name in unique_named_reusable_structure_pool:
+        if maybe_unique_name in unique_named_reusable_structure_pool.keys():
             return unique_named_reusable_structure_pool[maybe_unique_name]
         
         # setup
