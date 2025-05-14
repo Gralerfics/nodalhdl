@@ -480,7 +480,7 @@ class CustomVHDLOperator(UniquelyNamedReusable):
     naming = UniqueNamingTemplates.args_kwargs_md5_16
 
 
-# TODO 重构
+# TODO
 class Decomposition(UniquelyNamedReusable):
     """
         Decomposition(<input_type (BundleType)>): all shallow members
@@ -564,7 +564,7 @@ end architecture;
         else:
             return f"{cls.__name__}_{args[0].__name__[7:15]}_{"_".join([path_str.strip(".").replace(".", "_") for path_str in args[1:]])}"
 
-# TODO 重构
+# TODO
 class Composition(UniquelyNamedReusable):
     """
         Composition(<output_type (BundleType)>, <path_0 (str)>, ...)
@@ -660,7 +660,4 @@ end architecture;
             return f"{cls.__name__}_{args[0].__name__[7:15]}"
         else:
             return f"{cls.__name__}_{args[0].__name__[7:15]}_{"_".join([path_str.strip(".").replace(".", "_") for path_str in args[1:]])}"
-
-
-# TODO Slicer、Concatenater、Shifter 以及其他复杂位操作可以直接用 CustomVHDLOperator 实现（大多这样的操作都是拼接性质，放在一个基本算子里会导致无法拆分的大延迟）
 

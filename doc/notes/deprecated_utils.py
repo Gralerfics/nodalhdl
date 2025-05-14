@@ -15,7 +15,7 @@ def class_attribute_isolator(attrs): # list[str]
         def new_getattribute(self, name):
             if name in attrs and name not in self.__dict__.keys(): # 访问的属性名在隔离列表中, 且对象自己不包含该属性
                 raise AttributeError(f"\'type(object).{name}\' or \'object.__class__.{name}\' is recommended if you want to access the class attribute \'{name}\'")
-            return super(cls, self).__getattribute__(name) # TODO
+            return super(cls, self).__getattribute__(name)
         
         cls.__getattribute__ = new_getattribute
         
@@ -258,7 +258,7 @@ def use_setmgr_node(cls):
             return res
         
         def remove_set(self, set_id): # 删除集合
-            # TODO 如何处理其内的节点, 例如 structure 中如果也存了 ports, 直接 del 会在那里残留引用
+            # 如何处理其内的节点, 例如 structure 中如果也存了 ports, 直接 del 会在那里残留引用
             #       ... 不过引用计数为零的话应该会自动释放吧
             pass
         
@@ -287,7 +287,7 @@ def use_setmgr_node(cls):
                 set_id_1, set_id_2 = set_id_2, set_id_1
             
             for node in self.sets[set_id_2]:
-                # TODO 集合大时效率很低, 但又要保证每个节点的 _setmgr_set_id 被修改. 除非查询所属集合专门再用并查集实现?
+                # 集合大时效率很低, 但又要保证每个节点的 _setmgr_set_id 被修改. 除非查询所属集合专门再用并查集实现?
                 #       ... 正常来说电路网表中直接相连的节点数应该不会太庞大, 甚至可以说较少, 或许暂时可以不管.
                 self.add_node_into(node, set_id_1)
             
@@ -324,7 +324,7 @@ def use_setmgr_node(cls):
     cls.merge = merge
     cls.separate = separate
     
-    cls._setmgr_mgr = mgr # 所属空间的集合管理器索引, 存为类属性, 对象也可访问 TODO
+    cls._setmgr_mgr = mgr # 所属空间的集合管理器索引, 存为类属性, 对象也可访问
     
     return cls
 

@@ -23,7 +23,7 @@ T = SFixedPoint[16, 12] # 目前要求 W_int <= 45 且 8 <= W_frac <= 20
 #     return CustomVHDLOperator(
 #         {"i": T},
 #         {"o": T},
-#         f"o({T.W_frac - 1} downto 0) <= i({T.W_frac - 1} downto 0);\n" + # TODO 限制了 W_frac > 0
+#         f"o({T.W_frac - 1} downto 0) <= i({T.W_frac - 1} downto 0);\n" +
 #             f"o(o'high downto {T.W_frac}) <= (others => '0');"
 #     )
 
@@ -117,7 +117,7 @@ def Shader() -> Structure:
             {"o": T},
             f"o({T.W_frac - 1} downto 0) <= (others => '0');\n" +
                 f"plus_one <= std_logic_vector(unsigned(i) + to_unsigned({1 << T.W_frac}, {T.W}));" +
-                f"o(o'high downto {T.W_frac}) <= i(i'high downto {T.W_frac}) when i({T.W_frac - 1} downto 0) = ({T.W_frac - 1} downto 0 => '0') else plus_one(o'high downto {T.W_frac});", # TODO else 或可尾数设为全 1 后加 1？
+                f"o(o'high downto {T.W_frac}) <= i(i'high downto {T.W_frac}) when i({T.W_frac - 1} downto 0) = ({T.W_frac - 1} downto 0 => '0') else plus_one(o'high downto {T.W_frac});",
             f"signal plus_one: std_logic_vector({T.W} - 1 downto 0);"
         ))
         s.connect(i, u.IO.i)
@@ -153,7 +153,7 @@ def Shader() -> Structure:
         u = s.add_substructure(f"itime_convertor_{UID}", CustomVHDLOperator(
             {"i": UInt[64]},
             {"o": T},
-            f"o <= '0' & i({20 + T.W_int - 1} downto {20 - T.W_frac});" # TODO f"o <= '0' & i({min(20 + T.W_int - 2, 63)} downto {max(20 - T.W_frac, 0)});"
+            f"o <= '0' & i({20 + T.W_int - 1} downto {20 - T.W_frac});"
         ))
         s.connect(i, u.IO.i)
         return u.IO.o
