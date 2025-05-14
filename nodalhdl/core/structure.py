@@ -509,7 +509,7 @@ class Structure:
     def __init__(self, unique_name: str = None):
         # properties
         self.id = str(uuid.uuid4()).replace('-', '')
-        self.unique_name: str = unique_name
+        self.unique_name: str = unique_name # one unique_name for one reusable structure, and is unique globally
         
         # properties (customized params, for all)
         self.custom_params = {}
@@ -620,18 +620,23 @@ class Structure:
     def get_subs_ports_outside(self, subs_inst_name: str) -> StructuralNodes:
         return self.substructures[subs_inst_name].ports_outside[(self.id, subs_inst_name)]
     
-    def duplicate(self) -> 'Structure':
+    def duplicate(self, duplicate_operators: bool = False) -> 'Structure': # TODO 似乎就不应该允许复制 operator，因为复制后 unique_name 定义失效；或者复制 operator 时把 unique_name None 掉
         """
             Deep copy of the structure.
             Reusable substructures under the structure will also be duplicated, and certainly not including ports_outside those are not under this new structure.
+            `duplicate_operators`: if operators should be duplicated, False in default, reference reserved.
         """
         s_build_map: Dict[Structure, Structure] = {} # reference structure -> duplicated structure
         
         def _duplicate(ref_s: Structure):
+            # if operator and not duplicate_operators, return the old reference
+            if ref_s.is_operator and not duplicate_operators:
+                return ref_s
+            
             new_s = Structure()
             
-            new_s.unique_name = ref_s.unique_name
-            new_s.reusable_hdl = ref_s.reusable_hdl # ?
+            new_s.unique_name = None # ?
+            new_s.reusable_hdl = None # ?
             
             new_s.custom_params = ref_s.custom_params.copy()
             new_s.custom_deduction = ref_s.custom_deduction
@@ -695,7 +700,7 @@ class Structure:
         
         return _duplicate(self)
     
-    def strip(self, deep: bool = False, deep_to_operators: bool = False) -> 'Structure':
+    def strip(self, deep: bool = False) -> 'Structure': # TODO , deep_to_operators: bool = False
         """
             Strip the structure, i.e. duplicate and reassign the substructures those are referenced more than once.
             After strip the structure can perform apply_runtime().
@@ -713,7 +718,8 @@ class Structure:
                             if not subs.is_operator, it should be stripped;
                             or it is an operator, but deep_to_operators is True, it should also be stripped.
                 """
-                if subs.instance_number > 1 and (not subs.is_reusable or (deep and (not subs.is_operator or deep_to_operators))):
+                # if subs.instance_number > 1 and (not subs.is_reusable or (deep and (not subs.is_operator or deep_to_operators))): TODO
+                if subs.instance_number > 1 and (not subs.is_reusable or (deep and (not subs.is_operator))):
                     # need to strip
                     new_subs = subs.duplicate()
                     
@@ -733,8 +739,8 @@ class Structure:
         
         return res
     
-    def singletonize(self, singletonize_operators: bool = False):
-        self.strip(deep = True, deep_to_operators = singletonize_operators)
+    def singletonize(self): # TODO , singletonize_operators: bool = False):
+        self.strip(deep = True) # TODO , deep_to_operators = singletonize_operators)
     
     def expand(self, shallow: bool = False):
         """

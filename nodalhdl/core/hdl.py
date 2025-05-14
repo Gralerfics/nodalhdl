@@ -172,7 +172,7 @@ class HDLFileModel:
                     seq_process += _generate(reg_name, signal_type)
                 
                 if self.reg_enable_signal_name is not None:
-                    seq_process += f"        elsif rising_edge(clock) and {self.reg_enable_signal_name} = '1' then\n"
+                    seq_process += f"        elsif rising_edge(clock) and {self.reg_enable_signal_name} = \"1\" then\n"
                 else:
                     seq_process += "        elsif rising_edge(clock) then\n"
                 

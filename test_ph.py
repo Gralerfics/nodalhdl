@@ -124,12 +124,26 @@ def Shader() -> Structure:
         return u.IO.o
     
     @builder
-    def TClampZeroToOne(i: Node):
+    def TClampZeroToOne(i: Node): # 注意是 [0.0, 1.0), 以确保转八位时没有问题
         # u = s.add_substructure(f"clamp01_{i.full_name}_{UID}", CustomVHDLOperator(
         u = s.add_substructure(f"clamp01_{UID}", CustomVHDLOperator(
             {"i": T},
             {"o": T},
-            f"o <= (others => '0') when i(i'high) = '1' else (i'high downto {T.W_frac} => '0') & i({T.W_frac - 1} downto 0);"
+            f"o <= (others => '0') when i(i'high) = '1' else\n" +
+            f"     (i'high downto {T.W_frac} => '0', others => '1') when i(i'high downto {T.W_frac}) /= (i'high downto {T.W_frac} => '0') else\n" +
+            f"     (i'high downto {T.W_frac} => '0') & i({T.W_frac - 1} downto 0);"
+        ))
+        s.connect(i, u.IO.i)
+        return u.IO.o
+    
+    @builder
+    def fragCoordValueConvertor(i: Node):
+        u = s.add_substructure(f"fragcoord_value_convertor_{UID}", CustomVHDLOperator(
+            {"i": UInt[12]},
+            {"o": T},
+            f"o({T.W_frac + 11} downto {T.W_frac}) <= i;\n" +
+                f"o({T.W - 1} downto {T.W_frac + 12}) <= (others => '0');\n" +
+                f"o({T.W_frac - 1} downto 0) <= (others => '0');"
         ))
         s.connect(i, u.IO.i)
         return u.IO.o
@@ -144,15 +158,43 @@ def Shader() -> Structure:
         s.connect(i, u.IO.i)
         return u.IO.o
     
+    @builder
+    def Tto8bitConvertor(i: Node):
+        u = s.add_substructure(f"to8bit_cvt_{UID}", CustomVHDLOperator(
+            {"i_clamped": T},
+            {"o": Bits[8]},
+            f"o <= i_clamped({T.W_frac - 1} downto {T.W_frac - 8});"
+        ))
+        s.connect(TClampZeroToOne(i), u.IO.i_clamped)
+        return u.IO.o
+    
+    @builder
+    def Concatenate888(r: Node, g: Node, b: Node):
+        u = s.add_substructure("color_24bit_cvt", CustomVHDLOperator(
+            {"r": Bits[8], "g": Bits[8], "b": Bits[8]},
+            {"o": Bits[24]},
+            "o <= r & g & b;"
+        ))
+        s.connect(r, u.IO.r)
+        s.connect(g, u.IO.g)
+        s.connect(b, u.IO.b)
+        return u.IO.o
+    
     # ============================================================================================================== #
     
     # ports
-    iTime_ms = s.add_port("iTimeUs", Input[UInt[64]])
-    fragCoord = s.add_port("fragCoord", Bundle[{"x": Input[T], "y": Input[T]}])
-    fragColor_24bit = s.add_port("fragOutput", Output[Bits[24]])
+    iTime_us = s.add_port("itime_us", Input[UInt[64]])
+    fragCoord_12bit = s.add_port("frag", Bundle[{"x": Input[UInt[12]], "y": Input[UInt[12]]}])
+    fragColor_24bit = s.add_port("frag_color", Output[Bits[24]])
     
     # iTime
-    iTime_s = iTimeConvertor(iTime_ms) # 2^{-20} = 1 / 1048576 (s) ~ 1 (us)
+    iTime_s = iTimeConvertor(iTime_us) # 2^{-20} = 1 / 1048576 (s) ~ 1 (us)
+    
+    # fragCoord
+    fragCoord = StructuralNodes({
+        "x": fragCoordValueConvertor(fragCoord_12bit.x),
+        "y": fragCoordValueConvertor(fragCoord_12bit.y)
+    })
     
     # constants
     constants = (0.1, 0.95, 1, 3.75, 5, 5.5, 384)
@@ -212,17 +254,14 @@ def Shader() -> Structure:
     )
     mixFactor = TAddition(TClampZeroToOne(clampValue), TMultiplication(vs, C(0.1)))
     
-    # fragColor -> 24bit and output
-    color_24bit_cvt = s.add_substructure("color_24bit_cvt", CustomVHDLOperator(
-        {"r": T, "g": T, "b": T, "a": T},
-        {"color_24": Bits[24]},
-        "color_24 <= " + " & ".join([f"{attr}({T.W_frac - 1} downto {T.W_frac - 8})" for attr in "rgb"]) + ";" # TODO
-    ))
-    s.connect(TSubtraction(C(1), TArithmeticShifter(mixFactor, -1)), color_24bit_cvt.IO.r)
-    s.connect(TSubtraction(C(1), TArithmeticShifter(mixFactor, -2)), color_24bit_cvt.IO.g)
-    s.connect(consts.IO.c1, color_24bit_cvt.IO.b)
-    s.connect(consts.IO.c1, color_24bit_cvt.IO.a)
-    s.connect(color_24bit_cvt.IO.color_24, fragColor_24bit)
+    # r, g, b, a
+    r = Tto8bitConvertor(TSubtraction(C(1), TArithmeticShifter(mixFactor, -1)))
+    g = Tto8bitConvertor(TSubtraction(C(1), TArithmeticShifter(mixFactor, -2)))
+    b = Tto8bitConvertor(consts.IO.c1)
+    a = b
+    
+    # 24bit frag_color output
+    s.connect(Concatenate888(r, g, b), fragColor_24bit)
     
     return s
 
@@ -235,29 +274,30 @@ shader = Shader()
 
 
 # expand
-# shader.singletonize()
-# shader.expand()
+shader.singletonize()
+shader.expand()
 rid = RuntimeId.create()
 shader.deduction(rid)
 print(shader.runtime_info(rid))
 
 
-# # STA
-# sta = VivadoSTA(part_name = "xc7a200tfbg484-1", temporary_workspace_path = ".vivado_sta_shader", vivado_executable_path = "vivado.bat")
+# STA
+sta = VivadoSTA(part_name = "xc7a200tfbg484-1", temporary_workspace_path = ".vivado_sta_shader", vivado_executable_path = "vivado.bat")
 # sta.analyse(shader, rid)
-# # sta.analyse(shader, rid, skip_emitting_and_script_running = True)
+sta.analyse(shader, rid, skip_emitting_and_script_running = True)
 
 
-# # pipelining, 慢可以手动指定 c 只跑 FEAS
-# levels, Phi_Gr = pipelining(shader, rid, 100, model = "simple") # , model = "extended")
-# print("Phi_Gr", Phi_Gr)
+# pipelining, 慢可以手动指定 c 只跑 FEAS
+levels, Phi_Gr = pipelining(shader, rid, 24, model = "simple") # , model = "extended")
+print("Phi_Gr", Phi_Gr)
 
 
-# # generation
-# model = shader.generation(rid)
-# insert_ready_valid_chain(model, levels)
+# generation
+model = shader.generation(rid, top_module_name = "shader")
+insert_ready_valid_chain(model, levels)
 
 
-# # emit
+# emit
+emit_to_files(model.emit_vhdl(), "C:/Workspace/hdmi_ddr3_fragment_shader_proj/hdmi_ddr3_fragment_shader_proj.srcs/sources_1/new/shader")
 # emit_to_files(model.emit_vhdl(), "C:/Workspace/test_project/test_project.srcs/sources_1/new")
 
