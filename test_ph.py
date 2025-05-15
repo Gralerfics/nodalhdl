@@ -29,8 +29,9 @@ def Shader() -> Structure:
         u = s.add_substructure(f"arith_shifter_{UID}", CustomVHDLOperator(
             {"i": T},
             {"o": T},
-            f"o <= std_logic_vector({"shift_left" if n >= 0 else "shift_right"}(signed(i), {abs(n)}));"
-        )) # f"ArithShifter_{str(n).replace("-", "NEG")}_{T}"
+            f"o <= std_logic_vector({"shift_left" if n >= 0 else "shift_right"}(signed(i), {abs(n)}));",
+            _unique_name = f"ArithShifter_{str(n).replace("-", "NEG")}_{T}"
+        )) # 
         s.connect(i, u.IO.i)
         return u.IO.o
     
@@ -39,7 +40,8 @@ def Shader() -> Structure:
         u = s.add_substructure(f"fract_{UID}", CustomVHDLOperator(
             {"i": T},
             {"o": T},
-            f"o <= (o'high downto {T.W_frac} => '0') & i({T.W_frac - 1} downto 0);"
+            f"o <= (o'high downto {T.W_frac} => '0') & i({T.W_frac - 1} downto 0);",
+            _unique_name = f"Fract_{T}"
         ))
         s.connect(i, u.IO.i)
         return u.IO.o
@@ -70,7 +72,8 @@ def Shader() -> Structure:
         u = s.add_substructure(f"min_{UID}", CustomVHDLOperator(
             {"a": T, "b": T},
             {"o": T},
-            f"o <= a when signed(a) < signed(b) else b;"
+            f"o <= a when signed(a) < signed(b) else b;",
+            _unique_name = f"Min_{T}_{T}"
         ))
         s.connect(a, u.IO.a)
         s.connect(b, u.IO.b)
@@ -81,7 +84,8 @@ def Shader() -> Structure:
         u = s.add_substructure(f"minx1mx_{UID}", CustomVHDLOperator(
             {"i": T},
             {"o": T},
-            f"o <= i when unsigned(i) < to_unsigned({1 << (T.W_frac - 1)}, {T.W}) else std_logic_vector(to_unsigned({1 << T.W_frac}, {T.W}) - unsigned(i));"
+            f"o <= i when unsigned(i) < to_unsigned({1 << (T.W_frac - 1)}, {T.W}) else std_logic_vector(to_unsigned({1 << T.W_frac}, {T.W}) - unsigned(i));",
+            _unique_name = f"MinPositiveXandOneMinusX_{T}"
         ))
         s.connect(i, u.IO.i)
         return u.IO.o
@@ -94,7 +98,8 @@ def Shader() -> Structure:
             f"o({T.W_frac - 1} downto 0) <= (others => '0');\n" +
                 f"plus_one <= std_logic_vector(unsigned(i) + to_unsigned({1 << T.W_frac}, {T.W}));" +
                 f"o(o'high downto {T.W_frac}) <= i(i'high downto {T.W_frac}) when i({T.W_frac - 1} downto 0) = ({T.W_frac - 1} downto 0 => '0') else plus_one(o'high downto {T.W_frac});",
-            f"signal plus_one: std_logic_vector({T.W} - 1 downto 0);"
+            f"signal plus_one: std_logic_vector({T.W} - 1 downto 0);",
+            _unique_name = f"Ceil_{T}"
         ))
         s.connect(i, u.IO.i)
         return u.IO.o
@@ -106,7 +111,8 @@ def Shader() -> Structure:
             {"o": T},
             f"o <= (others => '0') when i(i'high) = '1' else\n" +
             f"     (i'high downto {T.W_frac} => '0', others => '1') when i(i'high downto {T.W_frac}) /= (i'high downto {T.W_frac} => '0') else\n" +
-            f"     (i'high downto {T.W_frac} => '0') & i({T.W_frac - 1} downto 0);"
+            f"     (i'high downto {T.W_frac} => '0') & i({T.W_frac - 1} downto 0);",
+            _unique_name = f"Clamp0To1_{T}"
         ))
         s.connect(i, u.IO.i)
         return u.IO.o
@@ -118,7 +124,8 @@ def Shader() -> Structure:
             {"o": T},
             f"o({T.W_frac + 11} downto {T.W_frac}) <= i;\n" +
                 f"o({T.W - 1} downto {T.W_frac + 12}) <= (others => '0');\n" +
-                f"o({T.W_frac - 1} downto 0) <= (others => '0');"
+                f"o({T.W_frac - 1} downto 0) <= (others => '0');",
+            _unique_name = f"FragCoordValueConvertor_UInt_12_{T}"
         ))
         s.connect(i, u.IO.i)
         return u.IO.o
@@ -128,7 +135,8 @@ def Shader() -> Structure:
         u = s.add_substructure(f"itime_convertor_{UID}", CustomVHDLOperator(
             {"i": UInt[64]},
             {"o": T},
-            f"o <= '0' & i({20 + T.W_int - 1} downto {20 - T.W_frac});"
+            f"o <= '0' & i({20 + T.W_int - 1} downto {20 - T.W_frac});",
+            _unique_name = f"ITimeConvertor_UInt_64_{T}"
         ))
         s.connect(i, u.IO.i)
         return u.IO.o
@@ -138,7 +146,8 @@ def Shader() -> Structure:
         u = s.add_substructure(f"to8bit_cvt_{UID}", CustomVHDLOperator(
             {"i_clamped": T},
             {"o": Bits[8]},
-            f"o <= i_clamped({T.W_frac - 1} downto {T.W_frac - 8});"
+            f"o <= i_clamped({T.W_frac - 1} downto {T.W_frac - 8});",
+            _unique_name = f"To8bitConvertor_{T}"
         ))
         s.connect(TClampZeroToOne(i), u.IO.i_clamped)
         return u.IO.o
@@ -148,7 +157,8 @@ def Shader() -> Structure:
         u = s.add_substructure("color_24bit_cvt", CustomVHDLOperator(
             {"r": Bits[8], "g": Bits[8], "b": Bits[8]},
             {"o": Bits[24]},
-            "o <= r & g & b;"
+            "o <= r & g & b;",
+            _unique_name = f"Concatenate_Bits_8_Bits_8_Bits_8"
         ))
         s.connect(r, u.IO.r)
         s.connect(g, u.IO.g)
