@@ -265,9 +265,6 @@ rid = RuntimeId.create()
 shader.deduction(rid)
 # print(shader.runtime_info(rid))
 
-# model = shader.generation(rid)
-# emit_to_files(model.emit_vhdl(), "C:/Workspace/hdmi_ddr3_fragment_shader_proj/hdmi_ddr3_fragment_shader_proj.srcs/sources_1/new/shader")
-
 
 # STA
 sta = VivadoSTA(part_name = "xc7a200tfbg484-1", temporary_workspace_path = ".vivado_sta_shader", vivado_executable_path = "vivado.bat")

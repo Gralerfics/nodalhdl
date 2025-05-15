@@ -1105,7 +1105,7 @@ class Structure:
     
     @classmethod
     def load_dill(self, file_path: str) -> 'Structure':
-        # [NOTICE] (1.) traverse the structure and rebuild the SignalType(s)? (2.) 除了 SignalType 这种, 像 arith 这种带 pool 的情况, 读取后 pool 是没有的, 会不会导致对象不一致?
+        # TODO 持久化存储与 pool 一致性的问题
         with open(file_path, "rb") as f:
             return dill.load(f)
 

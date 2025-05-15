@@ -271,7 +271,6 @@ class CustomVHDLOperator(UniquelyNamedReusable):
         for name, t in output_ports.items():
             s.add_port(name, Output[t])
         
-        # TODO 有没有办法自动加入? 存在 args 不带 key 的问题
         s.custom_params["arch_body"] = arch_body
         s.custom_params["arch_decl"] = arch_decl
         

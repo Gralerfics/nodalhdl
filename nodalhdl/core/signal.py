@@ -38,7 +38,7 @@ class SignalType(type):
     """
         Class properties.
     """
-    determined = False # width-determined w.r.t. signals TODO 目前定义好像不止, 例如 SFixedPoint[W] 位宽确定了但具体划分没有确定, 这种情况影响类型推导, 但确实可以生成, 要算吗?
+    determined = False # width-determined w.r.t. signals
     io_wrapper_included = False # whether IO Wrapper is included
     perfectly_io_wrapped = False # whether is perfectly IO-wrapped
     
