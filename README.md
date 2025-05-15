@@ -26,17 +26,18 @@ Dependencies please check `pyproject.toml`.
 10. 时序分析临时目录缓存 (Structure 同构判断).
 11. 运行时类型影响结构架构选取的功能 (应该可以套在外面实现, 不去改 deduction 过程和 Structure 结构).
 12. .arith 的传参方式问题; Add/Subtract U/SInt 不等宽情况.
-13. [**] CustomVHDLOperator 结构化端口; 顺便，考虑用户使用过程中对结构化节点的创建需求（目前只有端口能自动生成）, 这里面包含所有 Bundle 拆分、聚合、连接的问题; 以及包含各自访问方式如 StructuralNodes 同时分别返回 in 和 out 端口的功能等.
-14. Verilog 完整支持.
-15. 仿真支持; 定点数信号值对象运算行为的修正等.
-16. 选择性 expand (substructures_expandable_flags: Dict[str, bool]).
-17. is_flatly_timed 判断.
-18. ExtendedCircuit CP algorithm.
-19. STA 其他工具支持; Vivado 时序报告的解析功能完善.
-20. [**]STA 有关同算子处于不同连接关系下时序不同的问题（例如存在常数输入导致各关键路径可能降低）; 尽量不重复分析，不然太多了, 虽然好像也能接受.
-21. STA 中提取时序路径的双指针方法总感觉有隐患, 因为要求报告生成时严格按 TCL 中的添加顺序.
-22. 结构快拆.
-23. 持久化读写后如何保障 unique_name 等池子的一致性.
-24. [*] 重构合理的异常处理体系.
-25. ...
+13. [**] CustomVHDLOperator 结构化端口.
+14. 关于 Bundle 拆分、聚合、连接的问题. 还有如 StructuralNodes 同时分别返回 in 和 out 端口的功能等; 还有 IOProxy 实现对应 StructuralNodes 的功能 (一一对应外有没有更好的方法).
+15. Verilog 完整支持.
+16. 仿真支持; 定点数信号值对象运算行为的修正等.
+17. 选择性 expand (substructures_expandable_flags: Dict[str, bool]).
+18. is_flatly_timed 判断.
+19. ExtendedCircuit CP algorithm.
+20. STA 其他工具支持; Vivado 时序报告的解析功能完善.
+21. [**]STA 有关同算子处于不同连接关系下时序不同的问题（例如存在常数输入导致各关键路径可能降低）; 尽量不重复分析，不然太多了, 虽然好像也能接受.
+22. STA 中提取时序路径的双指针方法总感觉有隐患, 因为要求报告生成时严格按 TCL 中的添加顺序.
+23. 结构快拆.
+24. 持久化读写后如何保障 unique_name 等池子的一致性.
+25. [*] 重构合理的异常处理体系.
+26. ...
 

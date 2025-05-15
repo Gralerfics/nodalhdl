@@ -11,23 +11,6 @@ from nodalhdl.timing.pipelining import *
 T = SFixedPoint[16, 12] # 目前要求 W_int <= 45 且 8 <= W_frac <= 20
 
 
-# def ArithmeticShifter(n: int): # n > 0: move left, else right
-#     return CustomVHDLOperator(
-#         {"i": T},
-#         {"o": T},
-#         f"o <= i {"sla" if n >= 0 else "sra"} {abs(n)};"
-#     )
-
-
-# def Fract():
-#     return CustomVHDLOperator(
-#         {"i": T},
-#         {"o": T},
-#         f"o({T.W_frac - 1} downto 0) <= i({T.W_frac - 1} downto 0);\n" +
-#             f"o(o'high downto {T.W_frac}) <= (others => '0');"
-#     )
-
-
 def Shader() -> Structure:
     s = Structure()
 
@@ -47,13 +30,12 @@ def Shader() -> Structure:
             {"i": T},
             {"o": T},
             f"o <= std_logic_vector({"shift_left" if n >= 0 else "shift_right"}(signed(i), {abs(n)}));"
-        ))
+        )) # f"ArithShifter_{str(n).replace("-", "NEG")}_{T}"
         s.connect(i, u.IO.i)
         return u.IO.o
     
     @builder
     def TFract(i: Node):
-        # u = s.add_substructure(f"fract_{i.full_name}_{UID}", CustomVHDLOperator(
         u = s.add_substructure(f"fract_{UID}", CustomVHDLOperator(
             {"i": T},
             {"o": T},
@@ -64,7 +46,6 @@ def Shader() -> Structure:
     
     @builder
     def TAddition(a: Node, b: Node):
-        # u = s.add_substructure(f"addition_{a.full_name}_{b.full_name}_{UID}", Add(T, T))
         u = s.add_substructure(f"addition_{UID}", Add(T, T))
         s.connect(a, u.IO.a)
         s.connect(b, u.IO.b)
@@ -72,7 +53,6 @@ def Shader() -> Structure:
     
     @builder
     def TSubtraction(a: Node, b: Node):
-        # u = s.add_substructure(f"subtraction_{a.full_name}_{b.full_name}_{UID}", Subtract(T, T))
         u = s.add_substructure(f"subtraction_{UID}", Subtract(T, T))
         s.connect(a, u.IO.a)
         s.connect(b, u.IO.b)
@@ -80,7 +60,6 @@ def Shader() -> Structure:
     
     @builder
     def TMultiplication(a: Node, b: Node):
-        # u = s.add_substructure(f"multiplication_{a.full_name}_{b.full_name}_{UID}", Multiply(T, T))
         u = s.add_substructure(f"multiplication_{UID}", Multiply(T, T))
         s.connect(a, u.IO.a)
         s.connect(b, u.IO.b)
@@ -88,7 +67,6 @@ def Shader() -> Structure:
     
     @builder
     def TMin(a: Node, b: Node):
-        # u = s.add_substructure(f"min_{a.full_name}_{b.full_name}_{UID}", CustomVHDLOperator(
         u = s.add_substructure(f"min_{UID}", CustomVHDLOperator(
             {"a": T, "b": T},
             {"o": T},
@@ -100,7 +78,6 @@ def Shader() -> Structure:
     
     @builder
     def TMinPositiveXAndOneMinusX(i: Node):
-        # u = s.add_substructure(f"minx1mx_{i.full_name}_{UID}", CustomVHDLOperator(
         u = s.add_substructure(f"minx1mx_{UID}", CustomVHDLOperator(
             {"i": T},
             {"o": T},
@@ -111,7 +88,6 @@ def Shader() -> Structure:
     
     @builder
     def TCeil(i: Node):
-        # u = s.add_substructure(f"ceil_{i.full_name}_{UID}", CustomVHDLOperator(
         u = s.add_substructure(f"ceil_{UID}", CustomVHDLOperator(
             {"i": T},
             {"o": T},
@@ -125,7 +101,6 @@ def Shader() -> Structure:
     
     @builder
     def TClampZeroToOne(i: Node): # 注意是 [0.0, 1.0), 以确保转八位时没有问题
-        # u = s.add_substructure(f"clamp01_{i.full_name}_{UID}", CustomVHDLOperator(
         u = s.add_substructure(f"clamp01_{UID}", CustomVHDLOperator(
             {"i": T},
             {"o": T},

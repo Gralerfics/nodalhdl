@@ -2,11 +2,175 @@ from .signal import *
 
 import os
 import shutil
+import textwrap
 
 from typing import List, Dict, Set, Tuple, Union
 
 
-class HDLFileModelException(Exception): pass
+class HDLUtils:
+    @staticmethod
+    def type_decl(t: SignalType, hdl_type: str = "vhdl"):
+        if hdl_type == "vhdl":
+            return t.__name__ if t.bases(Bundle) else f"std_logic_vector({t.W - 1} downto 0)"
+        elif hdl_type == "verilog":
+            return t.__name__ if t.bases(Bundle) else f"[{t.W - 1}:0]"
+        else:
+            raise NotImplementedError
+    
+    @staticmethod
+    def get_suffix(hdl_type: str):
+        if hdl_type == "vhdl":
+            return ".vhd"
+        elif hdl_type == "verilog":
+            return ".v"
+        else:
+            raise NotImplementedError
+    
+    @staticmethod
+    def vhdl_ports(model: 'HDLFileModel', clock_wire_name = "clock", reset_wire_name = "reset"):
+        port_lines = []
+        
+        if model.is_sequential:
+            port_lines.append(f"{clock_wire_name}: in std_logic")
+            port_lines.append(f"{reset_wire_name}: in std_logic")
+        
+        for name, (direction, t) in model.ports.items():
+            port_lines.append(f"{name}: {direction} {HDLUtils.type_decl(t)}")
+        
+        return "port (\n" + textwrap.indent(";\n".join(port_lines), "    ") + "\n);"
+    
+    @staticmethod
+    def vhdl_single_file(model: 'HDLFileModel'):
+        """
+            global_elements {
+                <library references>
+                <entity declaration>
+                <architecture> [
+                    "architecture arch of ... is"
+                        declaration_elements {
+                            <component declaration>_i
+                            <signal declarations> (no empty lines)
+                            <raw declarations> (no empty lines)
+                        } or "-- no declarations"
+                    "begin"
+                        body_elements {
+                            <sequential process> [
+                                "process (clock, reset) is"
+                                "begin"
+                                    "if reset = '1' then"
+                                        <register initialization>_i
+                                    "elsif rising_edge(clock) [and ... = "1" ]then"
+                                        <register next assignment>_i
+                                    "end if;"
+                                "end process;"
+                            ]
+                            <component instantiation>_i
+                            <concurrent assignments>_i
+                            <raw bodies>_i
+                        } or " -- no body"
+                    "end architecture;"
+                ]
+            }
+            all elements are separated by a empty line.
+        """
+        global_elements = []
+        
+        # library references
+        global_elements.append("\n".join(model.libs.get("vhdl", [])))
+        
+        # entity declaration
+        global_elements.append(
+            f"entity {model.entity_name} is\n" +
+            textwrap.indent(HDLUtils.vhdl_ports(model), "    ") + "\n" +
+            "end entity;"
+        )
+        
+        # architecture
+        declaration_elements = []
+        body_elements = []
+        
+        # - component declarations
+        for comp in model.components.values():
+            declaration_elements.append(
+                f"component {comp.entity_name} is\n" +
+                textwrap.indent(HDLUtils.vhdl_ports(comp), "    ") + "\n" +
+                "end component;"
+            )
+
+        # - signal declarations
+        if len(model.signals) > 0:
+            declaration_elements.append(
+                "\n".join([f"signal {name}: {HDLUtils.type_decl(t)};" for name, t in model.signals.items()])
+            )
+        
+        # - raw declarations
+        raw_declarations = model.raw_arch_declarations.get("vhdl", [])
+        if len(raw_declarations) > 0:
+            declaration_elements.append("\n".join(raw_declarations))
+        
+        # - sequential process
+        if len(model.registers) > 0:
+            def _generate_initialization(sub_reg_name: str, t: SignalType):
+                res = []
+                if t.bases(Bundle):
+                    for k, v in t._bundle_types.items():
+                        res.extend(_generate_initialization(sub_reg_name + "." + k, v))
+                else:
+                    res.append(f"{sub_reg_name} <= (others => '0');")
+                return res
+            
+            initialization_elements = []
+            for _, reg_name, signal_type in model.registers:
+                initialization_elements.extend(_generate_initialization(reg_name, signal_type))
+            
+            next_assignment_elements = []
+            for reg_next_name, reg_name, _ in model.registers:
+                next_assignment_elements.append(f"{reg_name} <= {reg_next_name};")
+            
+            body_elements.append(
+                "process (clock, reset) is\n" +
+                "begin\n" +
+                "    if reset = '1' then\n" +
+                textwrap.indent("\n".join(initialization_elements), "        ") + "\n" +
+                f"    elsif rising_edge(clock) {f"and {model.reg_enable_signal_name} = \"1\" " if model.reg_enable_signal_name is not None else ""}then\n" +
+                textwrap.indent("\n".join(next_assignment_elements), "        ") + "\n" +
+                "    end if;\n" +
+                "end process;"
+            )
+        
+        # - component instantiations
+        for inst_name, (comp_name, mapping) in model.inst_comps.items():
+            port_map_elements = [f"{comp_port} => {inst_port}" for comp_port, inst_port in mapping.items()]
+            body_elements.append(
+                f"{inst_name}: {comp_name}\n" +
+                "    port map(\n" +
+                (textwrap.indent(",\n".join(port_map_elements), "        ") if len(port_map_elements) > 0 else "-- no mapping") + "\n" +
+                "    );"
+            )
+        
+        # - concurrent assignments
+        if len(model.assignments) > 0:
+            body_elements.append(
+                "\n".join([f"{target} <= {value};" for target, value in model.assignments])
+            )
+        
+        # - raw bodies
+        raw_bodies = model.raw_arch_bodies.get("vhdl", [])
+        if len(raw_bodies) > 0:
+            body_elements.append("\n".join(raw_bodies))
+        
+        # concatenate architecture
+        global_elements.append(
+            f"architecture structural of {model.entity_name} is\n" +
+            textwrap.indent("\n\n".join(declaration_elements) if len(declaration_elements) > 0 else "-- no declarations", "    ") + "\n" +
+            "begin\n" +
+            textwrap.indent("\n\n".join(body_elements) if len(body_elements) > 0 else "-- no body", "    ") + "\n" +
+            "end architecture;"
+        )
+        
+        # concatenate the content
+        return "\n\n".join(global_elements)
+
 
 class HDLGlobalInfo:
     """
@@ -32,7 +196,8 @@ class HDLGlobalInfo:
     def emit_vhdl(self):
         content = ""
         
-        for t in self.type_pool_ordered: # t: BundleType
+        for t in self.type_pool_ordered:
+            t: BundleType
             content += f"    type {t.__name__} is record\n"
             for k, T in t._bundle_types.items():
                 if T.bases(Bundle):
@@ -45,32 +210,30 @@ class HDLGlobalInfo:
     
     def add_type(self, t: SignalType):
         """
-            添加类型.
-            非 Bundle 类型不接受 (全部视为 std_logic_vector, 应都有 .W 位宽属性), IO Wrapper 不接受.
-            Bundle 类型会递归添加其内部的子 Bundle 类型.
+            add types into the global info.
+            only accepts Bundle type (record type in VHDL), and it will be recursively added.
         """
-        if not t.bases(Bundle):
-            raise HDLFileModelException(f"Type to be added should be a Bundle.")
+        t = t.clear_io()
         
-        if t.io_wrapper_included:
-            raise HDLFileModelException(f"Type to be added should not contain IO Wrappers.")
-        
-        if t in self.type_pool: # 已经添加过, 同时也说明子类型也添加过
+        if t in self.type_pool: # added, so the subtypes must have been added too
             return
         
-        def _add(t: BundleType):
-            if t.bases(Bundle): # [NOTICE]
-                for _, v in t._bundle_types.items(): # 遍历子 Bundle
-                    _add(v)
-                self.type_pool.add(t) # 添加该 Bundle 类型
-                self.type_pool_ordered.append(t) # 先添加子类型, 再添加父类型, 满足顺序声明要求
+        def _add_type(t: BundleType):
+            if t.bases(Bundle): # only Bundles need to be added
+                for _, v in t._bundle_types.items(): # sub-Bundles
+                    _add_type(v)
+                self.type_pool.add(t)
+                self.type_pool_ordered.append(t) # add after all sub-Bundles are added
         
-        _add(t)
+        _add_type(t)
+
+
+class HDLFileModelException(Exception): pass
 
 class HDLFileModel:
     """
-        HDL 文件模型.
-        完全对应 HDL 文件内容, 不包含任何判断和校验等措施.
+        HDL file model.
+        primitive HDL file content, including no judgement or validation.
     """
     def __init__(self, entity_name: str, file_name: str = None):
         self.entity_name: str = entity_name
@@ -86,137 +249,37 @@ class HDLFileModel:
         self.assignments: List[Tuple[str, str]] = [] # List[Tuple[目标信号, 源信号]]
         self.registers: Set[Tuple[str, str, SignalType]] = set() # Set[<reg_next_name>, <reg_name>, <signal_type>], <signal_type> for initial value generation
         
+        self.raw_arch_bodies: Dict[str, List[str]] = {} # Dict[语言类型, List[原始代码 (模块内部)]]
+        self.raw_arch_declarations: Dict[str, List[str]] = {} # Dict[语言类型, List[原始声明]]
+        
         self.reg_enable_signal_name: str = None # 寄存器时钟使能信号名, 为 None 时无时钟使能信号
         
-        self.raw: bool = False # 是否直接使用 HDL 定义 (即使使用 HDL 定义也应当声明 entity_name; port 应与 substructure 相符)
-        self.raw_suffix: str = None
-        self.raw_content: str = None
-        
-        # TODO
         self.add_lib("vhdl", "library IEEE;")
         self.add_lib("vhdl", "use IEEE.std_logic_1164.all;")
         self.add_lib("vhdl", "use IEEE.numeric_std.all;")
         self.add_lib("vhdl", "use work.types.all;")
     
     @property
-    def is_sequential(self): # 存在时序逻辑或任意子模块存在时序逻辑
+    def is_sequential(self): # self or submodules have sequential logic
         return len(self.registers) > 0 or any([comp.is_sequential for comp in self.components.values()])
     
     def emit_vhdl(self):
-        res = {}
-        
-        res.update(self.global_info.emit_vhdl()) # 全局信息
+        res = {**self.global_info.emit_vhdl()} # global info
         
         def _collect(model: 'HDLFileModel'):
-            models = set({model}) # 加入自身
-            for comp in model.components.values():
+            models = set({model}) # add self
+            for comp in model.components.values(): # recursively add submodules
                 sub_models = _collect(comp)
                 models.update(sub_models)
             return models
         
-        models = _collect(self) # 递归收集所有 HDLFileModel
-        
-        def _gen_vhdl(model: HDLFileModel):
-            # 包引用声明
-            libs_declaration = ""
-            for line in self.libs["vhdl"]:
-                libs_declaration += line + "\n"
-            
-            # 实体端口声明
-            def _gen_ports(hdl: HDLFileModel, part: str = "entity", indent: str = ""):
-                port_content = ""
-                
-                if hdl.is_sequential: # clock, reset
-                    port_content += f"{indent}        clock: in std_logic;\n"
-                    port_content += f"{indent}        reset: in std_logic;\n"
-                
-                for name, (direction, t) in hdl.ports.items():
-                    if t.bases(Bundle):
-                        port_content += f"{indent}        {name}: {direction} {t.__name__};\n"
-                    else:
-                        port_content += f"{indent}        {name}: {direction} std_logic_vector({t.W - 1} downto 0);\n"
-                if port_content:
-                    port_content = port_content[:-2] # 去掉最后的分号和换行
-                
-                return f"{indent}{part} {hdl.entity_name} is\n{indent}    port (\n{port_content}\n{indent}    );\n{indent}end {part};"
-            
-            # 组件声明
-            comp_declaration = ""
-            for comp in model.components.values():
-                comp_declaration += _gen_ports(comp, "component", "    ") + "\n\n"
-
-            # 信号声明
-            signal_declaration = ""
-            for name, t in model.signals.items():
-                if t.bases(Bundle):
-                    signal_declaration += f"    signal {name}: {t.__name__};\n"
-                else:
-                    signal_declaration += f"    signal {name}: std_logic_vector({t.W - 1} downto 0);\n"
-            if signal_declaration:
-                signal_declaration = signal_declaration[:-1]
-            
-            # 寄存器时序
-            if len(model.registers) > 0:
-                seq_process = "    process (clock, reset) is\n    begin\n        if (reset = '1') then\n"
-                for _, reg_name, signal_type in model.registers:
-                    def _generate(sub_reg_name: str, t: SignalType):
-                        res = ""
-                        if t.bases(Bundle):
-                            for k, v in t._bundle_types.items():
-                                res += _generate(sub_reg_name + "." + k, v)
-                        else:
-                            res += f"            {sub_reg_name} <= (others => '0');\n"
-                        return res
-                    
-                    seq_process += _generate(reg_name, signal_type)
-                
-                if self.reg_enable_signal_name is not None:
-                    seq_process += f"        elsif rising_edge(clock) and {self.reg_enable_signal_name} = \"1\" then\n"
-                else:
-                    seq_process += "        elsif rising_edge(clock) then\n"
-                
-                for reg_next_name, reg_name, _ in model.registers:
-                    seq_process += f"            {reg_name} <= {reg_next_name};\n"
-                seq_process += "        end if;\n    end process;\n"
-            
-            # 模块例化
-            comp_content = ""
-            for inst_name, (comp_name, mapping) in model.inst_comps.items():
-                mapping_content = ""
-                for comp_port, inst_port in mapping.items():
-                    mapping_content += f"            {comp_port} => {inst_port},\n"
-                if mapping_content:
-                    mapping_content = mapping_content[:-2]
-                comp_content += f"    {inst_name}: {comp_name}\n        port map (\n{mapping_content}\n        );\n\n"
-            if comp_content:
-                comp_content = comp_content[:-1]
-            
-            # 并行赋值
-            assignment_content = ""
-            for target, value in model.assignments:
-                assignment_content += f"    {target} <= {value};\n"
-            if assignment_content:
-                assignment_content = assignment_content[:-1]
-            
-            # 拼接文件内容
-            return f"{libs_declaration}\n{_gen_ports(model, "entity")}\n\narchitecture Structural of {model.entity_name} is\n{comp_declaration}{signal_declaration}\nbegin\n{seq_process + "\n" if len(model.registers) > 0 else ""}{comp_content}\n{assignment_content}\nend architecture;"
+        models = _collect(self) # recursively collect all HDLFileModels
         
         for model in models:
-            if model.raw:
-                if model.raw_suffix is None or model.raw_content is None:
-                    raise HDLFileModelException(f"Raw HDL file model should be defined by .set_raw(file_suffix, content)")
-                
-                file_name = model.file_name + model.raw_suffix
-                if file_name in res.keys():
-                    raise HDLFileModelException(f"File model names conflicting: \'{file_name}\'")
-                
-                res[file_name] = model.raw_content
-            else:
-                file_name = model.file_name + ".vhd"
-                if file_name in res.keys():
-                    raise HDLFileModelException(f"File model names conflicting: \'{file_name}\'")
-                
-                res[file_name] = _gen_vhdl(model)
+            file_name = model.file_name + HDLUtils.get_suffix("vhdl")
+            if file_name in res.keys():
+                raise HDLFileModelException(f"File model names conflicting: \'{file_name}\'")
+            res[file_name] = HDLUtils.vhdl_single_file(model) # emit each file
         
         return res
     
@@ -227,11 +290,11 @@ class HDLFileModel:
     
     def add_port(self, name: str, direction: str, t: SignalType):
         """
-            不需要在 custom_generation 中使用, generation 时会根据结构自动调用.
-            direction: "in", "out"
+            will be automatically called in generation().
+            `direction`: "in" or "out".
         """
         if t.bases(Bundle):
-            self.global_info.add_type(t) # 添加类型到全局信息
+            self.global_info.add_type(t) # add type into global info
         
         self.ports[name] = (direction, t)
     
@@ -246,24 +309,21 @@ class HDLFileModel:
             raise HDLFileModelException(f"Component \'{comp.entity_name}\' already exists in components but not the same model.")
         
         self.inst_comps[inst_name] = (comp.entity_name, mapping if not comp.is_sequential else {
-            "clock": "clock",
+            "clock": "clock", # TODO 关于 HDL_Utils.vhdl_ports 中的 clock_wire_name 等
             "reset": "reset",
             **mapping
         })
     
     def add_signal(self, name: str, t: SignalType):
-        if t.__name__ == "Auto":
-            print(" ========== ", name)
-        
         if t.bases(Bundle):
-            self.global_info.add_type(t) # 添加类型到全局信息
+            self.global_info.add_type(t) # add type into global info
         
         self.signals[name] = t
     
     def add_register(self, name: str, t: SignalType, latency: int = 1) -> Tuple[str, str]: # , initial_values: Union[str, List[str]] = None)
         """
-            Return next_signal_name and reg_signal_name.
-            [NOTICE] notice that the naming method influences auto-pipelining.
+            return next_signal_name and reg_signal_name.
+            notice that the naming rules here influence STA.
         """
         for level in range(latency):
             reg_next_name, reg_name = f"reg_next_{level}_{name}", f"reg_{level}_{name}"
@@ -280,6 +340,16 @@ class HDLFileModel:
     def add_assignment(self, target: str, value: str):
         self.assignments.append((target, value))
     
+    def add_arch_body(self, hdl_type: str, content: str):
+        if not hdl_type in self.raw_arch_bodies.keys():
+            self.raw_arch_bodies[hdl_type] = []
+        self.raw_arch_bodies[hdl_type].append(textwrap.dedent(content).strip())
+    
+    def add_arch_declaration(self, hdl_type: str, content: str):
+        if not hdl_type in self.raw_arch_declarations.keys():
+            self.raw_arch_declarations[hdl_type] = []
+        self.raw_arch_declarations[hdl_type].append(textwrap.dedent(content).strip())
+    
     def set_register_enable_signal_name(self, name: str = None):
         if self.reg_enable_signal_name is not None and self.reg_enable_signal_name in self.signals.keys():
             del self.signals[self.reg_enable_signal_name]
@@ -288,11 +358,6 @@ class HDLFileModel:
             self.add_signal(name, Bit)
         
         self.reg_enable_signal_name = name
-    
-    def set_raw(self, file_suffix: str, content: str):
-        self.raw = True
-        self.raw_suffix = file_suffix
-        self.raw_content = content
 
 
 def emit_to_files(emitted: Dict[str, str], target_folder_path: str):
