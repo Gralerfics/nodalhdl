@@ -632,3 +632,8 @@ if __name__ == '__main__':
     # else:
     #     print("No solution.")
 
+
+import sys
+_current_module = sys.modules[__name__]
+__all__ = [name for name in dir() if not name.startswith('_') and getattr(getattr(_current_module, name, None), "__module__", None) == __name__]
+

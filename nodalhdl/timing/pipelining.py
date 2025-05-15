@@ -1,7 +1,7 @@
 from ..core.signal import *
-from ..core.structure import RuntimeId, Structure, Node
-from ..core.hdl import HDLFileModel
-from .retiming import ExtendedCircuit, SimpleCircuit
+from ..core.structure import *
+from ..core.hdl import *
+from .retiming import *
 
 from typing import Union, Dict, List, Tuple
 
@@ -207,12 +207,7 @@ def insert_ready_valid_chain(model: HDLFileModel, levels: int, prev_ready_name =
     model.add_assignment(enable_signal_name, f"{prev_ready_buffer_name} and {prev_valid_name}")
 
 
-"""
-    pipelining 的话 structure 必须是 not is_sequential 的,
-        也就是前面的单纯 retiming 可以允许 sequential, 所以运行 sta 前不能直接去原来的上面改 latency.
-        话说论文里提到个什么来着 (关于 pipelining), 忘了, 晚点看下.
-    每个输入端口要插入相同数量的寄存器,
-        这个数量除了用户设定, 怎么自动计算?
-            比如时序报告中同时跑一个顶层模块输入到输出的最大路径 (要得到这个又不能插寄存器, 或者在跑下面那行的过程中通过模块的延迟累加起来), 除以预期时钟周期, 再去掉一些寄存器延迟;
-            或者同时还要考虑上限, 即最多模块数的路径上有几个模块, 最多插 n - 1 个, 再多没意义.
-"""
+import sys
+_current_module = sys.modules[__name__]
+__all__ = [name for name in dir() if not name.startswith('_') and getattr(getattr(_current_module, name, None), "__module__", None) == __name__]
+

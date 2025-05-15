@@ -115,6 +115,8 @@ class SignalType(type):
             `cls` could have IO wrappers, and the IO wrappers in `other` will be ignored.
         """
         def _single_type_merges(a: 'SignalType', b: 'SignalType'):
+            # TODO 用属性字典表示信息融合？
+            
             assert a.belongs(Bits) and b.belongs(Bits) # Single type ~ Bits (or its children)
             
             # if not a.base.belongs(b.base) and not b.base.belongs(a.base): # 基类型无继承关系, 不可合并 TODO 改了，可以合成祖宗
@@ -597,4 +599,19 @@ class Bundle(Auto, metaclass = BundleType):
     
     def __repr__(self):
         return "{" + ", ".join([f"\"{k}\": {str(v)}" for k, v in self._bundle_objects.items()]) + "}"
+
+
+# __all__ = [
+#     "SignalType", "BitsType", "FixedPointType", "FloatingPointType", "IOWrapperType", "BundleType",
+#     "Signal", "Auto", "Bundle",
+#     "Bits", "Bit", "Byte",
+#     "UInt", "UInt8", "UInt16", "UInt32", "UInt64",
+#     "SInt", "Int8", "Int16", "Int32", "Int64",
+#     "UFixedPoint", "SFixedPoint",
+#     "FloatingPoint", "Float", "Double",
+#     "IOWrapper", "Input", "Output"
+# ]
+import sys
+_current_module = sys.modules[__name__]
+__all__ = [name for name in dir() if not name.startswith('_') and getattr(getattr(_current_module, name, None), "__module__", None) == __name__]
 

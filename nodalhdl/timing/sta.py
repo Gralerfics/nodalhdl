@@ -1,10 +1,9 @@
-from ..core.structure import Structure, RuntimeId
-from ..core.hdl import emit_to_files
+from ..core.structure import *
+from ..core.hdl import *
 
 import subprocess
 import os
 import shutil
-
 import re
 
 from typing import List, Dict, Tuple
@@ -335,4 +334,9 @@ class VivadoSTA(StaticTimingAnalyser):
                 
                 # next added path
                 added_paths_ptr += 1
+
+
+import sys
+_current_module = sys.modules[__name__]
+__all__ = [name for name in dir() if not name.startswith('_') and getattr(getattr(_current_module, name, None), "__module__", None) == __name__]
 

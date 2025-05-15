@@ -1,7 +1,6 @@
-from .signal import SignalType, BundleType, Auto, IOWrapper, Input, Output, Bundle, Signal, SignalTypeException
-from .hdl import HDLFileModel
+from .signal import *
+from .hdl import *
 
-import sys
 import weakref
 import uuid
 import dill
@@ -9,7 +8,47 @@ import dill
 from typing import List, Dict, Set, Tuple, Union
 
 
-""" Id """
+""" Pool """
+class ReusablePoolException(Exception): pass
+
+class ReusablePool:
+    pool: Dict[str, 'Structure'] = {}
+    
+    @staticmethod
+    def fetch(unique_name: str):
+        """
+            fetch the structure object by unique_name, or None when not exists.
+            sweep the invalid references (lazy tag).
+        """
+        s = ReusablePool.pool.get(unique_name, None)
+        if s is not None:
+            if s.is_reusable and s.unique_name == unique_name:
+                # exists and still valid
+                return s
+            else:
+                # exists but invalid, clear
+                del ReusablePool.pool[unique_name]
+                return None
+        else:
+            return None
+    
+    @staticmethod
+    def register(s: 'Structure'):
+        """
+            register an structure into the pool.
+            if not reusable then return False and nothing will be done.
+        """
+        if s.is_reusable:
+            fetch_s = ReusablePool.fetch(s.unique_name)
+            if fetch_s is not None and fetch_s != s: # exists and conflicts
+                raise ReusablePoolException("unique_name should be unique")
+            else: # allowed
+                ReusablePool.pool[s.unique_name] = s
+        else:
+            return False
+
+
+""" RuntimeId """
 class RuntimeIdException(Exception): pass
 
 class RuntimeId:
@@ -430,7 +469,10 @@ class StructuralNodes(dict):
     
     def access(self, path: Union[str, list, tuple]) -> Union[Node, 'StructuralNodes']:
         if isinstance(path, list) or isinstance(path, tuple):
-            return eval("self." + ".".join(path)) # TODO 不要用 eval 实现
+            obj = self
+            for k in path:
+                obj = getattr(obj, k)
+            return obj # i.e. eval("self." + ".".join(path))
         elif isinstance(path, str):
             return self.access(path.strip(".").split("."))
         else:
@@ -509,13 +551,23 @@ class Structure:
     def __init__(self, unique_name: str = None):
         # properties
         self.id = str(uuid.uuid4()).replace('-', '')
-        self.unique_name: str = unique_name # one unique_name for one reusable structure, and is unique globally
+        """
+            `unique_name`: one unique_name for one reusable structure, and should be unique in global.
+                i.e. there should not be two structures will different IDs have the same unique_name.
+                see ReusablePool:
+                    if not reusable, nothing matters.
+                    if modifed, there is no need to care about ReusablePool, because the inconsistent unique_name can lead to cleanup.
+            non-reusable structures can have unique_name, but will not use it.
+            reusable operators (some operators may be non-reusable), will be registered into a global pool with its unique_name as the key.
+            [!] use register_unique_name to modify it.
+        """
+        self.unique_name: str = unique_name if unique_name is not None else f"Structure_{self.id[:8]}"
         
         # properties (customized params, for all)
         self.custom_params = {}
         
         # properties (customized params, for operators)
-        self.custom_sequential: bool = False # should be asserted to True if there are registers in custom_generation (raw_content) TODO 或许基本算子就不该有时钟延迟？
+        self.custom_sequential: bool = False # TODO 基本算子内的时钟延迟问题
         self.custom_deduction: callable = None
         self.custom_generation: callable = None
         
@@ -525,7 +577,6 @@ class Structure:
         # references (internal structure)
         self.ports_inside_flipped: StructuralNodes = StructuralNodes() # to be connected to internal nodes, IO flipped (EEB)
         self.substructures: Dict[str, 'Structure'] = {} # instance_name -> structure
-        # self.substructures_expandable_flags: Dict[str, bool] = {} TODO 默认 True，为 False 的不展开，对 operator 失效；手动指定或可减少节点数减低 retiming 压力；除非提升 retiming 效率
         self.nodes: Set[Node] = set() # non-IO nodes
         
         # references (external structure)
@@ -599,6 +650,10 @@ class Structure:
             res += subs.runtime_info(runtime_id.next(sub_inst_name), indent + 4, fqn + "." + sub_inst_name)
         return res
     
+    def register_unique_name(self, unique_name: str):
+        self.unique_name = unique_name
+        ReusablePool.register(self) # register directly, the old entry will be illegal because of the modification on unique_name
+    
     def get_nets(self) -> List[Net]:
         """
             Traverse the structure and return all nets connected to the ports and nodes.
@@ -620,7 +675,7 @@ class Structure:
     def get_subs_ports_outside(self, subs_inst_name: str) -> StructuralNodes:
         return self.substructures[subs_inst_name].ports_outside[(self.id, subs_inst_name)]
     
-    def duplicate(self, duplicate_operators: bool = False) -> 'Structure': # TODO 似乎就不应该允许复制 operator，因为复制后 unique_name 定义失效；或者复制 operator 时把 unique_name None 掉
+    def duplicate(self, duplicate_operators: bool = False) -> 'Structure':
         """
             Deep copy of the structure.
             Reusable substructures under the structure will also be duplicated, and certainly not including ports_outside those are not under this new structure.
@@ -633,10 +688,7 @@ class Structure:
             if ref_s.is_operator and not duplicate_operators:
                 return ref_s
             
-            new_s = Structure()
-            
-            new_s.unique_name = None # ?
-            new_s.reusable_hdl = None # ?
+            new_s = Structure() # use default new unique_name and None reusable_hdl
             
             new_s.custom_params = ref_s.custom_params.copy()
             new_s.custom_deduction = ref_s.custom_deduction
@@ -700,7 +752,7 @@ class Structure:
         
         return _duplicate(self)
     
-    def strip(self, deep: bool = False) -> 'Structure': # TODO , deep_to_operators: bool = False
+    def strip(self, deep: bool = False, deep_to_operators: bool = False) -> 'Structure':
         """
             Strip the structure, i.e. duplicate and reassign the substructures those are referenced more than once.
             After strip the structure can perform apply_runtime().
@@ -718,8 +770,7 @@ class Structure:
                             if not subs.is_operator, it should be stripped;
                             or it is an operator, but deep_to_operators is True, it should also be stripped.
                 """
-                # if subs.instance_number > 1 and (not subs.is_reusable or (deep and (not subs.is_operator or deep_to_operators))): TODO
-                if subs.instance_number > 1 and (not subs.is_reusable or (deep and (not subs.is_operator))):
+                if subs.instance_number > 1 and (not subs.is_reusable or (deep and (not subs.is_operator or deep_to_operators))):
                     # need to strip
                     new_subs = subs.duplicate()
                     
@@ -739,8 +790,8 @@ class Structure:
         
         return res
     
-    def singletonize(self): # TODO , singletonize_operators: bool = False):
-        self.strip(deep = True) # TODO , deep_to_operators = singletonize_operators)
+    def singletonize(self, singletonize_operators: bool = False):
+        self.strip(deep = True, deep_to_operators = singletonize_operators)
     
     def expand(self, shallow: bool = False):
         """
@@ -901,7 +952,7 @@ class Structure:
             if self.reusable_hdl is not None:
                 return self.reusable_hdl
             else:
-                top_module_name = self.unique_name if self.unique_name is not None else f"Structure_{self.id[:8]}"
+                top_module_name = self.unique_name
         
         # create file model and set entity name
         model = HDLFileModel(entity_name = f"{top_module_name}", file_name = f"hdl_{top_module_name}")
@@ -1039,7 +1090,7 @@ class Structure:
         if isinstance(node_1, Node) and isinstance(node_2, Node):
             node_1.merge(node_2)
         elif isinstance(node_1, StructuralNodes) and isinstance(node_2, StructuralNodes):
-            node_1.connect(node_2) # TODO to be verified
+            node_1.connect(node_2)
         else:
             raise Exception("Nodes/StructuralNodes not match.")
     
@@ -1105,7 +1156,10 @@ class IOProxy:
     
     def access(self, path: Union[str, list, tuple]) -> Union[NodeProxy, 'IOProxy']:
         if isinstance(path, list) or isinstance(path, tuple):
-            return eval("self." + ".".join(path)) # TODO 不要用 eval 实现
+            obj = self
+            for k in path:
+                obj = getattr(obj, k)
+            return obj # i.e. eval("self." + ".".join(path))
         elif isinstance(path, str):
             return self.access(path.strip(".").split("."))
         else:
@@ -1124,4 +1178,15 @@ class StructureProxy:
     @property
     def IO(self):
         return self.proxy_structure.ports_outside[(self.located_structure_id, self.inst_name)]
+
+
+# __all__ = [
+#     "ReusablePool",
+#     "RuntimeId",
+#     "Structure", "Net", "Node", "StructuralNodes",
+#     "NodeProxy", "IOProxy", "StructureProxy"
+# ]
+import sys
+_current_module = sys.modules[__name__]
+__all__ = [name for name in dir() if not name.startswith('_') and getattr(getattr(_current_module, name, None), "__module__", None) == __name__]
 

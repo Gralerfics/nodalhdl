@@ -19,12 +19,12 @@ from typing import List
 """
 
 
-def mul(a, b):
-    a.concat(suffix = "0" * (b.T.W - 1))
-    r = uint(a.T.W + b.T.W)(0) # ComputeElement, .T.name = "uint", .T.W = a.T.W + b.T.W, .V = 0 TODO ?
-    for i in range(b.T.W):
-        r += a[:i]
-    return r
+# def mul(a, b):
+#     a.concat(suffix = "0" * (b.T.W - 1))
+#     r = uint(a.T.W + b.T.W)(0) # ComputeElement, .T.name = "uint", .T.W = a.T.W + b.T.W, .V = 0 TODO ?
+#     for i in range(b.T.W):
+#         r += a[:i]
+#     return r
 
 
 def shader(x, y):

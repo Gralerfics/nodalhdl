@@ -1,12 +1,10 @@
 from ..core.signal import *
-from ..core.structure import Structure, IOProxy
-from ..core.pool import UniquelyNamedReusable, OperatorUtils, OperatorSetupTemplates, OperatorDeductionTemplates, UniqueNamingTemplates
-from ..core.hdl import HDLFileModel
+from ..core.structure import *
+from ..core.reusable import *
+from ..core.hdl import *
+from ..core.util import type_decl
 
-import hashlib
 import textwrap
-
-from typing import List
 
 
 class BitsAdd(UniquelyNamedReusable):
@@ -30,9 +28,9 @@ class BitsAdd(UniquelyNamedReusable):
 
             entity {h.entity_name} is
                 port (
-                    a: in {OperatorUtils.type_decl(io.a.type)};
-                    b: in {OperatorUtils.type_decl(io.b.type)};
-                    r: out {OperatorUtils.type_decl(io.r.type)}
+                    a: in {type_decl(io.a.type)};
+                    b: in {type_decl(io.b.type)};
+                    r: out {type_decl(io.r.type)}
                 );
             end entity;
 
@@ -66,9 +64,9 @@ class BitsSubtract(UniquelyNamedReusable):
 
             entity {h.entity_name} is
                 port (
-                    a: in {OperatorUtils.type_decl(io.a.type)};
-                    b: in {OperatorUtils.type_decl(io.b.type)};
-                    r: out {OperatorUtils.type_decl(io.r.type)}
+                    a: in {type_decl(io.a.type)};
+                    b: in {type_decl(io.b.type)};
+                    r: out {type_decl(io.r.type)}
                 );
             end entity;
 
@@ -102,8 +100,8 @@ class BitsInverse(UniquelyNamedReusable):
 
             entity {h.entity_name} is
                 port (
-                    a: in {OperatorUtils.type_decl(io.a.type)};
-                    r: out {OperatorUtils.type_decl(io.r.type)}
+                    a: in {type_decl(io.a.type)};
+                    r: out {type_decl(io.r.type)}
                 );
             end entity;
 
@@ -136,8 +134,8 @@ class BitsEqualTo(UniquelyNamedReusable):
 
             entity {h.entity_name} is
                 port (
-                    a: in {OperatorUtils.type_decl(io.a.type)};
-                    b: in {OperatorUtils.type_decl(io.b.type)};
+                    a: in {type_decl(io.a.type)};
+                    b: in {type_decl(io.b.type)};
                     r: out std_logic
                 );
             end entity;
@@ -172,8 +170,8 @@ class BitsLessThan(UniquelyNamedReusable):
 
             entity {h.entity_name} is
                 port (
-                    a: in {OperatorUtils.type_decl(io.a.type)};
-                    b: in {OperatorUtils.type_decl(io.b.type)};
+                    a: in {type_decl(io.a.type)};
+                    b: in {type_decl(io.b.type)};
                     r: out std_logic
                 );
             end entity;
@@ -208,8 +206,8 @@ class BitsNot(UniquelyNamedReusable):
 
             entity {h.entity_name} is
                 port (
-                    a: in {OperatorUtils.type_decl(io.a.type)};
-                    r: out {OperatorUtils.type_decl(io.r.type)}
+                    a: in {type_decl(io.a.type)};
+                    r: out {type_decl(io.r.type)}
                 );
             end entity;
 
@@ -243,9 +241,9 @@ class BitsAnd(UniquelyNamedReusable):
 
             entity {h.entity_name} is
                 port (
-                    a: in {OperatorUtils.type_decl(io.a.type)};
-                    b: in {OperatorUtils.type_decl(io.b.type)};
-                    r: out {OperatorUtils.type_decl(io.r.type)}
+                    a: in {type_decl(io.a.type)};
+                    b: in {type_decl(io.b.type)};
+                    r: out {type_decl(io.r.type)}
                 );
             end entity;
 
@@ -277,7 +275,7 @@ class BitsReductionAnd(UniquelyNamedReusable):
 
             entity {h.entity_name} is
                 port (
-                    a: in {OperatorUtils.type_decl(io.a.type)};
+                    a: in {type_decl(io.a.type)};
                     r: out std_logic
                 );
             end entity;
@@ -312,9 +310,9 @@ class BitsOr(UniquelyNamedReusable):
 
             entity {h.entity_name} is
                 port (
-                    a: in {OperatorUtils.type_decl(io.a.type)};
-                    b: in {OperatorUtils.type_decl(io.b.type)};
-                    r: out {OperatorUtils.type_decl(io.r.type)}
+                    a: in {type_decl(io.a.type)};
+                    b: in {type_decl(io.b.type)};
+                    r: out {type_decl(io.r.type)}
                 );
             end entity;
 
@@ -346,7 +344,7 @@ class BitsReductionOr(UniquelyNamedReusable):
 
             entity {h.entity_name} is
                 port (
-                    a: in {OperatorUtils.type_decl(io.a.type)};
+                    a: in {type_decl(io.a.type)};
                     r: out std_logic
                 );
             end entity;
@@ -394,10 +392,10 @@ class BinaryMultiplexer(UniquelyNamedReusable):
 
             entity {h.entity_name} is
                 port (
-                    i0: in {OperatorUtils.type_decl(io.i0.type)};
-                    i1: in {OperatorUtils.type_decl(io.i1.type)};
+                    i0: in {type_decl(io.i0.type)};
+                    i1: in {type_decl(io.i1.type)};
                     s: in std_logic;
-                    o: out {OperatorUtils.type_decl(io.o.type)}
+                    o: out {type_decl(io.o.type)}
                 );
             end entity;
 
@@ -454,8 +452,8 @@ class CustomVHDLOperator(UniquelyNamedReusable):
         arch_decl: str = args[3] if len(args) > 3 else None
         
         port_body = ";\n                    ".join(
-            [f"{name}: in {OperatorUtils.type_decl(io.access(name).type)}" for name in input_ports.keys()] +
-            [f"{name}: out {OperatorUtils.type_decl(io.access(name).type)}" for name in output_ports.keys()]
+            [f"{name}: in {type_decl(io.access(name).type)}" for name in input_ports.keys()] +
+            [f"{name}: out {type_decl(io.access(name).type)}" for name in output_ports.keys()]
         )
         
         h.set_raw(".vhd", textwrap.dedent(f"""\
@@ -480,184 +478,188 @@ class CustomVHDLOperator(UniquelyNamedReusable):
     naming = UniqueNamingTemplates.args_kwargs_md5_16
 
 
-# TODO
-class Decomposition(UniquelyNamedReusable):
-    """
-        Decomposition(<input_type (BundleType)>): all shallow members
-        Decomposition(<input_type (BundleType)>, <path_0 (str)>, <path_1 (str)>, ...)
+# class Decomposition(UniquelyNamedReusable):
+#     """
+#         Decomposition(<input_type (BundleType)>): all shallow members
+#         Decomposition(<input_type (BundleType)>, <path_0 (str)>, <path_1 (str)>, ...)
 
-        Input(s): i (BundleType)
-        Output(s): o (structural)
-    """
-    @staticmethod
-    def setup(*args, **kwargs) -> Structure:
-        assert len(args) - 1 >= 0
+#         Input(s): i (BundleType)
+#         Output(s): o (structural)
+#     """
+#     @staticmethod
+#     def setup(*args, **kwargs) -> Structure:
+#         assert len(args) - 1 >= 0
         
-        # arguments
-        input_type: BundleType = args[0].clear_io()
-        path_strings = args[1:] if len(args) > 1 else list(input_type._bundle_types.keys())
+#         # arguments
+#         input_type: BundleType = args[0].clear_io()
+#         path_strings = args[1:] if len(args) > 1 else list(input_type._bundle_types.keys())
         
-        # add Output wrappers
-        output_type = input_type
+#         # add Output wrappers
+#         output_type = input_type
         
-        def _add_output(t: SignalType, path: List[str]):
-            if len(path) == 0:
-                return Output[t]
-            elif t.bases(Bundle):
-                return Bundle[{k: (v if k != path[0] else _add_output(v, path[1:])) for k, v in t._bundle_types.items()}]
-            else:
-                raise Exception("Invalid path")
+#         def _add_output(t: SignalType, path: List[str]):
+#             if len(path) == 0:
+#                 return Output[t]
+#             elif t.bases(Bundle):
+#                 return Bundle[{k: (v if k != path[0] else _add_output(v, path[1:])) for k, v in t._bundle_types.items()}]
+#             else:
+#                 raise Exception("Invalid path")
         
-        for path_str in path_strings:
-            output_type = _add_output(output_type, path_str.strip(".").split("."))
+#         for path_str in path_strings:
+#             output_type = _add_output(output_type, path_str.strip(".").split("."))
         
-        # remove imperfect componets
-        def _remove_non_wrapped(t: SignalType):
-            return Bundle[{k: (v if v.perfectly_io_wrapped else _remove_non_wrapped(v)) for k, v in t._bundle_types.items() if v.io_wrapper_included}]
+#         # remove imperfect componets
+#         def _remove_non_wrapped(t: SignalType):
+#             return Bundle[{k: (v if v.perfectly_io_wrapped else _remove_non_wrapped(v)) for k, v in t._bundle_types.items() if v.io_wrapper_included}]
         
-        output_type = _remove_non_wrapped(output_type)
+#         output_type = _remove_non_wrapped(output_type)
         
-        # build structure
-        s = Structure()
+#         # build structure
+#         s = Structure()
         
-        s.add_port("i", Input[input_type])
-        s.add_port(f"o", output_type)
+#         s.add_port("i", Input[input_type])
+#         s.add_port(f"o", output_type)
         
-        s.custom_params["path_strings"] = path_strings
+#         s.custom_params["path_strings"] = path_strings
         
-        return s
+#         return s
     
-    @staticmethod
-    def generation(s: Structure, h: HDLFileModel, io: IOProxy):
-        input_type = io.i.type
+#     @staticmethod
+#     def generation(s: Structure, h: HDLFileModel, io: IOProxy):
+#         input_type = io.i.type
         
-        path_to_valid_name = lambda path_str: path_str.strip(".").replace(".", "_")
+#         path_to_valid_name = lambda path_str: path_str.strip(".").replace(".", "_")
         
-        port_str = ";\n".join([f"        o_{path_to_valid_name(path_str)}: out {OperatorUtils.type_decl(eval(f"io.o.{path_str.strip(".")}.type"))}" for path_str in s.custom_params["path_strings"]]) # [NOTICE] dont use eval
-        assign_str = "\n".join([f"    o_{path_to_valid_name(path_str)} <= i.{path_str.strip(".")};" for path_str in s.custom_params["path_strings"]])
+#         port_str = ";\n".join([f"        o_{path_to_valid_name(path_str)}: out {type_decl(eval(f"io.o.{path_str.strip(".")}.type"))}" for path_str in s.custom_params["path_strings"]]) # [NOTICE] dont use eval
+#         assign_str = "\n".join([f"    o_{path_to_valid_name(path_str)} <= i.{path_str.strip(".")};" for path_str in s.custom_params["path_strings"]])
         
-        h.set_raw(".vhd",
-f"""\
-library IEEE;
-use IEEE.std_logic_1164.all;
-use IEEE.numeric_std.all;
-use work.types.all;
+#         h.set_raw(".vhd",
+# f"""\
+# library IEEE;
+# use IEEE.std_logic_1164.all;
+# use IEEE.numeric_std.all;
+# use work.types.all;
 
-entity {h.entity_name} is
-    port (
-        i: in {OperatorUtils.type_decl(input_type)};
-{port_str}
-    );
-end entity;
+# entity {h.entity_name} is
+#     port (
+#         i: in {type_decl(input_type)};
+# {port_str}
+#     );
+# end entity;
 
-architecture Behavioral of {h.entity_name} is
-begin
-{assign_str}
-end architecture;
-"""
-        )
+# architecture Behavioral of {h.entity_name} is
+# begin
+# {assign_str}
+# end architecture;
+# """
+#         )
     
-    @classmethod
-    def naming(cls, *args):
-        if len(args) == 1:
-            return f"{cls.__name__}_{args[0].__name__[7:15]}"
-        else:
-            return f"{cls.__name__}_{args[0].__name__[7:15]}_{"_".join([path_str.strip(".").replace(".", "_") for path_str in args[1:]])}"
+#     @classmethod
+#     def naming(cls, *args):
+#         if len(args) == 1:
+#             return f"{cls.__name__}_{args[0].__name__[7:15]}"
+#         else:
+#             return f"{cls.__name__}_{args[0].__name__[7:15]}_{"_".join([path_str.strip(".").replace(".", "_") for path_str in args[1:]])}"
 
-# TODO
-class Composition(UniquelyNamedReusable):
-    """
-        Composition(<output_type (BundleType)>, <path_0 (str)>, ...)
+
+# class Composition(UniquelyNamedReusable):
+#     """
+#         Composition(<output_type (BundleType)>, <path_0 (str)>, ...)
         
-        Input(s): i (structural)
-        Output(s): o (BundleType)
-    """
-    @staticmethod
-    def setup(*args, **kwargs) -> Structure:
-        assert len(args) - 1 >= 0
+#         Input(s): i (structural)
+#         Output(s): o (BundleType)
+#     """
+#     @staticmethod
+#     def setup(*args, **kwargs) -> Structure:
+#         assert len(args) - 1 >= 0
         
-        # arguments
-        output_type: BundleType = args[0].clear_io()
-        path_strings = args[1:] if len(args) > 1 else list(input_type._bundle_types.keys())
+#         # arguments
+#         output_type: BundleType = args[0].clear_io()
+#         path_strings = args[1:] if len(args) > 1 else list(input_type._bundle_types.keys())
         
-        # add Input wrappers
-        input_type = output_type
+#         # add Input wrappers
+#         input_type = output_type
         
-        def _add_input(t: SignalType, path: List[str]):
-            if len(path) == 0:
-                return Input[t]
-            elif t.bases(Bundle):
-                return Bundle[{k: (v if k != path[0] else _add_input(v, path[1:])) for k, v in t._bundle_types.items()}]
-            else:
-                raise Exception("Invalid path")
+#         def _add_input(t: SignalType, path: List[str]):
+#             if len(path) == 0:
+#                 return Input[t]
+#             elif t.bases(Bundle):
+#                 return Bundle[{k: (v if k != path[0] else _add_input(v, path[1:])) for k, v in t._bundle_types.items()}]
+#             else:
+#                 raise Exception("Invalid path")
         
-        for path_str in path_strings:
-            input_type = _add_input(input_type, path_str.strip(".").split("."))
+#         for path_str in path_strings:
+#             input_type = _add_input(input_type, path_str.strip(".").split("."))
         
-        selectively_wrapped_input_type = input_type
+#         selectively_wrapped_input_type = input_type
         
-        # remove imperfect componets
-        def _remove_non_wrapped(t: SignalType):
-            return Bundle[{k: (v if v.perfectly_io_wrapped else _remove_non_wrapped(v)) for k, v in t._bundle_types.items() if v.io_wrapper_included}]
+#         # remove imperfect componets
+#         def _remove_non_wrapped(t: SignalType):
+#             return Bundle[{k: (v if v.perfectly_io_wrapped else _remove_non_wrapped(v)) for k, v in t._bundle_types.items() if v.io_wrapper_included}]
         
-        input_type = _remove_non_wrapped(input_type)
+#         input_type = _remove_non_wrapped(input_type)
         
-        # build structure
-        s = Structure()
+#         # build structure
+#         s = Structure()
         
-        s.add_port("i", input_type)
-        s.add_port("o", Output[output_type])
+#         s.add_port("i", input_type)
+#         s.add_port("o", Output[output_type])
         
-        s.custom_params["path_strings"] = path_strings
-        s.custom_params["selectively_wrapped_input_type"] = selectively_wrapped_input_type
+#         s.custom_params["path_strings"] = path_strings
+#         s.custom_params["selectively_wrapped_input_type"] = selectively_wrapped_input_type
         
-        return s
+#         return s
     
-    @staticmethod
-    def generation(s: Structure, h: HDLFileModel, io: IOProxy):
-        output_type = io.o.type
-        selectively_wrapped_input_type = s.custom_params["selectively_wrapped_input_type"]
+#     @staticmethod
+#     def generation(s: Structure, h: HDLFileModel, io: IOProxy):
+#         output_type = io.o.type
+#         selectively_wrapped_input_type = s.custom_params["selectively_wrapped_input_type"]
         
-        path_to_valid_name = lambda path_str: path_str.strip(".").replace(".", "_")
+#         path_to_valid_name = lambda path_str: path_str.strip(".").replace(".", "_")
         
-        port_str = ";\n".join([f"        i_{path_to_valid_name(path_str)}: in {OperatorUtils.type_decl(eval(f"io.i.{path_str.strip(".")}.type"))}" for path_str in s.custom_params["path_strings"]]) # [NOTICE] dont use eval
-        assign_str = "\n".join([f"    o.{path_str.strip(".")} <= i_{path_to_valid_name(path_str)};" for path_str in s.custom_params["path_strings"]])
+#         port_str = ";\n".join([f"        i_{path_to_valid_name(path_str)}: in {type_decl(eval(f"io.i.{path_str.strip(".")}.type"))}" for path_str in s.custom_params["path_strings"]]) # [NOTICE] dont use eval
+#         assign_str = "\n".join([f"    o.{path_str.strip(".")} <= i_{path_to_valid_name(path_str)};" for path_str in s.custom_params["path_strings"]])
         
-        def _assign_zeros(t: SignalType, path: List[str] = []):
-            res = ""
-            if not t.perfectly_io_wrapped:
-                if t.bases(Bundle):
-                    res += "".join([_assign_zeros(v, path + [k]) for k, v in t._bundle_types.items()])
-                else:
-                    res += f"\n    o.{".".join(path)} <= (others => \'0\');"
-            return res
+#         def _assign_zeros(t: SignalType, path: List[str] = []):
+#             res = ""
+#             if not t.perfectly_io_wrapped:
+#                 if t.bases(Bundle):
+#                     res += "".join([_assign_zeros(v, path + [k]) for k, v in t._bundle_types.items()])
+#                 else:
+#                     res += f"\n    o.{".".join(path)} <= (others => \'0\');"
+#             return res
         
-        assign_str += _assign_zeros(selectively_wrapped_input_type)
+#         assign_str += _assign_zeros(selectively_wrapped_input_type)
         
-        h.set_raw(".vhd",
-f"""\
-library IEEE;
-use IEEE.std_logic_1164.all;
-use work.types.all;
+#         h.set_raw(".vhd",
+# f"""\
+# library IEEE;
+# use IEEE.std_logic_1164.all;
+# use work.types.all;
 
-entity {h.entity_name} is
-    port (
-        o: out {OperatorUtils.type_decl(output_type)};
-{port_str}
-    );
-end entity;
+# entity {h.entity_name} is
+#     port (
+#         o: out {type_decl(output_type)};
+# {port_str}
+#     );
+# end entity;
 
-architecture Behavioral of {h.entity_name} is
-begin
-{assign_str}
-end architecture;
-"""
-        )
+# architecture Behavioral of {h.entity_name} is
+# begin
+# {assign_str}
+# end architecture;
+# """
+#         )
 
-    @classmethod
-    def naming(cls, *args):
-        if len(args) == 1:
-            return f"{cls.__name__}_{args[0].__name__[7:15]}"
-        else:
-            return f"{cls.__name__}_{args[0].__name__[7:15]}_{"_".join([path_str.strip(".").replace(".", "_") for path_str in args[1:]])}"
+#     @classmethod
+#     def naming(cls, *args):
+#         if len(args) == 1:
+#             return f"{cls.__name__}_{args[0].__name__[7:15]}"
+#         else:
+#             return f"{cls.__name__}_{args[0].__name__[7:15]}_{"_".join([path_str.strip(".").replace(".", "_") for path_str in args[1:]])}"
+
+
+import sys
+_current_module = sys.modules[__name__]
+__all__ = [name for name in dir() if not name.startswith('_') and getattr(getattr(_current_module, name, None), "__module__", None) == __name__]
 
