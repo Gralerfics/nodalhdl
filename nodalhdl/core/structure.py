@@ -1105,9 +1105,9 @@ class Structure:
     
     @classmethod
     def load_dill(self, file_path: str) -> 'Structure':
-        # TODO 持久化存储与 pool 一致性的问题
         with open(file_path, "rb") as f:
             return dill.load(f)
+        # TODO 持久化存储与 pool 一致性的问题 (遍历所有结构和子结构, 注册到 pool 中, 这里要注意的是名称相同对象不同的情况不一定代表不是同一个结构, 可能只是写了又读导致不一致了, 所以 pool 结构比较那里应该改成结构同构检查 TODO)
 
 class NodeProxy:
     def __init__(self, node: Node, runtime_id: str, flipped: bool = False):

@@ -122,7 +122,7 @@ class UniquelyNamedReusableMeta(type):
         if s.is_runtime_applicable:
             s.apply_runtime(rid)
         
-        # only save reusable structures to the pool
+        # register structure to the pool
         s.register_unique_name(maybe_unique_name)
         
         return s
