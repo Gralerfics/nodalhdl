@@ -64,7 +64,12 @@ class HDLUtils:
                                     "end if;"
                                 "end process;"
                             ]
-                            <component instantiation>_i
+                            <component instantiation>_i [
+                                "{inst_name} {comp_name}"
+                                    "port map ("
+                                        <mapping>_i or "-- no mapping"
+                                    ");"
+                            ]
                             <concurrent assignments>_i
                             <raw bodies>_i
                         } or " -- no body"

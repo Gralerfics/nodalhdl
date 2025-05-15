@@ -24,7 +24,7 @@ class BitsAdd(UniquelyNamedReusable):
             r <= std_logic_vector(unsigned(a) + unsigned(b));
         """))
     
-    naming = UniqueNamingTemplates.args_kwargs_all_values
+    naming = UniqueNamingTemplates.args_kwargs_all_values()
 
 
 class BitsSubtract(UniquelyNamedReusable):
@@ -45,7 +45,7 @@ class BitsSubtract(UniquelyNamedReusable):
             r <= std_logic_vector(unsigned(a) - unsigned(b));
         """))
     
-    naming = UniqueNamingTemplates.args_kwargs_all_values
+    naming = UniqueNamingTemplates.args_kwargs_all_values()
 
 
 class BitsInverse(UniquelyNamedReusable):
@@ -66,7 +66,7 @@ class BitsInverse(UniquelyNamedReusable):
             r <= std_logic_vector(-signed(a));
         """))
     
-    naming = UniqueNamingTemplates.args_kwargs_all_values
+    naming = UniqueNamingTemplates.args_kwargs_all_values()
 
 
 class BitsEqualTo(UniquelyNamedReusable):
@@ -87,7 +87,7 @@ class BitsEqualTo(UniquelyNamedReusable):
             r <= '1' when a = b else '0';
         """))
     
-    naming = UniqueNamingTemplates.args_kwargs_all_values
+    naming = UniqueNamingTemplates.args_kwargs_all_values()
 
 
 class BitsLessThan(UniquelyNamedReusable):
@@ -108,7 +108,7 @@ class BitsLessThan(UniquelyNamedReusable):
             r <= '1' when unsigned(a) < unsigned(b) else '0';
         """))
     
-    naming = UniqueNamingTemplates.args_kwargs_all_values
+    naming = UniqueNamingTemplates.args_kwargs_all_values()
 
 
 class BitsNot(UniquelyNamedReusable):
@@ -129,7 +129,7 @@ class BitsNot(UniquelyNamedReusable):
             r <= not a;
         """))
     
-    naming = UniqueNamingTemplates.args_kwargs_all_values
+    naming = UniqueNamingTemplates.args_kwargs_all_values()
 
 
 class BitsAnd(UniquelyNamedReusable):
@@ -150,7 +150,7 @@ class BitsAnd(UniquelyNamedReusable):
             r <= a and b;
         """))
     
-    naming = UniqueNamingTemplates.args_kwargs_all_values
+    naming = UniqueNamingTemplates.args_kwargs_all_values()
 
 
 class BitsReductionAnd(UniquelyNamedReusable):
@@ -170,7 +170,7 @@ class BitsReductionAnd(UniquelyNamedReusable):
             r <= '1' when (a = (a'range => '1')) else '0';
         """))
     
-    naming = UniqueNamingTemplates.args_kwargs_all_values
+    naming = UniqueNamingTemplates.args_kwargs_all_values()
 
 
 class BitsOr(UniquelyNamedReusable):
@@ -191,7 +191,7 @@ class BitsOr(UniquelyNamedReusable):
             r <= a or b;
         """))
     
-    naming = UniqueNamingTemplates.args_kwargs_all_values
+    naming = UniqueNamingTemplates.args_kwargs_all_values()
 
 
 class BitsReductionOr(UniquelyNamedReusable):
@@ -211,7 +211,7 @@ class BitsReductionOr(UniquelyNamedReusable):
             r <= '1' when (a /= (a'range => '0')) else '0';
         """))
     
-    naming = UniqueNamingTemplates.args_kwargs_all_values
+    naming = UniqueNamingTemplates.args_kwargs_all_values()
 
 
 class BinaryMultiplexer(UniquelyNamedReusable):
@@ -242,7 +242,7 @@ class BinaryMultiplexer(UniquelyNamedReusable):
             o <= i1 when s = '1' else i0;
         """))
     
-    naming = UniqueNamingTemplates.args_kwargs_all_values
+    naming = UniqueNamingTemplates.args_kwargs_all_values()
 
 
 class CustomVHDLOperator(UniquelyNamedReusable):
@@ -286,7 +286,7 @@ class CustomVHDLOperator(UniquelyNamedReusable):
         if arch_decl is not None:
             h.add_arch_declaration("vhdl", arch_decl)
     
-    naming = UniqueNamingTemplates.args_kwargs_md5_16
+    naming = UniqueNamingTemplates.args_kwargs_md5_16()
 
 
 import sys

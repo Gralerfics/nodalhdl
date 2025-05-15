@@ -39,5 +39,6 @@ Dependencies please check `pyproject.toml`.
 23. 结构快拆.
 24. 持久化读写后如何保障 unique_name 等池子的一致性.
 25. [*] 重构合理的异常处理体系.
-26. ...
+26. 转英文注释.
+27. ...
 

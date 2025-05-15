@@ -43,7 +43,8 @@ class Constants(UniquelyNamedReusable):
         opt = s.add_substructure("opt", CustomVHDLOperator(
             {},
             {name: type(value) for name, value in constants.items()},
-            "\n".join([line for name, value in pairs for line in _assign(name, value)])
+            "\n".join([line for name, value in pairs for line in _assign(name, value)]),
+            _unique_name = Constants.naming(**constants) + "_Core"
         ))
         
         for port in ports:
@@ -51,7 +52,7 @@ class Constants(UniquelyNamedReusable):
         
         return s
     
-    naming = UniqueNamingTemplates.args_kwargs_md5_16
+    naming = UniqueNamingTemplates.args_kwargs_md5_16()
 
 
 def Add(t1: SignalType, t2: SignalType) -> Structure: # [NOTICE] 不需要套一层 UniquelyNamedReusable, 就用里面的 BitsAdd 即可
@@ -118,6 +119,8 @@ class Multiply(UniquelyNamedReusable): # TODO 改: https://blog.csdn.net/m0_5178
         lW, sW = max(t1.W, t2.W), min(t1.W, t2.W)
         lP, sP = (a, b) if t1.W > t2.W else (b, a)
         
+        this_setup_unique_name = Multiply.naming(t1, t2, int_truncate)
+        
         if t1.bases(Bits) and t2.bases(Bits): # no truncation
             r = s.add_port("r", Output[Bits[t1.W + t2.W]])
             
@@ -126,7 +129,8 @@ class Multiply(UniquelyNamedReusable): # TODO 改: https://blog.csdn.net/m0_5178
                 {f"addend_{idx}": Bits[lW + idx + 1] for idx in range(sW)}, # plus 1 to avoid overflow
                 f"long_shifted <= '0' & long & (1 to {sW - 1} => '0');\n" +
                     "\n".join([f"addend_{idx} <= long_shifted({lW + sW - 1} downto {sW - idx - 1}) when short({idx}) = '1' else (others => '0');" for idx in range(sW)]),
-                f"signal long_shifted: std_logic_vector({lW + sW - 1} downto 0);"
+                f"signal long_shifted: std_logic_vector({lW + sW - 1} downto 0);",
+                _unique_name = this_setup_unique_name + "_AddendsGenerator"
             ))
             s.connect(lP, gen.IO.long)
             s.connect(sP, gen.IO.short)
@@ -164,7 +168,8 @@ class Multiply(UniquelyNamedReusable): # TODO 改: https://blog.csdn.net/m0_5178
                 tc = s.add_substructure("tc", CustomVHDLOperator(
                     {"i": Bits[t1.W + t2.W]},
                     {"o": Bits[lW]},
-                    f"o <= i({lW - 1} downto 0);"
+                    f"o <= i({lW - 1} downto 0);",
+                    _unique_name = this_setup_unique_name + "_Truncator"
                 ))
                 s.connect(sint_mul.IO.r, tc.IO.i)
                 s.connect(tc.IO.o, r)
@@ -187,7 +192,8 @@ class Multiply(UniquelyNamedReusable): # TODO 改: https://blog.csdn.net/m0_5178
                         f" <= (1 to {sW - idx} => long_sign) & long_shifted({lW + sW - 2} downto {sW - idx - 1}) when short({idx}) = '1' else (others => '0');"
                     for idx in range(sW)]),
                 f"signal long_shifted: std_logic_vector({lW + sW - 2} downto 0);\n" +
-                    f"signal long_sign: std_logic;"
+                    f"signal long_sign: std_logic;",
+                _unique_name = this_setup_unique_name + "_AddendsGenerator"
             ))
             s.connect(lP, gen.IO.long)
             s.connect(sP, gen.IO.short)
@@ -223,7 +229,8 @@ class Multiply(UniquelyNamedReusable): # TODO 改: https://blog.csdn.net/m0_5178
                 tc = s.add_substructure("tc", CustomVHDLOperator(
                     {"i": Bits[t1.W + t2.W]},
                     {"o": Bits[lW]},
-                    f"o <= i({lW - 1} downto 0);"
+                    f"o <= i({lW - 1} downto 0);",
+                    _unique_name = this_setup_unique_name + "_Truncator"
                 ))
                 s.connect(subtractor.IO.r, tc.IO.i)
                 s.connect(tc.IO.o, r)
@@ -240,7 +247,8 @@ class Multiply(UniquelyNamedReusable): # TODO 改: https://blog.csdn.net/m0_5178
             tc = s.add_substructure("tc", CustomVHDLOperator(
                 {"i": Bits[t1.W + t2.W]},
                 {"o": t1},
-                f"o <= i({t1.W_frac + t1.W - 1} downto {t1.W_frac});"
+                f"o <= i({t1.W_frac + t1.W - 1} downto {t1.W_frac});",
+                _unique_name = this_setup_unique_name + "_Truncator"
             ))
             s.connect(bits_mul.IO.r, tc.IO.i)
             s.connect(tc.IO.o, r)
@@ -255,7 +263,8 @@ class Multiply(UniquelyNamedReusable): # TODO 改: https://blog.csdn.net/m0_5178
             tc = s.add_substructure("tc", CustomVHDLOperator(
                 {"i": Bits[t1.W + t2.W]},
                 {"o": Bits[t1.W]},
-                f"o <= i({t1.W_frac + t1.W - 1} downto {t1.W_frac});"
+                f"o <= i({t1.W_frac + t1.W - 1} downto {t1.W_frac});",
+                _unique_name = this_setup_unique_name + "_Truncator"
             ))
             s.connect(sint_mul.IO.r, tc.IO.i)
             s.connect(tc.IO.o, r)
@@ -265,7 +274,10 @@ class Multiply(UniquelyNamedReusable): # TODO 改: https://blog.csdn.net/m0_5178
         
         return s
     
-    naming = UniqueNamingTemplates.args_kwargs_all_values
+    @classmethod
+    def naming(cls, t1: SignalType, t2: SignalType, int_truncate: bool = True):
+        return f"{cls.__name__}_{t1}_{t2}{"_Truncated" if int_truncate else ""}"
+    # naming = UniqueNamingTemplates.args_kwargs_all_values()
 
 
 class Division(UniquelyNamedReusable):
@@ -282,7 +294,7 @@ class Division(UniquelyNamedReusable):
     def setup(t1: SignalType, t2: SignalType) -> Structure:
         pass
     
-    naming = UniqueNamingTemplates.args_kwargs_all_values
+    naming = UniqueNamingTemplates.args_kwargs_all_values()
 
 
 import sys

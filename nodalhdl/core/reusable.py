@@ -5,16 +5,24 @@ import hashlib
 
 
 class UniqueNamingTemplates:
+    """
+        should be @staticmethod factories, returning a callable(cls, *args, **kwargs) wrapped by classmethod().
+    """
     @staticmethod
-    def args_kwargs_md5_16(cls, *args, **kwargs):
-        return f"{cls.__name__}_{hashlib.md5((str(args) + str(kwargs)).encode('utf-8')).hexdigest()[:16]}"
+    def args_kwargs_md5_16():
+        def _naming(cls, *args, **kwargs):
+            return f"{cls.__name__}_{hashlib.md5((str(args) + str(kwargs)).encode('utf-8')).hexdigest()[:16]}"
+        return classmethod(_naming)
     
     @staticmethod
-    def args_kwargs_all_values(cls, *args, **kwargs):
-        res = f"{cls.__name__}"
-        res = res + "_" + "_".join(map(str, args)) if len(args) > 0 else res
-        res = res + "_" + "_".join(map(str, kwargs.values())) if len(kwargs) > 0 else res
-        return res
+    def args_kwargs_all_values():
+        def _naming(cls, *args, **kwargs):
+            # seems that kwargs is consistent with the input ordering when iterating
+            res = f"{cls.__name__}"
+            res = res + "_" + "_".join(map(str, args)) if len(args) > 0 else res
+            res = res + "_" + "_".join(map(str, kwargs.values())) if len(kwargs) > 0 else res
+            return res
+        return classmethod(_naming)
 
 
 class OperatorSetupTemplates:
@@ -76,25 +84,33 @@ class OperatorDeductionTemplates:
 
 class UniquelyNamedReusableMeta(type):
     def __call__(cls, *args, **kwargs):
-        if not isinstance(args, list) and not isinstance(args, tuple):
-            args = [args]
+        # behavioral methods overriding
+        """
+            e.g. you can add customized `_naming: <func>` in kwargs to override the naming staticmethod defined in cls.
+                and these attributes will be ignored later.
+        """
+        _setup = kwargs.pop("_setup", cls.setup)
+        _deduction = kwargs.pop("_deduction", getattr(cls, "deduction", None))
+        _generation = kwargs.pop("_generation", getattr(cls, "generation", None))
+        _naming = kwargs.pop("_naming", cls.naming) # _naming = lambda *args, **kwargs: ..., no cls
+        _unique_name = kwargs.pop("_unique_name", _naming(*args, **kwargs))
         
         # return existed reusable structure (will not be in the pool if not reusable)
-        maybe_unique_name = cls.naming(cls, *args, **kwargs) # should be a valid string and unique across all operators
+        maybe_unique_name = _unique_name
         maybe_s = ReusablePool.fetch(maybe_unique_name)
         if maybe_s is not None:
             return maybe_s
         
         # setup
-        s: Structure = cls.setup(*args, **kwargs)
+        s: Structure = _setup(*args, **kwargs)
         
         # save arguments
         s.custom_params["_setup_args"] = args
         s.custom_params["_setup_kwargs"] = kwargs
         
         # for operators
-        s.custom_deduction = getattr(cls, "deduction", None)
-        s.custom_generation = getattr(cls, "generation", None)
+        s.custom_deduction = _deduction
+        s.custom_generation = _generation
         if s.custom_deduction is None and s.custom_generation is not None: # custom_deduction can be passed
             s.custom_deduction = lambda s, io: None
         if s.custom_generation is None and s.custom_deduction is not None: # custom_generation is necessary
@@ -118,16 +134,27 @@ class UniquelyNamedReusable(metaclass = UniquelyNamedReusableMeta):
         return Structure()
     
     """
-    Define the following two methods to make it an operator (do not decomment here):
-    
-    @staticmethod
-    def deduction(s: Structure, io: IOProxy): ...
-    
-    @staticmethod
-    def generation(s: Structure, h: HDLFileModel, io: IOProxy): ...
-    """
+        Define the following two methods to make it an operator (do not decomment here):
 
-    naming = UniqueNamingTemplates.args_kwargs_md5_16
+            @staticmethod
+            def deduction(s: Structure, io: IOProxy): ...
+            
+            @staticmethod
+            def generation(s: Structure, h: HDLFileModel, io: IOProxy): ...
+    """
+    
+    """
+        `naming`:
+            (*arg, **kwargs) may differ, but different arguments can lead to the same structure/unique_name (by defining `naming`);
+            different structures must have different unique name;
+            same structures can have different unique names, but not recommended.
+        should be @classmethod, or UniqueNamingTemplates.<...> will automatically wrap classmethod(). Use:
+            @classmethod
+            def naming(cls, a: ...): # argument list (cls excluded) should be totally same to the setup(...)
+                return ...
+        or the template below.
+    """
+    naming = UniqueNamingTemplates.args_kwargs_md5_16()
 
 
 import sys

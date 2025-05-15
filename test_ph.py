@@ -253,7 +253,10 @@ shader.singletonize()
 shader.expand()
 rid = RuntimeId.create()
 shader.deduction(rid)
-print(shader.runtime_info(rid))
+# print(shader.runtime_info(rid))
+
+# model = shader.generation(rid)
+# emit_to_files(model.emit_vhdl(), "C:/Workspace/hdmi_ddr3_fragment_shader_proj/hdmi_ddr3_fragment_shader_proj.srcs/sources_1/new/shader")
 
 
 # STA
