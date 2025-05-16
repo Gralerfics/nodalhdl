@@ -1,3 +1,28 @@
+"""
+    Notes:
+        base 仅一个, 合并时为最下的、与二者都有从属关系的类型.
+            (不同支类型都有的话说明就是强制转换, 取最近公共祖先; 同支的话往下走更具体)
+            (信息给了就是合理的! 出现不合理就是给的问题!)
+        
+        类型 (type) 指 SignalType 及其子类的对象
+        类型的基类型 (base) 指 SignalType 及其子类本身的引用
+        但显示基类型的名字 (base_name) 时用类型基础名, 也就是基类型的名称去掉最后的 "Type"
+        所以下面为了方便用而定义的一系列对象和衍生对象命名最好就是基类型的名称
+        
+        Auto 下 Bundle 代表所有结构化类型, Bits 代表所有单类型; Signal 下 IOWrapper 代表所有 IO 包装.
+        这三者应该完全覆盖除 Auto 和 Signal 之外所有类型的祖先.
+        Bundle 下继承的新类型必须以类似的 dict 作为 derive 的第一个参数并拥有 bundle_types (一系列递归遍历操作导致的要求);
+        IOWrapper 下继承的新类型类似, 必须拥有 wrapped_type 并且作为 derive 第一个参数.
+        
+        其实可以 IOWrapper 直接返回的是其他类型对象, 只是为其添加 wrapper_type (in or out) 属性,
+        这样就把 IOWrapper 整合进了常规类型, 各类操作中可以省去很多判断, Signal 和 Auto 似乎也就可以合并.
+        目前是将其单独列为 Signal 下的一类, 优点是明确一些, 并且 IOWrapperType 也更标准一些.
+        TODO 之后可以考虑重构.
+        更激进一点则是将 Bundle 视为一系列 Bits 的拼接, 类似 C struct 中的 union, 将其归入 Bits 下,
+        则 Bits 就可以作为顶层类型, 且各类判断几乎全都不需要了.
+        缺点是实现起来有点问题; 或许, Bundle 的信息并不是 dict 这样 "Bits 怎么构成 Bundle", 而是 "Bits 怎么划分为子 Bits".
+        TODO 也可以考虑哈.
+"""
 import hashlib
 
 from typing import Dict, Union
@@ -13,12 +38,14 @@ _info_abbreviation_mapping = {
     "W_frac": "width_fraction",
     "W_exp": "width_exponent",
     "W_mant": "width_mantissa",
+    "BT": "bundle_types",
     "T": "wrapped_type"
-}
+} # try not to use abbrs inside SignalType(s)
 
 class SignalType:
     """
-        不应修改, 各操作返回新对象.
+        for signal types.
+        should not be modified, i.e. operations return new objects.
     """
     def __init__(self, info: dict = {}): # do not call by yourself
         self.info = info
@@ -47,6 +74,10 @@ class SignalType:
     def validal(self) -> str: # valid string
         return "Signal"
     
+    """ @override """
+    def exhibital(self) -> str: # display string
+        return self.validal()
+    
     @property
     def base(self): # xxxType
         return self.__class__
@@ -60,11 +91,37 @@ class SignalType:
         if self.base_belong(Bits):
             return "width" in self.info.keys()
         elif self.base_belong(Bundle):
-            bundle_types: Dict[str, SignalType] = self.info.get("bundle_types", {})
-            return all([t.is_determined for t in bundle_types.values()])
+            bundle_types: Dict[str, SignalType] = self.info.get("bundle_types", None)
+            if bundle_types is not None:
+                return all([t.is_determined for t in bundle_types.values()])
+            else: # Bundle base type is not determined
+                return False
         elif self.base_belong(IOWrapper):
             wrapped_type: SignalType = self.info.get("wrapped_type", None)
             return wrapped_type is not None and wrapped_type.is_determined
+    
+    @property
+    def is_io_perfect(self) -> bool:
+        if self.base_belong(Bits):
+            return False
+        elif self.base_belong(Bundle):
+            bundle_types: Dict[str, SignalType] = self.info.get("bundle_types", None)
+            if bundle_types is not None:
+                return all([t.is_io_perfect for t in bundle_types.values()])
+            else: # Bundle base type is not perfectly IO-wrapped
+                return False
+        elif self.base_belong(IOWrapper):
+            return True
+    
+    @property
+    def is_io_existing(self) -> bool:
+        if self.base_belong(Bits):
+            return False
+        elif self.base_belong(Bundle):
+            bundle_types: Dict[str, SignalType] = self.info.get("bundle_types", {})
+            return any([t.is_io_existing for t in bundle_types.values()])
+        elif self.base_belong(IOWrapper):
+            return True
     
     def _info_check(self, *keys):
         for key in keys:
@@ -76,13 +133,24 @@ class SignalType:
         raise NotImplementedError
     
     @staticmethod
-    def _base_belong(base_0: type, base_1: type):
+    def _base_equal(base_0: type, base_1: type) -> bool:
+        return base_0.__name__ == base_1.__name__
+    
+    def base_equal(self, other: 'SignalType') -> bool:
+        return SignalType._base_equal(self.base, other.base)
+    
+    @staticmethod
+    def _base_belong(base_0: type, base_1: type) -> bool:
         base_0_norm = eval(base_0.__name__)
         base_1_norm = eval(base_1.__name__)
         return issubclass(base_0_norm, base_1_norm)
     
     def base_belong(self, other: 'SignalType') -> bool:
+        # why not use isinstance(self, other.base)? type consistence in persistence need to be considered, see _base_belong().
         return SignalType._base_belong(self.base, other.base)
+    
+    def isomorphic(self, other: 'SignalType') -> bool:
+        raise NotImplementedError
     
     @staticmethod
     def _base_merge(base_0: type, base_1: type):
@@ -99,12 +167,102 @@ class SignalType:
             
             raise SignalTypeException(f"Failed to merge base {base_0.__name__} and {base_0.__name__}")
     
-    def merge(self, other: 'SignalType') -> 'SignalType':
-        raise NotImplementedError # TODO 冲突在此判断; 返回的类型需要特化
+    def _single_merge(self, other: 'SignalType') -> 'SignalType': # only for single types, i.e. (sub-)Bits
+        assert self.base_belong(Bits) and other.base_belong(Bits)
+        
+        keys = set(self.info.keys()) | set(other.info.keys())
+        new_info = {}
+        for key in keys:
+            self_value, other_value = self.info.get(key, None), other.info.get(key, None)
+            if self_value == other_value:
+                new_info[key] = self_value
+            elif self_value is None:
+                new_info[key] = other_value
+            elif other_value is None:
+                new_info[key] = self_value
+            else:
+                raise SignalTypeException(f"Conflicing types {self} and {other}")
+        
+        merged_base = SignalType._base_merge(self.base, other.base)
+        return merged_base(new_info)
+    
+    def merge(self, other: 'SignalType') -> 'SignalType': # merge base and all properties in info (different); for conflicting IO-wrappers, reserve those in self
+        if self.base_equal(Auto):
+            return other
+        elif other.base_equal(Auto):
+            return self
+        elif self.base_belong(IOWrapper):
+            self_wrapped_type: SignalType = self.info.get("wrapped_type", None)
+            
+            if other.base_belong(IOWrapper):
+                other_wrapped_type: SignalType = other.info.get("wrapped_type", None)
+                if other_wrapped_type is not None:
+                    return self.base({"wrapped_type": self_wrapped_type.merge(other_wrapped_type)})
+                else:
+                    raise SignalTypeException("IOWrapper base type cannot be merged with its derived types")
+            else:
+                return self.base({"wrapped_type": self_wrapped_type.merge(other)})
+        elif other.base_belong(IOWrapper):
+            other_wrapped_type: SignalType = other.info.get("wrapped_type", None)
+            if other_wrapped_type is not None:
+                return other.base({"wrapped_type": self.merge(other_wrapped_type)})
+            else:
+                raise SignalTypeException("IOWrapper base type cannot be merged with its derived types")
+        elif self.base_belong(Bundle) and other.base_belong(Bundle):
+            self_bundle_types: Dict[str, SignalType] = self.info.get("bundle_types", None)
+            other_bundle_types: Dict[str, SignalType] = other.info.get("bundle_types", None)
+            if self_bundle_types is None and other_bundle_types is None:
+                return self.base()
+            elif self_bundle_types is not None and other_bundle_types is not None and self_bundle_types.keys() == other_bundle_types.keys():
+                return self.base({
+                    "bundle_types": {k: self_t.merge(other_bundle_types.get(k)) for k, self_t in self_bundle_types.items()}
+                })
+            else:
+                raise SignalTypeException("Non-isomorphic types cannot be merged")
+        elif self.base_belong(Bits) and other.base_belong(Bits):
+            return self._single_merge(other)
+        else:
+            raise SignalTypeException("Non-isomorphic types cannot be merged")
+    
+    def pure_merge(self, other: 'SignalType') -> 'SignalType':
+        return self.io_clear().merge(other.io_clear())
+    
+    def io_clear(self) -> 'SignalType':
+        if not self.is_io_existing:
+            return self
+        elif self.base_belong(IOWrapper):
+            wrapped_type: SignalType = self.info.get("wrapped_type", None)
+            if wrapped_type is not None:
+                return wrapped_type
+            else:
+                raise SignalTypeException("There exists IOWrapper base type that cannot be eliminated")
+        elif self.base_belong(Bundle):
+            bundle_types: Dict[str, SignalType] = self.info.get("bundle_types", None)
+            if bundle_types is not None:
+                return self.base({
+                    "bundle_types": {k: t.io_clear() for k, t in bundle_types.items()}
+                })
+            else:
+                return self.base()
+    
+    def io_flip(self) -> 'SignalType':
+        if not self.is_io_perfect:
+            raise SignalTypeException("Imperfectly IO-wrapped signal type cannot be flipped")
+        elif isinstance(self, IOWrapperType): # self.base_belong(IOWrapper):
+            return self.flip()
+        elif self.base_belong(Bundle):
+            bundle_types: Dict[str, SignalType] = self.info.get("bundle_types", None)
+            # bundle_types will not be None because `self.is_io_perfect` is True here.
+            return self.base({
+                "bundle_types": {k: t.io_flip() for k, t in bundle_types.items()}
+            })
+        else:
+            raise SignalTypeException("This should not happen")
 
 
 class AutoType(SignalType):
-    pass
+    def validal(self) -> str:
+        return "Auto"
 
 
 class BitsType(AutoType):
@@ -114,7 +272,7 @@ class BitsType(AutoType):
     
     def derive(self, width: int) -> 'SignalType':
         assert isinstance(width, int)
-        return BitsType({"width": width})
+        return self.base({"width": width})
     
     def validal(self) -> str:
         width = self.info.get("width", None)
@@ -127,7 +285,7 @@ class FixedPointType(BitsType):
     
     def derive(self, width_integer: int, width_fraction: int) -> 'SignalType':
         assert isinstance(width_integer, int) and isinstance(width_fraction, int)
-        return FixedPointType({"width_integer": width_integer, "width_fraction": width_fraction})
+        return self.base({"width_integer": width_integer, "width_fraction": width_fraction})
     
     def validal(self) -> str:
         width_integer = self.info.get("width_integer", None)
@@ -142,7 +300,7 @@ class UFixedPointType(FixedPointType):
 
     def derive(self, width_integer: int, width_fraction: int) -> 'SignalType':
         assert isinstance(width_integer, int) and isinstance(width_fraction, int)
-        return UFixedPointType({"width_integer": width_integer, "width_fraction": width_fraction, "width": width_integer + width_fraction})
+        return self.base({"width_integer": width_integer, "width_fraction": width_fraction, "width": width_integer + width_fraction})
 
 
 class SFixedPointType(FixedPointType):
@@ -152,7 +310,7 @@ class SFixedPointType(FixedPointType):
 
     def derive(self, width_integer: int, width_fraction: int) -> 'SignalType':
         assert isinstance(width_integer, int) and isinstance(width_fraction, int)
-        return SFixedPointType({"width_integer": width_integer, "width_fraction": width_fraction, "width": 1 + width_integer + width_fraction})
+        return self.base({"width_integer": width_integer, "width_fraction": width_fraction, "width": 1 + width_integer + width_fraction})
 
 
 class IntegerType(FixedPointType):
@@ -195,7 +353,7 @@ class FloatingPointType(BitsType):
     
     def derive(self, width_exponent: int, width_mantissa: int) -> 'SignalType':
         assert isinstance(width_exponent, int) and isinstance(width_mantissa, int)
-        return FixedPointType({"width_exponent": width_exponent, "width_mantissa": width_mantissa})
+        return self.base({"width_exponent": width_exponent, "width_mantissa": width_mantissa})
     
     def validal(self) -> str:
         width_exponent = self.info.get("width_exponent", None)
@@ -209,12 +367,22 @@ class BundleType(AutoType):
         return BundleValue(self, *args, **kwds)
     
     def derive(self, bundle_types: Dict[str, SignalType]) -> 'SignalType':
-        assert isinstance(bundle_types, SignalType)
-        return BundleType({"bundle_types": bundle_types})
+        assert isinstance(bundle_types, dict)
+        return self.base({"bundle_types": bundle_types})
     
     def validal(self) -> str:
-        bundle_types: Dict[str, SignalType] = self.info.get("bundle_types", {})
-        return hashlib.md5(str(bundle_types).encode('utf-8')).hexdigest()
+        bundle_types: Dict[str, SignalType] = self.info.get("bundle_types", None)
+        if bundle_types is not None:
+            return self.base_name + "_" + hashlib.md5(str(bundle_types).encode('utf-8')).hexdigest()
+        else:
+            return self.base_name
+    
+    def exhibital(self) -> str:
+        bundle_types: Dict[str, SignalType] = self.info.get("bundle_types", None)
+        if bundle_types is not None:
+            return self.base_name + "{" + ", ".join([f"{k}: {t.exhibital()}" for k, t in bundle_types.items()]) + "}"
+        else:
+            return self.base_name
 
 
 class IOWrapperType(SignalType):
@@ -222,24 +390,71 @@ class IOWrapperType(SignalType):
         raise SignalTypeInstantiationException(f"{self.base_name} cannot be instantiated")
     
     def derive(self, wrapped_type: SignalType) -> 'SignalType':
-        assert isinstance(wrapped_type, SignalType)
-        return IOWrapperType({"wrapped_type": wrapped_type})
+        assert isinstance(wrapped_type, SignalType) and not wrapped_type.is_io_existing
+        return self.base({"wrapped_type": wrapped_type})
     
     def validal(self) -> str:
         wrapped_type: SignalType = self.info.get("wrapped_type", None)
         return f"{self.base_name}_{wrapped_type}" if wrapped_type is not None else self.base_name
+    
+    def exhibital(self) -> str:
+        wrapped_type: SignalType = self.info.get("wrapped_type", None)
+        return f"{self.base_name}[{wrapped_type.exhibital()}]" if wrapped_type is not None else self.base_name
+    
+    def flip(self):
+        raise SignalTypeException("IOWrapper base type cannot be flipped")
+
+
+class InputType(IOWrapperType):
+    def flip(self):
+        wrapped_type: SignalType = self.info.get("wrapped_type", None)
+        if wrapped_type is not None:
+            return Output[wrapped_type]
+        else:
+            return Output
+
+
+class OutputType(IOWrapperType):
+    def flip(self):
+        wrapped_type: SignalType = self.info.get("wrapped_type", None)
+        if wrapped_type is not None:
+            return Input[wrapped_type]
+        else:
+            return Input
 
 
 Signal = SignalType()
+
 Auto = AutoType()
+
 Bits = BitsType()
+Bit = Bits[1]
+Byte = Bits[8]
+
 UFixedPoint = UFixedPointType()
 SFixedPoint = SFixedPointType()
+
 UInt = UIntType()
+UInt8 = UInt[8]
+UInt16 = UInt[16]
+UInt32 = UInt[32]
+UInt64 = UInt[64]
+
 SInt = SIntType()
+Int8 = SInt[8]
+Int16 = SInt[16]
+Int32 = SInt[32]
+Int64 = SInt[64]
+
 FloatingPoint = FloatingPointType()
+Float = FloatingPoint[8, 23]
+Double = FloatingPoint[11, 52]
+
 Bundle = BundleType()
+
 IOWrapper = IOWrapperType()
+Input = InputType()
+Output = OutputType()
 
 
 """ SignalValue """
@@ -343,26 +558,84 @@ _current_module = sys.modules[__name__]
 __all__ = [name for name in dir() if not name.startswith('_') and getattr(getattr(_current_module, name, None), "__module__", None) == __name__]
 
 
-print(Bits)
-print(Bits[8])
-print(SFixedPoint[16, 12])
-print(SInt[8])
+if __name__ == "__main__": # test
+    print(Bits)
+    print(Bits[8])
+    print(SFixedPoint[16, 12])
+    print(SInt[8])
 
-print(SFixedPoint[1, 1](1.5))
-print(SFixedPoint[1, 1](2.5))
+    print(SFixedPoint[1, 1](1.5))
+    print(SFixedPoint[1, 1](2.5))
 
-print(SInt[3](2))
+    print(" === ")
 
-print(SignalType._base_merge(SFixedPointType, SIntType))
+    S = Bundle[{
+        "a": Input[Auto],
+        "b": Output[UInt[8]],
+        "c": Auto,
+        "d": Output[Bundle[{
+            "t": Float
+        }]]
+    }]
 
+    T = Bundle[{
+        "a": Output[Auto],
+        "b": Output[Bits],
+        "c": Bundle[{
+            "x": Input[SInt[3]],
+            "y": Output[SInt]
+        }],
+        "d": Input[Bundle[{
+            "t": Auto
+        }]]
+    }]
 
-"""
-    base 仅一个, 合并时为最下的、与二者都有从属关系的类型.
-        (不同支类型都有的话说明就是强制转换, 取最近公共祖先; 同支的话往下走更具体)
-        (信息给了就是合理的! 出现不合理就是给的问题!)
-    
-    类型 (type) 指 SignalType 及其子类的对象
-    类型的基类型 (base) 指 SignalType 及其子类本身的引用
-    但显示基类型的名字 (base_name) 时用类型基础名, 也就是基类型的名称去掉最后的 "Type"
-    所以下面为了方便用而定义的一系列对象和衍生对象命名最好就是基类型的名称
-"""
+    P = Bundle[{
+        "a": Auto,
+        "b": Bits,
+        "c": Bundle[{
+            "x": SInt[3],
+            "y": SInt
+        }],
+        "d": Auto
+    }]
+
+    print(S.exhibital())
+    print(T.exhibital())
+    print(S.io_clear().exhibital())
+    print(T.io_clear().exhibital())
+    print(S.pure_merge(T).exhibital())
+
+    print(" === ")
+
+    print(S.exhibital())
+    print(P.exhibital())
+    print(S.merge(P).exhibital())
+
+    print(" === ")
+
+    print(T.exhibital())
+    print(T.io_flip().exhibital())
+    print(T.io_clear().exhibital())
+
+    # Q = Bundle[{
+    #     "a": UInt[4],
+    #     "b": Bits[8],
+    #     "c": Bundle[{
+    #         "x": SInt[3],
+    #         "y": SInt[5],
+    #         "z": Bundle[{
+    #             "n": UInt[8]
+    #         }]
+    #     }]
+    # }]
+
+    # q = Q({
+    #     "a": 20,
+    #     "b": "00010010",
+    #     "c": {
+    #         "x": -5,
+    #         "y": -2
+    #     }
+    # })
+
