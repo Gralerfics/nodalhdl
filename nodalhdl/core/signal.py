@@ -57,12 +57,12 @@ class SignalType:
     
     @property
     def is_determined(self) -> bool: # width-determined or subtype determined
-        if self.belong(Bits):
+        if self.base_belong(Bits):
             return "width" in self.info.keys()
-        elif self.belong(Bundle):
+        elif self.base_belong(Bundle):
             bundle_types: Dict[str, SignalType] = self.info.get("bundle_types", {})
             return all([t.is_determined for t in bundle_types.values()])
-        elif self.belong(IOWrapper):
+        elif self.base_belong(IOWrapper):
             wrapped_type: SignalType = self.info.get("wrapped_type", None)
             return wrapped_type is not None and wrapped_type.is_determined
     
@@ -75,14 +75,29 @@ class SignalType:
     def uid(self) -> str: # consistent hash of (base, info), for comparison
         raise NotImplementedError
     
-    def belong(self, other: 'SignalType') -> bool:
-        self_norm = eval(self.base.__name__) # TODO to be checked
-        other_norm = eval(other.base.__name__)
-        return issubclass(self_norm, other_norm)
+    @staticmethod
+    def _base_belong(base_0: type, base_1: type):
+        base_0_norm = eval(base_0.__name__)
+        base_1_norm = eval(base_1.__name__)
+        return issubclass(base_0_norm, base_1_norm)
+    
+    def base_belong(self, other: 'SignalType') -> bool:
+        return SignalType._base_belong(self.base, other.base)
     
     @staticmethod
-    def _merge_base(base_0: type, base_1: type):
-        raise NotImplementedError
+    def _base_merge(base_0: type, base_1: type):
+        if SignalType._base_belong(base_0, base_1):
+            return base_0
+        elif SignalType._base_belong(base_1, base_0):
+            return base_1
+        else: # or find "LCA" ([NOTICE] if multi-inheritance, use the first base, i.e. __base__)
+            current_base = base_0
+            while SignalType._base_belong(current_base, SignalType):
+                if SignalType._base_belong(base_1, current_base):
+                    return current_base
+                current_base = current_base.__base__
+            
+            raise SignalTypeException(f"Failed to merge base {base_0.__name__} and {base_0.__name__}")
     
     def merge(self, other: 'SignalType') -> 'SignalType':
         raise NotImplementedError # TODO 冲突在此判断; 返回的类型需要特化
@@ -141,25 +156,36 @@ class SFixedPointType(FixedPointType):
 
 
 class IntegerType(FixedPointType):
-    def derive(self, width: int) -> 'SignalType':
-        assert isinstance(width, int)
-        return self.base({"width": width})
+    def __init__(self, info = {}):
+        super().__init__(info)
+        info["width_fraction"] = 0
+    
+    def __call__(self, *args, **kwds):
+        raise SignalTypeInstantiationException(f"{self.base_name} cannot be instantiated")
     
     def validal(self):
         width = self.info.get("width", None)
         return f"{self.base_name}_{width}" if width is not None else self.base_name
 
 
-class UIntType(IntegerType):
+class UIntType(IntegerType, UFixedPointType):
+    def derive(self, width: int) -> 'SignalType':
+        assert isinstance(width, int)
+        return self.base({"width": width, "width_integer": width}) # , "width_fraction": 0})
+    
     def __call__(self, *args, **kwds):
         self._info_check("width")
-        return UIntValue(self, *args, **kwds)
+        return UFixedPointValue(self, *args, **kwds)
 
 
-class SIntType(IntegerType):
+class SIntType(IntegerType, SFixedPointType):
+    def derive(self, width: int) -> 'SignalType':
+        assert isinstance(width, int)
+        return self.base({"width": width, "width_integer": width - 1}) # , "width_fraction": 0})
+    
     def __call__(self, *args, **kwds):
         self._info_check("width")
-        return SIntValue(self, *args, **kwds)
+        return SFixedPointValue(self, *args, **kwds)
 
 
 class FloatingPointType(BitsType):
@@ -221,7 +247,7 @@ class SignalValueException(Exception): pass
 
 class SignalValue:
     def __init__(self, signal_type: SignalType, literal_value):
-        assert signal_type.base_name == self.__class__.__name__[:-5]
+        # assert signal_type.base_name == self.__class__.__name__[:-5] # TODO 本来是保证 xType 对应 xValue, 但目前 U/SInt 直接用了 U/SFixedPoint, 先注释吧
         self.type = signal_type
         self.set_internal(literal_value)
     
@@ -284,8 +310,8 @@ class UFixedPointValue(BitsValue):
 
 
 class SFixedPointValue(BitsValue):
-    def literal_to_internal(self, literal_value: float):
-        if isinstance(literal_value, float):
+    def literal_to_internal(self, literal_value: Union[float, int]):
+        if isinstance(literal_value, float) or isinstance(literal_value, int):
             value_int = int(literal_value * (1 << self.W_frac))
             half = 1 << (self.W - 1)
             return (value_int + half) % (1 << self.W) - half
@@ -293,7 +319,8 @@ class SFixedPointValue(BitsValue):
             raise NotImplementedError
     
     def internal_to_literal(self, internal_value):
-        return internal_value / (1 << self.W_frac)
+        literal_value = internal_value / (1 << self.W_frac)
+        return literal_value if self.W_frac > 0 else int(literal_value) # W_frac = 0 -> Integer
     
     def validal(self) -> str:
         return str(self.literal)
@@ -301,14 +328,6 @@ class SFixedPointValue(BitsValue):
     def to_bits_string(self):
         num_unsigned = self.internal + (1 << self.W) if self.internal < 0 else self.internal
         return bin(num_unsigned)[2:].zfill(self.W)[-self.W:]
-
-
-class UIntValue(UFixedPointValue):
-    pass # TODO
-
-
-class SIntValue(SFixedPointValue):
-    pass # TODO
 
 
 class FloatingPointValue(BitsValue):
@@ -331,6 +350,10 @@ print(SInt[8])
 
 print(SFixedPoint[1, 1](1.5))
 print(SFixedPoint[1, 1](2.5))
+
+print(SInt[3](2))
+
+print(SignalType._base_merge(SFixedPointType, SIntType))
 
 
 """
