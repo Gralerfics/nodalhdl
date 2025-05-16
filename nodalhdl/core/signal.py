@@ -186,28 +186,19 @@ class SignalType:
         merged_base = SignalType._base_merge(self.base, other.base)
         return merged_base(new_info)
     
-    def merge(self, other: 'SignalType') -> 'SignalType': # merge base and all properties in info (different); for conflicting IO-wrappers, reserve those in self
+    def apply(self, other: 'SignalType') -> 'SignalType': # merge base and all properties in info (different); ignore other's IO-wrappers
+        other = other.io_clear()
+        
         if self.base_equal(Auto):
             return other
         elif other.base_equal(Auto):
             return self
-        elif self.base_belong(IOWrapper):
-            self_wrapped_type: SignalType = self.info.get("wrapped_type", None)
-            
-            if other.base_belong(IOWrapper):
-                other_wrapped_type: SignalType = other.info.get("wrapped_type", None)
-                if other_wrapped_type is not None:
-                    return self.base({"wrapped_type": self_wrapped_type.merge(other_wrapped_type)})
-                else:
-                    raise SignalTypeException("IOWrapper base type cannot be merged with its derived types")
+        elif self.base_belong(IOWrapper): # and self.info.get("wrapped_type", None) is not None:
+            wrapped_type: SignalType = self.info.get("wrapped_type", None)
+            if wrapped_type is not None:
+                return self.base({"wrapped_type": wrapped_type.apply(other)})
             else:
-                return self.base({"wrapped_type": self_wrapped_type.merge(other)})
-        elif other.base_belong(IOWrapper):
-            other_wrapped_type: SignalType = other.info.get("wrapped_type", None)
-            if other_wrapped_type is not None:
-                return other.base({"wrapped_type": self.merge(other_wrapped_type)})
-            else:
-                raise SignalTypeException("IOWrapper base type cannot be merged with its derived types")
+                return self.base()
         elif self.base_belong(Bundle) and other.base_belong(Bundle):
             self_bundle_types: Dict[str, SignalType] = self.info.get("bundle_types", None)
             other_bundle_types: Dict[str, SignalType] = other.info.get("bundle_types", None)
@@ -215,7 +206,7 @@ class SignalType:
                 return self.base()
             elif self_bundle_types is not None and other_bundle_types is not None and self_bundle_types.keys() == other_bundle_types.keys():
                 return self.base({
-                    "bundle_types": {k: self_t.merge(other_bundle_types.get(k)) for k, self_t in self_bundle_types.items()}
+                    "bundle_types": {k: self_t.apply(other_bundle_types.get(k)) for k, self_t in self_bundle_types.items()}
                 })
             else:
                 raise SignalTypeException("Non-isomorphic types cannot be merged")
@@ -224,8 +215,8 @@ class SignalType:
         else:
             raise SignalTypeException("Non-isomorphic types cannot be merged")
     
-    def pure_merge(self, other: 'SignalType') -> 'SignalType':
-        return self.io_clear().merge(other.io_clear())
+    def merge(self, other: 'SignalType') -> 'SignalType':
+        return self.io_clear().apply(other.io_clear())
     
     def io_clear(self) -> 'SignalType':
         if not self.is_io_existing:
@@ -604,13 +595,13 @@ if __name__ == "__main__": # test
     print(T.exhibital())
     print(S.io_clear().exhibital())
     print(T.io_clear().exhibital())
-    print(S.pure_merge(T).exhibital())
+    print(S.merge(T).exhibital())
 
     print(" === ")
 
     print(S.exhibital())
     print(P.exhibital())
-    print(S.merge(P).exhibital())
+    print(S.apply(P).exhibital())
 
     print(" === ")
 
