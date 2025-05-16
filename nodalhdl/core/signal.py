@@ -180,14 +180,16 @@ class SignalType:
                 new_info[key] = other_value
             elif other_value is None:
                 new_info[key] = self_value
-            else:
-                raise SignalTypeException(f"Conflicing types {self} and {other}")
+            elif key != "width":
+                pass # deprecate the conflicting property
+            else: # width
+                raise SignalTypeException(f"Width-conflicing types {self} and {other}")
         
         merged_base = SignalType._base_merge(self.base, other.base)
         return merged_base(new_info)
     
-    def apply(self, other: 'SignalType') -> 'SignalType': # merge base and all properties in info (different); ignore other's IO-wrappers
-        other = other.io_clear()
+    def apply(self, other: 'SignalType') -> 'SignalType': # merge base and all properties in info (different)
+        other = other.io_clear() # ignore other's IO-wrappers
         
         if self.base_equal(Auto):
             return other
@@ -608,6 +610,10 @@ if __name__ == "__main__": # test
     print(T.exhibital())
     print(T.io_flip().exhibital())
     print(T.io_clear().exhibital())
+    
+    print(UInt[8].merge(SFixedPoint[3, 4]).info)
+    print(UInt[8].merge(SInt[8]).info)
+    print(SFixedPoint[3, 3].merge(UFixedPoint[3, 4]).info)
 
     # Q = Bundle[{
     #     "a": UInt[4],
