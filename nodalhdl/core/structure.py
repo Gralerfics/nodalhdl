@@ -593,7 +593,7 @@ class Structure:
     def is_operator(self):
         """
             Check if the structure is an operator, i.e. not allowed to expand.
-            Some structures do not have substructures, but they are not operators; operators should have no substructures.
+            There exist some structures do not have substructures, but they are not operators (directly connection); operators should have no substructures.
         """
         return self.custom_deduction is not None and self.custom_generation is not None
     
@@ -604,6 +604,14 @@ class Structure:
         return ports_determined and substructures_determined
     
     @property
+    def is_reusable_operator(self):
+        """
+            operators should not be expanded;
+            non-reusable operators should be stripped (in deep mode).
+        """
+        return self.is_reusable and self.is_operator
+    
+    @property
     def is_sequential(self):
         ports_inside_nets_flag = any([p.latency > 0 for _, p in self.ports_inside_flipped.nodes()])
         subs_ports_outside_nets_flag = any([any([p.latency > 0 for _, p in self.get_subs_ports_outside(subs_inst_name).nodes()]) for subs_inst_name in self.substructures.keys()])
@@ -611,7 +619,7 @@ class Structure:
     
     @property
     def is_singleton(self):
-        return (self.is_operator or self.instance_number <= 1) and all([subs.is_singleton for subs in self.substructures.values()])
+        return (self.is_reusable_operator or self.instance_number <= 1) and all([subs.is_singleton for subs in self.substructures.values()])
     
     @property
     def is_strictly_singleton(self):
@@ -675,17 +683,18 @@ class Structure:
     def get_subs_ports_outside(self, subs_inst_name: str) -> StructuralNodes:
         return self.substructures[subs_inst_name].ports_outside[(self.id, subs_inst_name)]
     
-    def duplicate(self, duplicate_operators: bool = False) -> 'Structure':
+    def duplicate(self, duplicate_reusable_operators: bool = False) -> 'Structure':
         """
             Deep copy of the structure.
             Reusable substructures under the structure will also be duplicated, and certainly not including ports_outside those are not under this new structure.
-            `duplicate_operators`: if operators should be duplicated, False in default, reference reserved.
+            `duplicate_reusable_operators`: if reusable operators should be duplicated, False in default, reference reserved.
+                non-reusable structures (including operators) should always be dupliated.
         """
         s_build_map: Dict[Structure, Structure] = {} # reference structure -> duplicated structure
         
         def _duplicate(ref_s: Structure):
-            # if operator and not duplicate_operators, return the old reference
-            if ref_s.is_operator and not duplicate_operators:
+            # if operator and not duplicate_reusable_operators, return the old reference
+            if ref_s.is_reusable_operator and not duplicate_reusable_operators:
                 return ref_s
             
             new_s = Structure() # use default new unique_name and None reusable_hdl
@@ -767,16 +776,17 @@ class Structure:
                     if subs.instance_number > 1, it might be needed to be stripped, in this case:
                         if not subs.is_reusable, it should be stripped;
                         or it is a reusable substructure, but deep is True, it might be needed to be stripped, in this case:
-                            if not subs.is_operator, it should be stripped;
-                            or it is an operator, but deep_to_operators is True, it should also be stripped.
+                            if not subs.is_operator (is_reusable_operator), it should be stripped;
+                            or it is an reusable operator, but deep_to_operators is True, it should also be stripped.
                 """
                 if subs.instance_number > 1 and (not subs.is_reusable or (deep and (not subs.is_operator or deep_to_operators))):
                     # need to strip
                     new_subs = subs.duplicate()
                     
-                    # move ports_outside from (ref_)subs to new_subs (just move, of_structure_inst_name is not changed)
-                    new_subs.ports_outside[(s.id, sub_inst_name)] = subs.ports_outside[(s.id, sub_inst_name)]
-                    del subs.ports_outside[(s.id, sub_inst_name)]
+                    if subs != new_subs: # theoretically, `==` will not happen?
+                        # move ports_outside from (ref_)subs to new_subs (just move, of_structure_inst_name is not changed)
+                        new_subs.ports_outside[(s.id, sub_inst_name)] = subs.ports_outside[(s.id, sub_inst_name)]
+                        del subs.ports_outside[(s.id, sub_inst_name)]
                     
                     # replace the substructure
                     s.substructures[sub_inst_name] = new_subs
@@ -796,7 +806,7 @@ class Structure:
     def expand(self, shallow: bool = False):
         """
             Expand the substructures, w/o operators.
-            Must be singleton, i.e. instance_number <= 1 or .is_operator for all substructures, which can be achieved by singletonize().
+            Must be singleton, i.e. instance_number <= 1 or .is_reusable_operator for all substructures, which can be achieved by singletonize().
                 P.S. the ports_inside of the `reusable substructures which are not operators` are going to be moved out, so they should be singleton.
                      operators need not be expanded, so they can be reused.
                      so asserting .is_singleton instead of .is_strictly_singleton is enough.
@@ -821,7 +831,7 @@ class Structure:
             
             # expand substructures (shallow, w/o operators)
             for sub_inst_name, subs in self.substructures.items():
-                if subs.is_operator:
+                if subs.is_reusable_operator:
                     # operator, move into new_substructures
                     new_substructures[sub_inst_name] = subs
                 else:

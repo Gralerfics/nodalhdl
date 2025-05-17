@@ -32,6 +32,8 @@ def AddU4U4U4() -> Structure:
 
 add_u4_u4_u4 = AddU4U4U4()
 
+add_auto_auto = BitsAdd(Auto, Auto)
+
 def M1() -> Structure:
     s = Structure("m1")
     
@@ -62,7 +64,7 @@ def AddWrapper(t1: SignalType, t2: SignalType) -> Structure:
     i2 = s.add_port("i2", Input[t2])
     o = s.add_port("o", Output[Auto])
     
-    adder = s.add_substructure("adder", BitsAdd(Auto, Auto))
+    adder = s.add_substructure("adder", add_auto_auto)
     
     s.connect(i1, adder.IO.a)
     s.connect(i2, adder.IO.b)
@@ -127,7 +129,7 @@ def M3() -> Structure:
     ro = s.add_port("ro", Output[Auto])
     
     p = s.add_substructure("p", addw)
-    q = s.add_substructure("q", BitsAdd(Auto, Auto))
+    q = s.add_substructure("q", add_auto_auto)
     r = s.add_substructure("r", BitsAdd(UInt[4], UInt[4]))
     
     Nipq = s.add_node("Nipq", Auto)
@@ -166,24 +168,24 @@ model = m2.generation(rid_m2)
 emit_to_files(model.emit_vhdl(), "C:/Workspace/test_project/test_project.srcs/sources_1/new")
 
 
-print('m2.dup ==============================================================================================================')
+# print('m2.dup ==============================================================================================================')
 
 
-m2_dup = m2.duplicate()
+# m2_dup = m2.duplicate()
 
-rid_m2_dup = RuntimeId.create()
-m2_dup.deduction(rid_m2_dup)
+# rid_m2_dup = RuntimeId.create()
+# m2_dup.deduction(rid_m2_dup)
 
-print(m2.runtime_info(rid_m2))
-print(m2_dup.runtime_info(rid_m2_dup))
+# print(m2.runtime_info(rid_m2))
+# print(m2_dup.runtime_info(rid_m2_dup))
 
-print(m2.get_nets())
-print(m2_dup.get_nets())
+# print(m2.get_nets())
+# print(m2_dup.get_nets())
 
-# print(m2_dup.substructures["u1"].ports_outside[(m2_dup.id, "u1")].t.located_net)
-# print(m2_dup.ports_inside_flipped.t.located_net)
-# print([x for x in m2_dup.ports_inside_flipped.t.located_net.nodes_weak])
-# print([x for x in m2_dup.ports_inside_flipped.t.located_net.runtimes.keys()])
+# # print(m2_dup.substructures["u1"].ports_outside[(m2_dup.id, "u1")].t.located_net)
+# # print(m2_dup.ports_inside_flipped.t.located_net)
+# # print([x for x in m2_dup.ports_inside_flipped.t.located_net.nodes_weak])
+# # print([x for x in m2_dup.ports_inside_flipped.t.located_net.runtimes.keys()])
 
 
 print('m2.strip ==============================================================================================================')

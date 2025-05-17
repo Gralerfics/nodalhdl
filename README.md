@@ -39,5 +39,6 @@ Dependencies please check `pyproject.toml`.
 23. [*] 重构合理的异常处理体系.
 24. 转英文注释.
 25. 似乎带 Bundle 类型的 generation 没测试过.
-26. ...
+26. [***] is_reusable_operator 问题.
+27. ...
 
