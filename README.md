@@ -16,7 +16,7 @@ Dependencies please check `pyproject.toml`.
 
 1. 定点数除法、CORDIC 等模块; 乘法的优化等.
 2. retiming 效率问题. e.g. 转换时忽略基本无延迟的节点等.
-3. [***] 参考 test_ph 构建 HLS 层.
+3. [***] 参考 test_shader_pretty_hip 构建 HLS 层.
 4. operator 自带时钟延迟的问题 (retiming 可否解决), 解决则可引入 IP 核; 普通时序电路和流水线的区分.
 5. [*] 进一步重构 signal (IOWrapper 和 Bundle), 见文件中注释.
 6. [**] (整体 retiming 慢则拆分) 流水线拼接 (直接对接 / ready-valid); ready-valid 反压打断问题; 同功能的组合逻辑和状态机实现.

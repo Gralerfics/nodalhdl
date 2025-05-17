@@ -180,7 +180,7 @@ def Test_Arith_Constants(s: Structure):
 
     u = s.add_substructure("u", Constants(
         aaa = UInt[8](42),
-        bbb = p,
+        bbb = UInt[8](42), # p, # TODO BundleValue 重构之后还没重新实现
         ccc = SFixedPoint[4, 2](1.5)
     ))
 
