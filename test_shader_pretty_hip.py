@@ -14,30 +14,18 @@ T = SFixedPoint[16, 12] # 目前要求 W_int <= 45 且 8 <= W_frac <= 20
 def Shader() -> Structure:
     s = Structure()
 
-    UID = 0
-    def builder(f):
-        def _builder(*args, **kwargs):
-            res = f(*args, **kwargs)
-            nonlocal UID
-            UID += 1
-            return res
-        return _builder
-
-    @builder
     def TArithmeticShifter(i: Node, n: int): # n > 0: move left, else right
-        # u = s.add_substructure(f"arith_shifter_{i.full_name}_{str(n).replace("-", "neg")}_{UID}", CustomVHDLOperator(
-        u = s.add_substructure(f"arith_shifter_{UID}", CustomVHDLOperator(
+        u = s.add_substructure(f"arith_shifter", CustomVHDLOperator(
             {"i": T},
             {"o": T},
             f"o <= std_logic_vector({"shift_left" if n >= 0 else "shift_right"}(signed(i), {abs(n)}));",
             _unique_name = f"ArithShifter_{str(n).replace("-", "NEG")}_{T}"
-        )) # 
+        ))
         s.connect(i, u.IO.i)
         return u.IO.o
     
-    @builder
     def TFract(i: Node):
-        u = s.add_substructure(f"fract_{UID}", CustomVHDLOperator(
+        u = s.add_substructure(f"fract", CustomVHDLOperator(
             {"i": T},
             {"o": T},
             f"o <= (o'high downto {T.W_frac} => '0') & i({T.W_frac - 1} downto 0);",
@@ -45,31 +33,27 @@ def Shader() -> Structure:
         ))
         s.connect(i, u.IO.i)
         return u.IO.o
-    
-    @builder
+
     def TAddition(a: Node, b: Node):
-        u = s.add_substructure(f"addition_{UID}", Add(T, T))
+        u = s.add_substructure(f"addition", Add(T, T))
         s.connect(a, u.IO.a)
         s.connect(b, u.IO.b)
         return u.IO.r
     
-    @builder
     def TSubtraction(a: Node, b: Node):
-        u = s.add_substructure(f"subtraction_{UID}", Subtract(T, T))
+        u = s.add_substructure(f"subtraction", Subtract(T, T))
         s.connect(a, u.IO.a)
         s.connect(b, u.IO.b)
         return u.IO.r
     
-    @builder
     def TMultiplication(a: Node, b: Node):
-        u = s.add_substructure(f"multiplication_{UID}", Multiply(T, T))
+        u = s.add_substructure(f"multiplication", Multiply(T, T))
         s.connect(a, u.IO.a)
         s.connect(b, u.IO.b)
         return u.IO.r
     
-    @builder
     def TMin(a: Node, b: Node):
-        u = s.add_substructure(f"min_{UID}", CustomVHDLOperator(
+        u = s.add_substructure(f"min", CustomVHDLOperator(
             {"a": T, "b": T},
             {"o": T},
             f"o <= a when signed(a) < signed(b) else b;",
@@ -78,10 +62,9 @@ def Shader() -> Structure:
         s.connect(a, u.IO.a)
         s.connect(b, u.IO.b)
         return u.IO.o
-    
-    @builder
+
     def TMinPositiveXAndOneMinusX(i: Node):
-        u = s.add_substructure(f"minx1mx_{UID}", CustomVHDLOperator(
+        u = s.add_substructure(f"minx1mx", CustomVHDLOperator(
             {"i": T},
             {"o": T},
             f"o <= i when unsigned(i) < to_unsigned({1 << (T.W_frac - 1)}, {T.W}) else std_logic_vector(to_unsigned({1 << T.W_frac}, {T.W}) - unsigned(i));",
@@ -90,9 +73,8 @@ def Shader() -> Structure:
         s.connect(i, u.IO.i)
         return u.IO.o
     
-    @builder
     def TCeil(i: Node):
-        u = s.add_substructure(f"ceil_{UID}", CustomVHDLOperator(
+        u = s.add_substructure(f"ceil", CustomVHDLOperator(
             {"i": T},
             {"o": T},
             f"o({T.W_frac - 1} downto 0) <= (others => '0');\n" +
@@ -104,9 +86,8 @@ def Shader() -> Structure:
         s.connect(i, u.IO.i)
         return u.IO.o
     
-    @builder
     def TClampZeroToOne(i: Node): # 注意是 [0.0, 1.0), 以确保转八位时没有问题
-        u = s.add_substructure(f"clamp01_{UID}", CustomVHDLOperator(
+        u = s.add_substructure(f"clamp01", CustomVHDLOperator(
             {"i": T},
             {"o": T},
             f"o <= (others => '0') when i(i'high) = '1' else\n" +
@@ -117,9 +98,8 @@ def Shader() -> Structure:
         s.connect(i, u.IO.i)
         return u.IO.o
     
-    @builder
     def fragCoordValueConvertor(i: Node):
-        u = s.add_substructure(f"fragcoord_value_convertor_{UID}", CustomVHDLOperator(
+        u = s.add_substructure(f"fragcoord_value_convertor", CustomVHDLOperator(
             {"i": UInt[12]},
             {"o": T},
             f"o({T.W_frac + 11} downto {T.W_frac}) <= i;\n" +
@@ -130,9 +110,8 @@ def Shader() -> Structure:
         s.connect(i, u.IO.i)
         return u.IO.o
     
-    @builder
     def iTimeConvertor(i: Node):
-        u = s.add_substructure(f"itime_convertor_{UID}", CustomVHDLOperator(
+        u = s.add_substructure(f"itime_convertor", CustomVHDLOperator(
             {"i": UInt[64]},
             {"o": T},
             f"o <= '0' & i({20 + T.W_int - 1} downto {20 - T.W_frac});",
@@ -141,9 +120,8 @@ def Shader() -> Structure:
         s.connect(i, u.IO.i)
         return u.IO.o
     
-    @builder
     def Tto8bitConvertor(i: Node):
-        u = s.add_substructure(f"to8bit_cvt_{UID}", CustomVHDLOperator(
+        u = s.add_substructure(f"to8bit_cvt", CustomVHDLOperator(
             {"i_clamped": T},
             {"o": Bits[8]},
             f"o <= i_clamped({T.W_frac - 1} downto {T.W_frac - 8});",
@@ -152,7 +130,6 @@ def Shader() -> Structure:
         s.connect(TClampZeroToOne(i), u.IO.i_clamped)
         return u.IO.o
     
-    @builder
     def Concatenate888(r: Node, g: Node, b: Node):
         u = s.add_substructure("color_24bit_cvt", CustomVHDLOperator(
             {"r": Bits[8], "g": Bits[8], "b": Bits[8]},
@@ -268,7 +245,6 @@ print(shader.runtime_info(rid))
 
 # STA
 sta = VivadoSTA(part_name = "xc7a200tfbg484-1", temporary_workspace_path = ".vivado_sta_shader", vivado_executable_path = "vivado.bat")
-# sta.analyse(shader, rid)
 sta.analyse(shader, rid, skip_emitting_and_script_running = True)
 
 

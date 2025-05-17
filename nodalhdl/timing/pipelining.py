@@ -10,10 +10,7 @@ class RetimingException(Exception): pass
 class PipeliningException(Exception): pass
 
 
-# TODO 只有线网、只有一端（常数）等情况，不需要转到电路模型.
-
-
-def to_extended_circuit(s: Structure, root_runtime_id: RuntimeId):
+def to_extended_circuit(s: Structure, root_runtime_id: RuntimeId): # TODO 1. 有问题; 2. 简化节点
     """
         The structure `s` should be flattened and timing-analysed.
     """
@@ -66,7 +63,7 @@ def to_extended_circuit(s: Structure, root_runtime_id: RuntimeId):
     return G, vertices_map, external_edges_map
 
 
-def to_simple_circuit(s: Structure, root_runtime_id: RuntimeId):
+def to_simple_circuit(s: Structure, root_runtime_id: RuntimeId): # TODO 简化节点
     """
         The structure `s` should be flattened and timing-analysed.
     """
@@ -80,11 +77,12 @@ def to_simple_circuit(s: Structure, root_runtime_id: RuntimeId):
     
     vertices_map: Dict[str, int] = {}
     for idx, (subs_inst_name, subs) in enumerate(s.substructures.items()):
+        timing_info = subs.get_runtime(root_runtime_id.next(subs_inst_name)).timing_info
+        delay = timing_info.get(('_simple_in', '_simple_out'), 0.0) if timing_info is not None else 0.0
+        
         vertex_idx = idx + 1 # 1 ~ N
         vertices_map[subs_inst_name] = vertex_idx
-        
-        timing_info = subs.get_runtime(root_runtime_id.next(subs_inst_name)).timing_info
-        G.add_vertex(timing_info.get(('_simple_in', '_simple_out'), 0.0) if timing_info is not None else 0.0)
+        G.add_vertex(delay)
     
     # edges
     edges_map: Dict[Node, int] = {}

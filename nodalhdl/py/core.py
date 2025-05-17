@@ -1,7 +1,7 @@
 from ..core.signal import *
 from ..core.structure import *
 
-from typing import Dict, Tuple
+from .std import ce_shift
 
 
 class ComputeElement:
@@ -31,6 +31,15 @@ class ComputeElement:
         operations
     """
     def __add__(self, other):
+        pass
+    
+    def __sub__(self, other):
+        pass
+    
+    def __lshift__(self, other):
+        pass
+    
+    def __rshift__(self, other):
         pass
 
 
