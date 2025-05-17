@@ -577,6 +577,7 @@ class Structure:
         
         # references (internal structure)
         self.ports_inside_flipped: StructuralNodes = StructuralNodes() # to be connected to internal nodes, IO flipped (EEB)
+        self._substructure_inst_name_acc_pool: Dict[str, int] = {}
         self.substructures: Dict[str, 'Structure'] = {} # instance_name -> structure
         self.nodes: Set[Node] = set() # non-IO nodes
         
@@ -1079,9 +1080,17 @@ class Structure:
         
         return new_node
     
-    def add_substructure(self, inst_name: str, structure: 'Structure') -> 'StructureProxy':
+    def add_substructure(self, inst_name: str, structure: 'Structure', duplicated_name_auto_acc: bool = True) -> 'StructureProxy':
         if inst_name in self.substructures.keys():
-            raise StructureException("Instance name already exists")
+            if not duplicated_name_auto_acc:
+                raise StructureException("Instance name already exists")
+            
+            dup_idx = self._substructure_inst_name_acc_pool.get(inst_name, 0)
+            while inst_name + f"_{dup_idx + 1}" in self.substructures.keys():
+                dup_idx += 1
+            self._substructure_inst_name_acc_pool[inst_name] = dup_idx
+            
+            inst_name = inst_name + f"_{dup_idx + 1}"
         
         self.substructures[inst_name] = structure # strong reference to the substructure
         

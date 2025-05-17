@@ -4,6 +4,8 @@
             (不同支类型都有的话说明就是强制转换, 取最近公共祖先; 同支的话往下走更具体)
             (信息给了就是合理的! 出现不合理就是给的问题!)
         
+        TODO 是否还应有一条设计原则: 子类型必须至少需要填入父类型的所有属性, 然后 belong 就可以判断这种关系.
+        
         类型 (type) 指 SignalType 及其子类的对象
         类型的基类型 (base) 指 SignalType 及其子类本身的引用
         但显示基类型的名字 (base_name) 时用类型基础名, 也就是基类型的名称去掉最后的 "Type"
@@ -149,6 +151,12 @@ class SignalType:
     def base_belong(self, other: 'SignalType') -> bool:
         # why not use isinstance(self, other.base)? type consistence in persistence need to be considered, see _base_belong().
         return SignalType._base_belong(self.base, other.base)
+    
+    def belong(self, other: 'SignalType') -> bool: # base_belong, and self has all (same) properties in other
+        return self.base_belong(other) and all([self.info.get(other_key, None) == other_v for other_key, other_v in other.info.items()])
+
+    def match(self, other: 'SignalType') -> bool:
+        raise NotImplementedError
     
     def isomorphic(self, other: 'SignalType') -> bool:
         raise NotImplementedError
@@ -633,6 +641,8 @@ if __name__ == "__main__": # test
     
     print(S.uid)
     print(SS.uid)
+    
+    print(UInt64.belong(UFixedPoint[64, 0]))
 
     # Q = Bundle[{
     #     "a": UInt[4],

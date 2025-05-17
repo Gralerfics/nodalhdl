@@ -37,5 +37,6 @@ Dependencies please check `pyproject.toml`.
 21. [*] 重构合理的异常处理体系.
 22. [***] is_reusable_operator 问题.
 23. 异步、访存、并行与仲裁.
-24. ...
+24. [***] extended 模型有问题, 似乎是否报错还和不同运行次数有关? 结果感觉也不太对.
+25. ...
 

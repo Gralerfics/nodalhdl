@@ -346,7 +346,7 @@ class ExtendedCircuit:
         Ds = self.compute_Ds(external_port_vertices = external_port_vertices)
         
         left, right = 0, len(Ds)
-        res = None
+        res = (None, None)
         while left < right:
             mid = (left + right) // 2
             c = Ds[mid]
