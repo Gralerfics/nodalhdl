@@ -263,7 +263,7 @@ shader.singletonize()
 shader.expand()
 rid = RuntimeId.create()
 shader.deduction(rid)
-# print(shader.runtime_info(rid))
+print(shader.runtime_info(rid))
 
 
 # STA

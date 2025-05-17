@@ -25,24 +25,25 @@ class Constants(UniquelyNamedReusable):
         """
             Constants({"<constant_name_0>": constant_object_0, ...})
         """
-        pairs = list(constants.items()) # fix the order
+        pairs: List[Tuple[str, SignalValue]] = list(constants.items()) # fix the order
         
-        def _assign(sub_wire_name: str, c: Signal):
+        def _assign(sub_wire_name: str, c: SignalValue):
             res = []
-            if isinstance(c, Bundle):
-                for k, v in c._bundle_objects.items():
-                    res.extend(_assign(sub_wire_name + "." + k, v))
-            elif isinstance(c, Bits):
+            if isinstance(c, BundleValue):
+                raise NotImplementedError # TODO
+                # for k, v in c._bundle_objects.items():
+                #     res.extend(_assign(sub_wire_name + "." + k, v))
+            elif isinstance(c, BitsValue):
                 res.append(f"{sub_wire_name} <= \"{c.to_bits_string()}\";")
             return res
         
         s = Structure()
         
-        ports = [s.add_port(name, Output[type(value)]) for name, value in pairs]
+        ports = [s.add_port(name, Output[value.type]) for name, value in pairs]
         
         opt = s.add_substructure("opt", CustomVHDLOperator(
             {},
-            {name: type(value) for name, value in constants.items()},
+            {name: value.type for name, value in pairs},
             "\n".join([line for name, value in pairs for line in _assign(name, value)]),
             _unique_name = Constants.naming(**constants) + "_Core"
         ))
@@ -63,34 +64,34 @@ def Add(t1: SignalType, t2: SignalType) -> Structure: # [NOTICE] 不需要套一
         4. 同格式 UFixedPoint 相加, 同格式截断 (即忽略最高位进位).
         5. 同格式 SFixedPoint 相加, 同格式截断 (即忽略最高位进位).
     """
-    assert t1.determined and t2.determined
+    assert t1.is_determined and t2.is_determined
     
-    if t1.bases(Bits) and t2.bases(Bits):
+    if t1.base_equal(Bits) and t2.base_equal(Bits):
         return BitsAdd(t1, t2)
-    if t1.bases(UInt) and t2.bases(UInt) and t1.W == t2.W: # TODO 不等宽?
+    if t1.base_equal(UInt) and t2.base_equal(UInt) and t1.W == t2.W: # TODO 不等宽?
         return BitsAdd(t1, t2)
-    elif t1.bases(SInt) and t2.bases(SInt) and t1.W == t2.W: # TODO 不等宽?
+    elif t1.base_equal(SInt) and t2.base_equal(SInt) and t1.W == t2.W: # TODO 不等宽?
         return BitsAdd(t1, t2)
-    elif t1.bases(UFixedPoint) and t2.bases(UFixedPoint) and t1.W_int == t2.W_int and t1.W_frac == t2.W_frac:
+    elif t1.base_equal(UFixedPoint) and t2.base_equal(UFixedPoint) and t1.W_int == t2.W_int and t1.W_frac == t2.W_frac:
         return BitsAdd(t1, t2)
-    elif t1.bases(SFixedPoint) and t2.bases(SFixedPoint) and t1.W_int == t2.W_int and t1.W_frac == t2.W_frac:
+    elif t1.base_equal(SFixedPoint) and t2.base_equal(SFixedPoint) and t1.W_int == t2.W_int and t1.W_frac == t2.W_frac:
         return BitsAdd(t1, t2)
     else:
         raise NotImplementedError
 
 
 def Subtract(t1: SignalType, t2: SignalType) -> Structure:
-    assert t1.determined and t2.determined
+    assert t1.is_determined and t2.is_determined
     
-    if t1.bases(Bits) and t2.bases(Bits):
+    if t1.base_equal(Bits) and t2.base_equal(Bits):
         return BitsSubtract(t1, t2)
-    if t1.bases(UInt) and t2.bases(UInt) and t1.W == t2.W: # TODO 不等宽?
+    if t1.base_equal(UInt) and t2.base_equal(UInt) and t1.W == t2.W: # TODO 不等宽?
         return BitsSubtract(t1, t2)
-    elif t1.bases(SInt) and t2.bases(SInt) and t1.W == t2.W: # TODO 不等宽?
+    elif t1.base_equal(SInt) and t2.base_equal(SInt) and t1.W == t2.W: # TODO 不等宽?
         return BitsSubtract(t1, t2)
-    elif t1.bases(UFixedPoint) and t2.bases(UFixedPoint) and t1.W_int == t2.W_int and t1.W_frac == t2.W_frac:
+    elif t1.base_equal(UFixedPoint) and t2.base_equal(UFixedPoint) and t1.W_int == t2.W_int and t1.W_frac == t2.W_frac:
         return BitsSubtract(t1, t2)
-    elif t1.bases(SFixedPoint) and t2.bases(SFixedPoint) and t1.W_int == t2.W_int and t1.W_frac == t2.W_frac:
+    elif t1.base_equal(SFixedPoint) and t2.base_equal(SFixedPoint) and t1.W_int == t2.W_int and t1.W_frac == t2.W_frac:
         return BitsSubtract(t1, t2)
     else:
         raise NotImplementedError
@@ -110,7 +111,7 @@ class Multiply(UniquelyNamedReusable): # TODO 改: https://blog.csdn.net/m0_5178
     @staticmethod
     def setup(t1: SignalType, t2: SignalType, int_truncate: bool = True) -> Structure:
         # [NOTICE] 用 Bits 的版本后截断有点浪费, 实际上可以省去很多, 不过不知道多余的是不是能被优化, 但如果有进寄存器那估计没的优化吧; 下同
-        assert t1.determined and t2.determined
+        assert t1.is_determined and t2.is_determined
         
         s = Structure()
         a = s.add_port("a", Input[t1])
@@ -121,7 +122,7 @@ class Multiply(UniquelyNamedReusable): # TODO 改: https://blog.csdn.net/m0_5178
         
         this_setup_unique_name = Multiply.naming(t1, t2, int_truncate)
         
-        if t1.bases(Bits) and t2.bases(Bits): # no truncation
+        if t1.base_equal(Bits) and t2.base_equal(Bits): # no truncation
             r = s.add_port("r", Output[Bits[t1.W + t2.W]])
             
             gen = s.add_substructure("gen_addends", CustomVHDLOperator(
@@ -157,7 +158,7 @@ class Multiply(UniquelyNamedReusable): # TODO 改: https://blog.csdn.net/m0_5178
             
             s.connect(P[0], r)
         
-        elif t1.bases(UInt) and t2.bases(UInt):
+        elif t1.base_equal(UInt) and t2.base_equal(UInt):
             r = s.add_port("r", Output[UInt[lW if int_truncate else t1.W + t2.W]]) # 输出位宽与截断与否有关
                 
             sint_mul = s.add_substructure("bits_mul", Multiply(Bits[t1.W], Bits[t2.W]))
@@ -176,7 +177,7 @@ class Multiply(UniquelyNamedReusable): # TODO 改: https://blog.csdn.net/m0_5178
             else: # 不截断直接连接
                 s.connect(sint_mul.IO.r, r)
         
-        elif t1.bases(SInt) and t2.bases(SInt): # https://www.cnblogs.com/jiaotaiyang/p/17576277.html
+        elif t1.base_equal(SInt) and t2.base_equal(SInt): # https://www.cnblogs.com/jiaotaiyang/p/17576277.html
             r = s.add_port("r", Output[SInt[lW if int_truncate else t1.W + t2.W]]) # 同上
             
             gen = s.add_substructure("gen_addends", CustomVHDLOperator(
@@ -237,7 +238,7 @@ class Multiply(UniquelyNamedReusable): # TODO 改: https://blog.csdn.net/m0_5178
             else: # 不截断直接连接
                 s.connect(subtractor.IO.r, r)
         
-        elif t1.bases(UFixedPoint) and t2.bases(UFixedPoint) and t1.W_int == t2.W_int and t1.W_frac == t2.W_frac:
+        elif t1.base_equal(UFixedPoint) and t2.base_equal(UFixedPoint) and t1.W_int == t2.W_int and t1.W_frac == t2.W_frac:
             r = s.add_port("r", Output[t1])
             
             bits_mul = s.add_substructure("bits_mul", Multiply(Bits[t1.W], Bits[t2.W]))
@@ -253,7 +254,7 @@ class Multiply(UniquelyNamedReusable): # TODO 改: https://blog.csdn.net/m0_5178
             s.connect(bits_mul.IO.r, tc.IO.i)
             s.connect(tc.IO.o, r)
         
-        elif t1.bases(SFixedPoint) and t2.bases(SFixedPoint) and t1.W_int == t2.W_int and t1.W_frac == t2.W_frac:
+        elif t1.base_equal(SFixedPoint) and t2.base_equal(SFixedPoint) and t1.W_int == t2.W_int and t1.W_frac == t2.W_frac:
             r = s.add_port("r", Output[t1])
             
             sint_mul = s.add_substructure("sint_mul", Multiply(SInt[t1.W], SInt[t2.W], int_truncate = False))

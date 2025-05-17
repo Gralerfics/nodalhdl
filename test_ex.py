@@ -88,7 +88,11 @@ def M2() -> Structure:
     
     u1 = s.add_substructure("u1", m1)
     u2 = s.add_substructure("u2", addw)
-    u3 = s.add_substructure("u3", Decomposition(B_t, ".xy.y", "z"))
+    u3 = s.add_substructure("u3", CustomVHDLOperator(
+        {"i": B_t},
+        {"o": UInt[5]},
+        "o <= i.xy.y;"
+    )) # Decomposition(B_t, ".xy.y", "z"))
     
     s.connect(a, u1.IO.a)
     s.connect(b, u1.IO.b)
@@ -98,7 +102,7 @@ def M2() -> Structure:
     s.connect(u2.IO.o, o)
     s.connect(u1.IO.o, u1o)
     s.connect(Bi, u3.IO.i)
-    s.connect(u3.IO.o.xy.y, Bo)
+    s.connect(u3.IO.o, Bo) # s.connect(u3.IO.o.xy.y, Bo)
 
     return s
 
@@ -263,31 +267,4 @@ print("Phi_Gr", pipelining(m2, rid_m2_exp, 2, model = "simple")) # , model = "ex
 # for net in m2.get_nets():
 #     for load in net.get_loads():
 #         print(net.driver(), "--", net.driver().latency + load.latency, "->", load)
-
-
-# print('rid test ==============================================================================================================')
-
-
-# a = RuntimeId("7df1902c04d6541aa0c81a4c9258e0b1")
-# b = a.next("u1")
-# c = a.next("u3")
-# d = a.next("u2")
-# e = b.next("z")
-# f = b.next("y")
-# g = d.next("adder")
-
-# h1 = b.next("x")
-# h2 = f.next("add_12")
-# h3 = f.next("add_123")
-
-# print(a.id_str[:8])
-# print(b.id_str[:8])
-# print(c.id_str[:8])
-# print(d.id_str[:8])
-# print(e.id_str[:8])
-# print(f.id_str[:8])
-# print(g.id_str[:8])
-# print(h1.id_str[:8])
-# print(h2.id_str[:8])
-# print(h3.id_str[:8])
 

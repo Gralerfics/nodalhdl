@@ -18,6 +18,7 @@
         这样就把 IOWrapper 整合进了常规类型, 各类操作中可以省去很多判断, Signal 和 Auto 似乎也就可以合并.
         目前是将其单独列为 Signal 下的一类, 优点是明确一些, 并且 IOWrapperType 也更标准一些.
         TODO 之后可以考虑重构.
+        
         更激进一点则是将 Bundle 视为一系列 Bits 的拼接, 类似 C struct 中的 union, 将其归入 Bits 下,
         则 Bits 就可以作为顶层类型, 且各类判断几乎全都不需要了.
         缺点是实现起来有点问题; 或许, Bundle 的信息并不是 dict 这样 "Bits 怎么构成 Bundle", 而是 "Bits 怎么划分为子 Bits".
@@ -87,15 +88,20 @@ class SignalType:
         return self.base.__name__[:-4]
     
     @property
+    def base_type(self) -> 'SignalType':
+        return self.base()
+    
+    @property
+    def uid(self) -> str: # consistent hash of (base, info), for comparison
+        return hashlib.md5(self.validal().encode('utf-8')).hexdigest() # [NOTICE] 这样要求 validal 是唯一的
+    
+    @property
     def is_determined(self) -> bool: # width-determined or subtype determined
         if self.base_belong(Bits):
             return "width" in self.info.keys()
         elif self.base_belong(Bundle):
             bundle_types: Dict[str, SignalType] = self.info.get("bundle_types", None)
-            if bundle_types is not None:
-                return all([t.is_determined for t in bundle_types.values()])
-            else: # Bundle base type is not determined
-                return False
+            return bundle_types is not None and all([t.is_determined for t in bundle_types.values()])
         elif self.base_belong(IOWrapper):
             wrapped_type: SignalType = self.info.get("wrapped_type", None)
             return wrapped_type is not None and wrapped_type.is_determined
@@ -106,12 +112,10 @@ class SignalType:
             return False
         elif self.base_belong(Bundle):
             bundle_types: Dict[str, SignalType] = self.info.get("bundle_types", None)
-            if bundle_types is not None:
-                return all([t.is_io_perfect for t in bundle_types.values()])
-            else: # Bundle base type is not perfectly IO-wrapped
-                return False
+            return bundle_types is not None and all([t.is_io_perfect for t in bundle_types.values()]) # Bundle base type is not perfectly IO-wrapped
         elif self.base_belong(IOWrapper):
-            return True
+            wrapped_type: SignalType = self.info.get("wrapped_type", None)
+            return wrapped_type is not None # should have wrapped types
     
     @property
     def is_io_existing(self) -> bool:
@@ -128,9 +132,6 @@ class SignalType:
             value = self.info.get(key, None)
             if value is None:
                 raise SignalTypeInstantiationException(f"missing `{key}` when instantiating {self.base_name}")
-    
-    def uid(self) -> str: # consistent hash of (base, info), for comparison
-        raise NotImplementedError
     
     @staticmethod
     def _base_equal(base_0: type, base_1: type) -> bool:
@@ -366,7 +367,7 @@ class BundleType(AutoType):
     def validal(self) -> str:
         bundle_types: Dict[str, SignalType] = self.info.get("bundle_types", None)
         if bundle_types is not None:
-            return self.base_name + "_" + hashlib.md5(str(bundle_types).encode('utf-8')).hexdigest()
+            return self.base_name + "_" + hashlib.md5(str(bundle_types).encode('utf-8')).hexdigest() # used in core.hdl
         else:
             return self.base_name
     
@@ -571,6 +572,15 @@ if __name__ == "__main__": # test
         }]]
     }]
 
+    SS = BundleType()[{
+        "a": Input[Auto],
+        "b": Output[UInt[8]],
+        "c": Auto,
+        "d": Output[Bundle[{
+            "t": Float
+        }]]
+    }]
+
     T = Bundle[{
         "a": Output[Auto],
         "b": Output[Bits],
@@ -614,6 +624,15 @@ if __name__ == "__main__": # test
     print(UInt[8].merge(SFixedPoint[3, 4]).info)
     print(UInt[8].merge(SInt[8]).info)
     print(SFixedPoint[3, 3].merge(UFixedPoint[3, 4]).info)
+    print(UFixedPoint[3, 4].merge(UInt).base_name)
+    
+    print(SFixedPoint[3, 3].W)
+    print(SFixedPoint[3, 3].W_frac)
+    print(Input[SFixedPoint[3, 3]].T)
+    print(S.BT)
+    
+    print(S.uid)
+    print(SS.uid)
 
     # Q = Bundle[{
     #     "a": UInt[4],

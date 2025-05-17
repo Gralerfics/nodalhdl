@@ -121,8 +121,8 @@ class Net:
             """
                 Set runtime type. (IO-ignored)
             """
-            new_st = signal_type.clear_io() # io wrapper cleared
-            changed = new_st is not self.signal_type
+            new_st = signal_type.io_clear() # io wrapper cleared
+            changed = new_st.uid != self.signal_type.uid
             self.signal_type = new_st
             
             if changed: # the operation on this runtime changed the information
@@ -135,7 +135,7 @@ class Net:
             """
                 Update runtime type by merging. (IO-ignored)
             """
-            return self.set_type(self.signal_type.merges(signal_type))
+            return self.set_type(self.signal_type.merge(signal_type))
         
         def reset_type(self) -> bool:
             """
@@ -302,7 +302,7 @@ class Node:
     
     @property
     def is_originally_determined(self):
-        return self.origin_signal_type.determined
+        return self.origin_signal_type.is_determined
     
     @property
     def located_structure(self):
@@ -310,7 +310,7 @@ class Node:
     
     @property
     def is_driver(self):
-        return self.origin_signal_type.bases(Output)
+        return self.origin_signal_type.base_equal(Output)
     
     @property
     def full_name(self):
@@ -325,16 +325,16 @@ class Node:
             return self.name
     
     def is_determined(self, runtime_id: RuntimeId):
-        return self.get_type(runtime_id).determined
+        return self.get_type(runtime_id).is_determined
 
     def runtime_info(self, runtime_id: RuntimeId):
-        return f"<Node {self.name} ({self.get_type(runtime_id).__name__})>"
+        return f"<Node {self.name} ({self.get_type(runtime_id)})>"
     
     def get_type(self, runtime_id: RuntimeId):
         """
             Get the runtime type of the located net by runtime_id. (non-IO)
         """
-        return self.located_net.get_runtime(runtime_id).signal_type # .clear_io()
+        return self.located_net.get_runtime(runtime_id).signal_type # .io_clear()
     
     def update_type(self, runtime_id: RuntimeId, signal_type: SignalType):
         """
@@ -380,7 +380,7 @@ class Node:
             raise StructureException("Counteract only allowed between an inside port (other) and its outside port (self)")
         
         # add equivalent node (reserve original signal type info)
-        equiv_node_type = other.origin_signal_type.merges(other.origin_signal_type)
+        equiv_node_type = other.origin_signal_type.merge(other.origin_signal_type)
         equiv_node = Node(equiv_node_name, equiv_node_type, is_port = False, located_net = self.located_net)
         self.located_structure.nodes.add(equiv_node)
 
@@ -490,7 +490,7 @@ class StructuralNodes(dict):
         res = []
         for k, v in self.items():
             if isinstance(v, Node):
-                if real_filter == "all" or (real_filter == "in" and v.origin_signal_type.bases(Input)) or (real_filter == "out" and v.origin_signal_type.bases(Output)):
+                if real_filter == "all" or (real_filter == "in" and v.origin_signal_type.base_equal(Input)) or (real_filter == "out" and v.origin_signal_type.base_equal(Output)):
                     res.append((prefix + v.name, v))
             elif isinstance(v, StructuralNodes):
                 res.extend(v.nodes(prefix + k + "_", filter, flipped))
@@ -888,14 +888,14 @@ class Structure:
             raise StructureException("Invalid (not integrate) runtime ID")
         
         for _, port in self.ports_inside_flipped.nodes(): # apply runtime info to internal nodes
-            port.set_origin_type(port.origin_signal_type.applys(port.get_type(runtime_id)), safe_modification = True) # (*)
+            port.set_origin_type(port.origin_signal_type.apply(port.get_type(runtime_id)), safe_modification = True) # (*)
         
         for ports in self.ports_outside.values(): # apply runtime info to all outside ports
             for _, port in ports.nodes():
-                port.set_origin_type(port.origin_signal_type.applys(port.get_type(runtime_id)), safe_modification = True) # (*)
+                port.set_origin_type(port.origin_signal_type.apply(port.get_type(runtime_id)), safe_modification = True) # (*)
         
         for node in self.nodes: # apply runtime info to all nodes (may be not necessary)
-            node.set_origin_type(node.origin_signal_type.applys(node.get_type(runtime_id)), safe_modification = True) # (*)
+            node.set_origin_type(node.origin_signal_type.apply(node.get_type(runtime_id)), safe_modification = True) # (*)
         
         for sub_inst_name, subs in self.substructures.items(): # apply runtime info to all substructures, recursively
             subs.apply_runtime(runtime_id.next(sub_inst_name))
@@ -970,7 +970,7 @@ class Structure:
         
         # add ports into model according to ports_inside_flipped
         for port_layered_name, port in self.ports_inside_flipped.nodes():
-            direction = "out" if port.origin_signal_type.bases(Input) else "in" # ports_inside_flipped is IO flipped
+            direction = "out" if port.origin_signal_type.base_equal(Input) else "in" # ports_inside_flipped is IO flipped
             model.add_port(f"{port_layered_name}", direction, port.get_type(runtime_id)) # use full name
             
             # fill net_wires
@@ -1040,7 +1040,7 @@ class Structure:
         return model
     
     def add_port(self, name: str, signal_type: SignalType) -> Node:
-        if not signal_type.perfectly_io_wrapped:
+        if not signal_type.is_io_perfect:
             raise StructureException("Port signal type should be perfectly IO wrapped")
         
         def _extract(key: str, t: SignalType, prefix: str = ""):
@@ -1049,10 +1049,10 @@ class Structure:
                 The names are the raw names, instead of the full names (with layer information).
                 StructuralNodes().nodes() will add the layer information to the returned full names.
             """
-            if t.bases(Input) or t.bases(Output):
-                return Node(key, t.flip_io(), is_port = True, located_structure = self, layered_name = prefix + key) # (1.) io is flipped in ports_inside_flipped, (2.) ports inside are connected with internal nodes/nets, so located_structure is set to self
-            elif t.bases(Bundle):
-                return StructuralNodes({k: _extract(k, v, prefix = prefix + key + "_") for k, v in t._bundle_types.items()})
+            if t.base_equal(Input) or t.base_equal(Output):
+                return Node(key, t.io_flip(), is_port = True, located_structure = self, layered_name = prefix + key) # (1.) io is flipped in ports_inside_flipped, (2.) ports inside are connected with internal nodes/nets, so located_structure is set to self
+            elif t.base_equal(Bundle):
+                return StructuralNodes({k: _extract(k, v, prefix = prefix + key + "_") for k, v in t.BT.items()})
 
         new_port = _extract(name, signal_type)
         self.ports_inside_flipped[name] = new_port
@@ -1060,8 +1060,8 @@ class Structure:
         return new_port
     
     def add_node(self, name: str, signal_type: SignalType) -> Node:
-        if signal_type.io_wrapper_included:
-            signal_type = signal_type.clear_io()
+        if signal_type.is_io_existing:
+            signal_type = signal_type.io_clear()
         
         new_node = Node(name, signal_type, is_port = False, located_structure = self)
         self.nodes.add(new_node) # remember to add to nodes, or it may be garbage collected
@@ -1076,7 +1076,7 @@ class Structure:
         
         def _create(io: Union[Node, StructuralNodes]):
             if isinstance(io, Node):
-                new_port = Node(io.name, io.origin_signal_type.flip_io(), is_port = True, located_structure = self, layered_name = io.layered_name)
+                new_port = Node(io.name, io.origin_signal_type.io_flip(), is_port = True, located_structure = self, layered_name = io.layered_name)
                 new_port.of_structure_inst_name = inst_name
                 return new_port
             else: # StructuralNodes
@@ -1117,7 +1117,7 @@ class NodeProxy:
     
     @property
     def dir(self):
-        is_in = self.proxy_node.origin_signal_type.bases(Input)
+        is_in = self.proxy_node.origin_signal_type.base_equal(Input)
         return Input if is_in ^ self.flipped else Output
     
     @property

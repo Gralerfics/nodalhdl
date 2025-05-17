@@ -11,9 +11,9 @@ class HDLUtils:
     @staticmethod
     def type_decl(t: SignalType, hdl_type: str = "vhdl"):
         if hdl_type == "vhdl":
-            return t.__name__ if t.bases(Bundle) else f"std_logic_vector({t.W - 1} downto 0)"
+            return t.validal() if t.base_equal(Bundle) else f"std_logic_vector({t.W - 1} downto 0)"
         elif hdl_type == "verilog":
-            return t.__name__ if t.bases(Bundle) else f"[{t.W - 1}:0]"
+            return t.validal() if t.base_equal(Bundle) else f"[{t.W - 1}:0]"
         else:
             raise NotImplementedError
     
@@ -117,8 +117,8 @@ class HDLUtils:
         if len(model.registers) > 0:
             def _generate_initialization(sub_reg_name: str, t: SignalType):
                 res = []
-                if t.bases(Bundle):
-                    for k, v in t._bundle_types.items():
+                if t.base_equal(Bundle):
+                    for k, v in t.BT.items():
                         res.extend(_generate_initialization(sub_reg_name + "." + k, v))
                 else:
                     res.append(f"{sub_reg_name} <= (others => '0');")
@@ -181,6 +181,7 @@ class HDLGlobalInfo:
     """
         HDL 文件模型中的全局信息.
         例如所用到的所有类型, 在 add_component 时会向上级传递, 最终顶层结构生成时会给出单独一个 types.vhd (以 VHDL 为例).
+        TODO 类似地重构输出代码
     """
     def __init__(self):
         self.type_pool: Set[BundleType] = set() # 类型池, 可用于查重
@@ -203,12 +204,9 @@ class HDLGlobalInfo:
         
         for t in self.type_pool_ordered:
             t: BundleType
-            content += f"    type {t.__name__} is record\n"
-            for k, T in t._bundle_types.items():
-                if T.bases(Bundle):
-                    content += f"        {k}: {T.__name__};\n"
-                else:
-                    content += f"        {k}: std_logic_vector({T.W - 1} downto 0);\n"
+            content += f"    type {t.validal()} is record\n"
+            for k, sub_t in t.BT.items():
+                content += f"        {k}: {HDLUtils.type_decl(sub_t)};\n"
             content += f"    end record;\n\n"
 
         return {"types.vhd": f"library IEEE;\nuse IEEE.std_logic_1164.all;\nuse IEEE.numeric_std.all;\n\npackage types is\n{content}end package types;"}
@@ -218,14 +216,14 @@ class HDLGlobalInfo:
             add types into the global info.
             only accepts Bundle type (record type in VHDL), and it will be recursively added.
         """
-        t = t.clear_io()
+        t = t.io_clear()
         
         if t in self.type_pool: # added, so the subtypes must have been added too
             return
         
         def _add_type(t: BundleType):
-            if t.bases(Bundle): # only Bundles need to be added
-                for _, v in t._bundle_types.items(): # sub-Bundles
+            if t.base_equal(Bundle): # only Bundles need to be added
+                for _, v in t.BT.items(): # sub-Bundles
                     _add_type(v)
                 self.type_pool.add(t)
                 self.type_pool_ordered.append(t) # add after all sub-Bundles are added
@@ -298,7 +296,7 @@ class HDLFileModel:
             will be automatically called in generation().
             `direction`: "in" or "out".
         """
-        if t.bases(Bundle):
+        if t.base_equal(Bundle):
             self.global_info.add_type(t) # add type into global info
         
         self.ports[name] = (direction, t)
@@ -320,7 +318,7 @@ class HDLFileModel:
         })
     
     def add_signal(self, name: str, t: SignalType):
-        if t.bases(Bundle):
+        if t.base_equal(Bundle):
             self.global_info.add_type(t) # add type into global info
         
         self.signals[name] = t

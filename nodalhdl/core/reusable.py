@@ -61,10 +61,16 @@ class OperatorDeductionTemplates:
         def _deduction(s: Structure, io: IOProxy):
             i1, i2, o = io.access(input_path_1), io.access(input_path_2), io.access(output_path)
             
-            merged_base = i1.type.base.merges(i2.type.base).merges(o.type.base)
-            o.update(merged_base[max(i1.type.W, i2.type.W)] if hasattr(i1.type, "W") and hasattr(i2.type, "W") else merged_base)
-            i1.update(merged_base[o.type.W] if hasattr(i2.type, "W") and hasattr(o.type, "W") and i2.type.W < o.type.W else merged_base)
-            i2.update(merged_base[o.type.W] if hasattr(i1.type, "W") and hasattr(o.type, "W") and i1.type.W < o.type.W else merged_base)
+            # base type
+            merged_base_type = i1.type.base_type.merge(i2.type.base_type).merge(o.type.base_type)
+            o.update(merged_base_type)
+            i1.update(merged_base_type)
+            i2.update(merged_base_type)
+            
+            # width
+            o.update(Bits[max(i1.type.W, i2.type.W)] if i1.type.W is not None and i2.type.W is not None else merged_base_type)
+            i1.update(Bits[o.type.W] if i2.type.W is not None and o.type.W is not None and i2.type.W < o.type.W else merged_base_type)
+            i2.update(Bits[o.type.W] if i1.type.W is not None and o.type.W is not None and i1.type.W < o.type.W else merged_base_type)
         
         return _deduction
     
@@ -75,7 +81,7 @@ class OperatorDeductionTemplates:
             
             full_type = Auto
             for p in P:
-                full_type = full_type.merges(p.type)
+                full_type = full_type.merge(p.type)
             for p in P:
                 p.update(full_type)
         

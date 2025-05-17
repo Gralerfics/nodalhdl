@@ -14,11 +14,11 @@ Dependencies please check `pyproject.toml`.
 
 ## TODO List
 
-1. [***] core.signal 重构 (类型完全作为信息传递包); 双位宽类型的定态定义问题等.
-2. 定点数除法、CORDIC 等模块; 乘法的优化等.
-3. retiming 效率问题. e.g. 转换时忽略基本无延迟的节点等.
-4. [***] 参考 test_ph 构建 HLS 层.
-5. operator 自带时钟延迟的问题 (retiming 可否解决), 解决则可引入 IP 核; 普通时序电路和流水线的区分.
+1. 定点数除法、CORDIC 等模块; 乘法的优化等.
+2. retiming 效率问题. e.g. 转换时忽略基本无延迟的节点等.
+3. [***] 参考 test_ph 构建 HLS 层.
+4. operator 自带时钟延迟的问题 (retiming 可否解决), 解决则可引入 IP 核; 普通时序电路和流水线的区分.
+5. [*] 考虑进一步重构 signal (IOWrapper 和 Bundle), 见文件中注释.
 6. [**] (整体 retiming 慢则拆分) 流水线拼接 (直接对接 / ready-valid); ready-valid 反压打断问题; 同功能的组合逻辑和状态机实现.
 7. 外设.
 8. pipelining 自动级数选取.
@@ -38,5 +38,6 @@ Dependencies please check `pyproject.toml`.
 22. 持久化读写后如何保障 unique_name 等池子的一致性.
 23. [*] 重构合理的异常处理体系.
 24. 转英文注释.
-25. ...
+25. 似乎带 Bundle 类型的 generation 没测试过.
+26. ...
 
