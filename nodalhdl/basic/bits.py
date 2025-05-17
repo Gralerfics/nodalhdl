@@ -16,7 +16,7 @@ class BitsAdd(UniquelyNamedReusable):
         Output(s): r (wider width)
     """
     setup = OperatorSetupTemplates.input_type_args_2i1o("a", "b", "r")
-    deduction = OperatorDeductionTemplates.wider_as_output_2i1o("a", "b", "r")
+    deduction = OperatorDeductionTemplates.equal_bases_wider_output_2i1o("a", "b", "r")
     
     @staticmethod
     def generation(s: Structure, h: HDLFileModel, io: IOProxy):
@@ -37,7 +37,7 @@ class BitsSubtract(UniquelyNamedReusable):
         Output(s): r (wider width)
     """
     setup = OperatorSetupTemplates.input_type_args_2i1o("a", "b", "r")
-    deduction = OperatorDeductionTemplates.wider_as_output_2i1o("a", "b", "r")
+    deduction = OperatorDeductionTemplates.equal_bases_wider_output_2i1o("a", "b", "r")
     
     @staticmethod
     def generation(s: Structure, h: HDLFileModel, io: IOProxy):
@@ -84,7 +84,7 @@ class BitsEqualTo(UniquelyNamedReusable):
     @staticmethod
     def generation(s: Structure, h: HDLFileModel, io: IOProxy):
         h.add_arch_body("vhdl", textwrap.dedent(f"""\
-            r <= '1' when a = b else '0';
+            r <= "1" when a = b else "0";
         """))
     
     naming = UniqueNamingTemplates.args_kwargs_all_values()
@@ -105,7 +105,7 @@ class BitsLessThan(UniquelyNamedReusable):
     @staticmethod
     def generation(s: Structure, h: HDLFileModel, io: IOProxy):
         h.add_arch_body("vhdl", textwrap.dedent(f"""\
-            r <= '1' when unsigned(a) < unsigned(b) else '0';
+            r <= "1" when unsigned(a) < unsigned(b) else "0";
         """))
     
     naming = UniqueNamingTemplates.args_kwargs_all_values()
@@ -167,7 +167,7 @@ class BitsReductionAnd(UniquelyNamedReusable):
     @staticmethod
     def generation(s: Structure, h: HDLFileModel, io: IOProxy):
         h.add_arch_body("vhdl", textwrap.dedent(f"""\
-            r <= '1' when (a = (a'range => '1')) else '0';
+            r <= "1" when (a = (a'range => '1')) else "0";
         """))
     
     naming = UniqueNamingTemplates.args_kwargs_all_values()
@@ -208,7 +208,7 @@ class BitsReductionOr(UniquelyNamedReusable):
     @staticmethod
     def generation(s: Structure, h: HDLFileModel, io: IOProxy):
         h.add_arch_body("vhdl", textwrap.dedent(f"""\
-            r <= '1' when (a /= (a'range => '0')) else '0';
+            r <= "1" when (a /= (a'range => '0')) else "0";
         """))
     
     naming = UniqueNamingTemplates.args_kwargs_all_values()
@@ -239,7 +239,7 @@ class BinaryMultiplexer(UniquelyNamedReusable):
     @staticmethod
     def generation(s: Structure, h: HDLFileModel, io: IOProxy):
         h.add_arch_body("vhdl", textwrap.dedent(f"""\
-            o <= i1 when s = '1' else i0;
+            o <= i1 when sel = "1" else i0;
         """))
     
     naming = UniqueNamingTemplates.args_kwargs_all_values()

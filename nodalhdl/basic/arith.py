@@ -20,6 +20,9 @@ from .bits import *
 
 
 class Constants(UniquelyNamedReusable):
+    """
+        要求确保 DIDO.
+    """
     @staticmethod
     def setup(**constants) -> Structure:
         """
@@ -56,6 +59,9 @@ class Constants(UniquelyNamedReusable):
     naming = UniqueNamingTemplates.args_kwargs_md5_16()
 
 
+class EqualTypesAdd(BitsAdd):
+    deduction = OperatorDeductionTemplates.equal_types("a", "b", "r")
+
 def Add(t1: SignalType, t2: SignalType) -> Structure: # [NOTICE] 不需要套一层 UniquelyNamedReusable, 就用里面的 BitsAdd 即可
     """
         1. 任意宽 Bits 相加, 按较长操作数位宽截断 (即忽略最高位进位).
@@ -63,36 +69,44 @@ def Add(t1: SignalType, t2: SignalType) -> Structure: # [NOTICE] 不需要套一
         3. 同宽 SInt 相加, 同宽度截断 (即忽略最高位进位).
         4. 同格式 UFixedPoint 相加, 同格式截断 (即忽略最高位进位).
         5. 同格式 SFixedPoint 相加, 同格式截断 (即忽略最高位进位).
+        
+        要求确保 DIDO.
     """
     assert t1.is_determined and t2.is_determined
     
     if t1.base_equal(Bits) and t2.base_equal(Bits):
         return BitsAdd(t1, t2)
-    if t1.base_equal(UInt) and t2.base_equal(UInt) and t1.W == t2.W: # TODO 不等宽?
-        return BitsAdd(t1, t2)
-    elif t1.base_equal(SInt) and t2.base_equal(SInt) and t1.W == t2.W: # TODO 不等宽?
-        return BitsAdd(t1, t2)
+    if t1.base_equal(UInt) and t2.base_equal(UInt) and t1.W == t2.W:
+        return EqualTypesAdd(t1, t2)
+    elif t1.base_equal(SInt) and t2.base_equal(SInt) and t1.W == t2.W:
+        return EqualTypesAdd(t1, t2)
     elif t1.base_equal(UFixedPoint) and t2.base_equal(UFixedPoint) and t1.W_int == t2.W_int and t1.W_frac == t2.W_frac:
-        return BitsAdd(t1, t2)
+        return EqualTypesAdd(t1, t2)
     elif t1.base_equal(SFixedPoint) and t2.base_equal(SFixedPoint) and t1.W_int == t2.W_int and t1.W_frac == t2.W_frac:
-        return BitsAdd(t1, t2)
+        return EqualTypesAdd(t1, t2)
     else:
         raise NotImplementedError
 
 
+class EqualTypesSubtract(BitsSubtract):
+    deduction = OperatorDeductionTemplates.equal_types("a", "b", "r")
+
 def Subtract(t1: SignalType, t2: SignalType) -> Structure:
+    """
+        要求确保 DIDO.
+    """
     assert t1.is_determined and t2.is_determined
     
     if t1.base_equal(Bits) and t2.base_equal(Bits):
         return BitsSubtract(t1, t2)
-    if t1.base_equal(UInt) and t2.base_equal(UInt) and t1.W == t2.W: # TODO 不等宽?
-        return BitsSubtract(t1, t2)
-    elif t1.base_equal(SInt) and t2.base_equal(SInt) and t1.W == t2.W: # TODO 不等宽?
-        return BitsSubtract(t1, t2)
+    if t1.base_equal(UInt) and t2.base_equal(UInt) and t1.W == t2.W:
+        return EqualTypesSubtract(t1, t2)
+    elif t1.base_equal(SInt) and t2.base_equal(SInt) and t1.W == t2.W:
+        return EqualTypesSubtract(t1, t2)
     elif t1.base_equal(UFixedPoint) and t2.base_equal(UFixedPoint) and t1.W_int == t2.W_int and t1.W_frac == t2.W_frac:
-        return BitsSubtract(t1, t2)
+        return EqualTypesSubtract(t1, t2)
     elif t1.base_equal(SFixedPoint) and t2.base_equal(SFixedPoint) and t1.W_int == t2.W_int and t1.W_frac == t2.W_frac:
-        return BitsSubtract(t1, t2)
+        return EqualTypesSubtract(t1, t2)
     else:
         raise NotImplementedError
 
@@ -107,6 +121,8 @@ class Multiply(UniquelyNamedReusable): # TODO 改: https://blog.csdn.net/m0_5178
         3. 任意宽 SInt 相乘, 有符号乘法, int_truncate 决定是否截断 (若截断则按较长操作数位宽截断).
         4. 同形式 UFixedPoint 相乘, 按 Bits (或 UInt 不截断) 相乘后原格式截断.
         5. 同形式 SFixedPoint 相乘, 按 SInt 相乘后原格式截断.
+        
+        要求确保 DIDO.
     """
     @staticmethod
     def setup(t1: SignalType, t2: SignalType, int_truncate: bool = True) -> Structure:
@@ -290,6 +306,8 @@ class Division(UniquelyNamedReusable):
         # 5. 同形式 SFixedPoint 相乘, 按 SInt 相乘后原格式截断.
         TODO
         1. 
+        
+        要求确保 DIDO.
     """
     @staticmethod
     def setup(t1: SignalType, t2: SignalType) -> Structure:

@@ -155,6 +155,9 @@ class SignalType:
     def belong(self, other: 'SignalType') -> bool: # base_belong, and self has all (same) properties in other
         return self.base_belong(other) and all([self.info.get(other_key, None) == other_v for other_key, other_v in other.info.items()])
 
+    def equal(self, other: 'SignalType') -> bool:
+        return self.uid == other.uid # [NOTICE] uid 相等, uid 和 validal 表示相关, 故不用担心 info 中有奇怪的信息, 只会取需要的
+    
     def match(self, other: 'SignalType') -> bool:
         raise NotImplementedError
     
@@ -433,15 +436,16 @@ Bits = BitsType()
 Bit = Bits[1]
 Byte = Bits[8]
 
+FixedPoint = FixedPointType()
 UFixedPoint = UFixedPointType()
 SFixedPoint = SFixedPointType()
 
+Integer = IntegerType()
 UInt = UIntType()
 UInt8 = UInt[8]
 UInt16 = UInt[16]
 UInt32 = UInt[32]
 UInt64 = UInt[64]
-
 SInt = SIntType()
 Int8 = SInt[8]
 Int16 = SInt[16]

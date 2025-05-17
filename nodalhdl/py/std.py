@@ -1,71 +1,70 @@
 from nodalhdl.core.signal import *
 from nodalhdl.core.structure import *
 from nodalhdl.basic.bits import *
-from nodalhdl.basic.arith import *
+
 from nodalhdl.py.core import *
+from nodalhdl.py.core import _constant
+
+
+def ufixed(x: ComputeElement, int_width: int, frac_width: int) -> ComputeElement:
+    _s = x.s
+    target_t = UFixedPoint[int_width, frac_width]
+    
+    if x.type.belong(FixedPoint):
+        L = x.type.W_frac + target_t.W_int - 1
+        R = x.type.W_frac - target_t.W_frac
+        L_complement = max(L - x.type.W + 1, 0)
+        R_complement = max(-R, 0)
+        
+        u = _s.add_substructure(f"to_ufixed", CustomVHDLOperator(
+            {"i": x.type},
+            {"o": target_t},
+            f"o <= {f"(1 to {L_complement} => '0') & " if L_complement > 0 else ""}i({min(L, x.type.W - 1)} downto {max(R, 0)}){f" & (1 to {R_complement} => '0')" if R_complement > 0 else ""};",
+            _unique_name = f"Convert_{x.type}_{target_t}"
+        ))
+        _s.connect(x.node, u.IO.i)
+        return ComputeElement(_s, runtime_node = u.IO.o)
+    else:
+        raise NotImplementedError
 
 
 def sfixed(x: ComputeElement, int_width: int, frac_width: int) -> ComputeElement:
     _s = x.s
     target_t = SFixedPoint[int_width, frac_width]
     
-    if x.type.belong(UFixedPoint):
-        u = _s.add_substructure(f"sfixed", CustomVHDLOperator(
+    if x.type.belong(FixedPoint):
+        L = x.type.W_frac + target_t.W_int - 1
+        R = x.type.W_frac - target_t.W_frac
+        L_complement = max(L - x.type.W + 1, 0)
+        R_complement = max(-R, 0)
+        L_complement_bit = "i(i'high)" if x.type.belong(SFixedPoint) else "'0'"
+        
+        u = _s.add_substructure(f"to_sfixed", CustomVHDLOperator(
             {"i": x.type},
             {"o": target_t},
-            f"o <= '0' & i({x.type.W_frac + target_t.W_int - 1} downto {x.type.W_frac - target_t.W_frac});",
-            _unique_name = f"{x.type}_To_{target_t}_Convertor"
+            f"o <= (1 to {L_complement + 1} => {L_complement_bit}) & i({min(L, x.type.W - 1)} downto {max(R, 0)}){f" & (1 to {R_complement} => '0')" if R_complement > 0 else ""};",
+            _unique_name = f"Convert_{x.type}_{target_t}"
         ))
         _s.connect(x.node, u.IO.i)
         return ComputeElement(_s, runtime_node = u.IO.o)
-    
     else:
         raise NotImplementedError
 
 
-def ce_shift(x: ComputeElement, n: int) -> ComputeElement: # left: n > 0
-    _s = x.s
-    vhdl_func = "shift_left" if n >= 0 else "shift_right"
-    
-    if x.type.belong(SFixedPoint): # arithmetic shifting
-        vhdl_type = "signed"
-    elif x.type.belong(Bits): # logic shifting
-        vhdl_type = "unsigned"
-    else:
-        raise NotImplementedError
-    
-    u = _s.add_substructure(f"shifter", CustomVHDLOperator(
-        {"i": x.type},
-        {"o": x.type},
-        f"o <= std_logic_vector({vhdl_func}({vhdl_type}(i), {abs(n)}));",
-        _unique_name = f"Shifter_{str(n).replace("-", "Neg")}_{x.type}"
-    ))
-    _s.connect(x.node, u.IO.i)
-    return ComputeElement(_s, runtime_node = u.IO.o)
+def uint(x: ComputeElement, width: int) -> ComputeElement:
+    return ufixed(x, width, 0)
 
 
-def ce_add(x, y) -> ComputeElement:
-    if isinstance(x, ComputeElement) and isinstance(y, ComputeElement):
-        assert x.s == y.s
+def mux(cond, x: ComputeElement, y: ComputeElement):
+    if isinstance(cond, ComputeElement):
+        assert x.s == y.s and x.type.equal(y.type) and cond.type.W == 1
         _s = x.s
         
-        u = _s.add_substructure(f"adder", Add(T, T))
-        _s.connect(x.node, u.IO.a)
-        _s.connect(y.node, u.IO.b)
-        return ComputeElement(_s, runtime_node = u.IO.r)
-    
-    elif isinstance(x, ComputeElement) and isinstance(y, (float, int)):
-        _s = x.s
-        
-        # TODO
-        
-        u = _s.add_substructure(f"adder", Add(T, T))
-        _s.connect(x.node, u.IO.a)
-        _s.connect(, u.IO.b)
-        return ComputeElement(_s, runtime_node = u.IO.r)
-    
-    elif isinstance(y, ComputeElement) and isinstance(x, (float, int)):
-        return ce_add(y, x) # add is commutative
+        u = _s.add_substructure("mux", BinaryMultiplexer(x.type))
+        _s.connect(cond.node, u.IO.sel)
+        _s.connect(x.node, u.IO.i0)
+        _s.connect(y.node, u.IO.i1)
+        return ComputeElement(_s, runtime_node = u.IO.o)
     else:
-        raise NotImplementedError
+        return x if cond else y
 

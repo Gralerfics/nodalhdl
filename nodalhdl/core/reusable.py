@@ -57,7 +57,7 @@ class OperatorSetupTemplates:
 
 class OperatorDeductionTemplates:
     @staticmethod
-    def wider_as_output_2i1o(input_path_1: str, input_path_2: str, output_path: str):
+    def equal_bases_wider_output_2i1o(input_path_1: str, input_path_2: str, output_path: str):
         def _deduction(s: Structure, io: IOProxy):
             i1, i2, o = io.access(input_path_1), io.access(input_path_2), io.access(output_path)
             
