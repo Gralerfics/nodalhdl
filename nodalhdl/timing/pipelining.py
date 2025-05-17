@@ -17,7 +17,7 @@ def to_extended_circuit(s: Structure, root_runtime_id: RuntimeId):
     """
         The structure `s` should be flattened and timing-analysed.
     """
-    if not s.is_flattened: # or not s.is_flatly_timed: TODO
+    if not s.is_flattened:
         raise RetimingException("Only flattened and timing-analysed structures can be converted")
     
     G = ExtendedCircuit()
@@ -50,12 +50,12 @@ def to_extended_circuit(s: Structure, root_runtime_id: RuntimeId):
         
         subs_ports_outside = s.get_subs_ports_outside(subs_inst_name)
         in_ports = subs_ports_outside.nodes(filter = "in")
-        out_ports = subs_ports_outside.nodes(filter = "out") # TODO 加个功能让一次能两个一起返回了吧
+        out_ports = subs_ports_outside.nodes(filter = "out")
         
-        timing_info = subs.get_runtime(root_runtime_id.next(subs_inst_name)).timing_info
+        timing_info = subs.get_runtime(root_runtime_id.next(subs_inst_name)).timing_info # [NOTICE] 会不会没有
         for pi_layered_name, pi in in_ports:
             for po_layered_name, po in out_ports:
-                delay = timing_info.get((pi_layered_name, po_layered_name))
+                delay = timing_info.get((pi_layered_name, po_layered_name), None)
                 if delay is not None:
                     e_ins = [external_edges_map[pi]]
                     e_outs = [external_edges_map[po_load] for po_load in po.located_net.get_loads()]
@@ -70,7 +70,7 @@ def to_simple_circuit(s: Structure, root_runtime_id: RuntimeId):
     """
         The structure `s` should be flattened and timing-analysed.
     """
-    if not s.is_flattened: # or not s.is_flatly_timed: TODO
+    if not s.is_flattened:
         raise RetimingException("Only flattened can be converted")
     
     G = SimpleCircuit()
