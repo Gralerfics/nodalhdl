@@ -168,24 +168,24 @@ model = m2.generation(rid_m2)
 emit_to_files(model.emit_vhdl(), "C:/Workspace/test_project/test_project.srcs/sources_1/new")
 
 
-# print('m2.dup ==============================================================================================================')
+print('m2.dup ==============================================================================================================')
 
 
-# m2_dup = m2.duplicate()
+m2_dup = m2.duplicate()
 
-# rid_m2_dup = RuntimeId.create()
-# m2_dup.deduction(rid_m2_dup)
+rid_m2_dup = RuntimeId.create()
+m2_dup.deduction(rid_m2_dup)
 
-# print(m2.runtime_info(rid_m2))
-# print(m2_dup.runtime_info(rid_m2_dup))
+print(m2.runtime_info(rid_m2))
+print(m2_dup.runtime_info(rid_m2_dup))
 
-# print(m2.get_nets())
-# print(m2_dup.get_nets())
+print(m2.get_nets())
+print(m2_dup.get_nets())
 
-# # print(m2_dup.substructures["u1"].ports_outside[(m2_dup.id, "u1")].t.located_net)
-# # print(m2_dup.ports_inside_flipped.t.located_net)
-# # print([x for x in m2_dup.ports_inside_flipped.t.located_net.nodes_weak])
-# # print([x for x in m2_dup.ports_inside_flipped.t.located_net.runtimes.keys()])
+# print(m2_dup.substructures["u1"].ports_outside[(m2_dup.id, "u1")].t.located_net)
+# print(m2_dup.ports_inside_flipped.t.located_net)
+# print([x for x in m2_dup.ports_inside_flipped.t.located_net.nodes_weak])
+# print([x for x in m2_dup.ports_inside_flipped.t.located_net.runtimes.keys()])
 
 
 print('m2.strip ==============================================================================================================')

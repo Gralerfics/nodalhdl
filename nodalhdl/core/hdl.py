@@ -184,7 +184,7 @@ class HDLGlobalInfo:
         TODO 类似地重构输出代码
     """
     def __init__(self):
-        self.type_pool: Set[BundleType] = set() # 类型池, 可用于查重
+        self.type_uid_pool: Set[str] = set() # 类型池, 可用于查重
         self.type_pool_ordered: List[BundleType] = [] # 有序的 type_pool, 以防 HDL 要求顺序声明类型
     
     def merge(self, other: 'HDLGlobalInfo'):
@@ -194,8 +194,8 @@ class HDLGlobalInfo:
         """
         effective_new_list = []
         for t in other.type_pool_ordered:
-            if t not in self.type_pool:
-                self.type_pool.add(t)
+            if t.uid not in self.type_uid_pool:
+                self.type_uid_pool.add(t.uid)
                 effective_new_list.append(t)
         self.type_pool_ordered = effective_new_list + self.type_pool_ordered
     
@@ -218,14 +218,14 @@ class HDLGlobalInfo:
         """
         t = t.io_clear()
         
-        if t in self.type_pool: # added, so the subtypes must have been added too
+        if t.uid in self.type_uid_pool: # added, so the subtypes must have been added too
             return
         
         def _add_type(t: BundleType):
             if t.base_equal(Bundle): # only Bundles need to be added
                 for _, v in t.BT.items(): # sub-Bundles
                     _add_type(v)
-                self.type_pool.add(t)
+                self.type_uid_pool.add(t.uid)
                 self.type_pool_ordered.append(t) # add after all sub-Bundles are added
         
         _add_type(t)
