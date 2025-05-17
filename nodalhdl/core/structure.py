@@ -246,7 +246,8 @@ class Net:
         if len(self.nodes_weak) == 1:
             return # only one node, no need to separate
         
-        if self.has_driver and self.driver() is node: # driver is removed
+        # if self.has_driver and self.driver() is node:
+        if node.is_driver: # driver is removed
             self.driver = None
         
         self.nodes_weak.remove(node)
@@ -298,7 +299,7 @@ class Node:
             Net(located_structure)._add_node(self) # add_node() will update runtime signal type, so no need to be called after assigning origin_signal_type
     
     def __repr__(self):
-        return f"Node<{self.name} ({self.layered_name}), {self.origin_signal_type.base}, {self.of_structure_inst_name}>"
+        return f"Node<{self.name} ({self.layered_name}), {self.origin_signal_type}, {self.of_structure_inst_name}>"
     
     @property
     def is_originally_determined(self):
@@ -831,8 +832,8 @@ class Structure:
             
             # expand substructures (shallow, w/o operators)
             for sub_inst_name, subs in self.substructures.items():
-                if subs.is_reusable_operator:
-                    # operator, move into new_substructures
+                if subs.is_operator:
+                    # operator, cannot be expanded, move into new_substructures
                     new_substructures[sub_inst_name] = subs
                 else:
                     # non-operator, expand
