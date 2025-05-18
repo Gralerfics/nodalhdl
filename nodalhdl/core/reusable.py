@@ -142,17 +142,9 @@ class UniquelyNamedReusableMeta(type):
         if s.custom_generation is None and s.custom_deduction is not None: # custom_generation is necessary
             raise Exception("Method `generation` must be defined for an operator (only deduction method provided now)")
         
-        # deduction
+        # deduction and apply
         rid = RuntimeId.create()
         s.deduction(rid)
-        
-        # # check DIDO
-        # if getattr(cls, "determined_in_determined_out_required", False):
-        #     if all([p.is_determined(rid) for _, p in s.ports_inside_flipped.nodes(filter = "in", flipped = True)]): # in-determined
-        #         if not all([p.is_determined(rid) for _, p in s.ports_inside_flipped.nodes(filter = "in", flipped = True)]): # must be out-determined
-        #             raise Exception("DIDO not satisfied")
-        
-        # apply
         if s.is_runtime_applicable:
             s.apply_runtime(rid)
         
@@ -212,22 +204,6 @@ class UniquelyNamedReusable(metaclass = UniquelyNamedReusableMeta):
         or the template below.
     """
     naming = UniqueNamingTemplates.args_kwargs_md5_16()
-
-
-# def DIDO(cls):
-#     """
-#         TODO TODO TODO TODO TODO
-#         该属性初衷是考虑 hls 层中根据输入必须推导出输出设计的。
-#         但解决不全面：
-#             EquiTypesAdd 这种外面套一层，是因为 BitsAdd 只管 Bits 类型, 其推导函数 input_type_args_2i1o 不处理 W_frac 等属性，
-#             导致得出类似 SFixedPoint{W: xxx} 但是没有 W_frac 和 W_int 的情况，导致信号类型没有完整传递下去。
-#             这无法由 DIDO 规范，因为只要有 W 了就是 determined 的。
-#                 如果不规范，就有点难根据报错找到问题的原因。
-#                 但这种情况也没法在类这边规范了，可能还是只能到 hls 层规范运算（例如规定只有相同类型可以运算 TODO 感觉这种毕竟合理，方式上比如可以加一个类型的 Node 连到 Port？）。
-#             亟待解决。
-#     """
-#     cls.determined_in_determined_out_required = True
-#     return cls
 
 
 import sys

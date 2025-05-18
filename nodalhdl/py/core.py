@@ -132,9 +132,10 @@ def _add_ce(x: 'ComputeElement', y: 'ComputeElement') -> 'ComputeElement':
     _s = x.s
 
     if x.type.belong(FixedPoint):
-        u = _s.add_substructure(f"adder", FixedPointAdd(x.type)) # TODO
+        u = _s.add_substructure(f"adder", BitsAdd(x.type))
         _s.connect(x.node, u.IO.a)
         _s.connect(y.node, u.IO.b)
+        u.IO.r.set_origin_type(u.IO.r.origin_signal_type.apply(x.type)) # TODO
         return ComputeElement(_s, runtime_node = u.IO.r)
     else:
         raise NotImplementedError
@@ -144,9 +145,10 @@ def _sub_ce(x: 'ComputeElement', y: 'ComputeElement') -> 'ComputeElement':
     _s = x.s
     
     if x.type.belong(FixedPoint):
-        u = _s.add_substructure(f"subtractor", FixedPointSubtract(x.type)) # TODO
+        u = _s.add_substructure(f"subtractor", BitsSubtract(x.type))
         _s.connect(x.node, u.IO.a)
         _s.connect(y.node, u.IO.b)
+        u.IO.r.set_origin_type(u.IO.r.origin_signal_type.apply(x.type)) # TODO
         return ComputeElement(_s, runtime_node = u.IO.r)
     else:
         raise NotImplementedError
@@ -156,7 +158,7 @@ def _mul_ce(x: 'ComputeElement', y: 'ComputeElement') -> 'ComputeElement':
     _s = x.s
     
     if x.type.belong(FixedPoint):
-        u = _s.add_substructure(f"multiplier", FixedPointMultiply(x.type)) # TODO
+        u = _s.add_substructure(f"multiplier", FixedPointMultiply(x.type))
         _s.connect(x.node, u.IO.a)
         _s.connect(y.node, u.IO.b)
         return ComputeElement(_s, runtime_node = u.IO.r)

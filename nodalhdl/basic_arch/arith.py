@@ -43,24 +43,6 @@ class Constants(UniquelyNamedReusable):
     naming = UniqueNamingTemplates.args_kwargs_md5_16()
 
 
-class FixedPointAdd(BitsAdd):
-    @staticmethod
-    def setup(t: FixedPointType) -> Structure:
-        assert t.belong(FixedPoint)
-        return BitsAdd.setup(t)
-    
-    deduction = OperatorDeductionTemplates.equi_types("a", "b", "r")
-
-
-class FixedPointSubtract(BitsSubtract):
-    @staticmethod
-    def setup(t: FixedPointType) -> Structure:
-        assert t.belong(FixedPoint)
-        return BitsSubtract.setup(t)
-    
-    deduction = OperatorDeductionTemplates.equi_types("a", "b", "r")
-
-
 class FixedPointMultiply(UniquelyNamedReusable):
     @staticmethod
     def setup(t: FixedPointType):
@@ -69,6 +51,7 @@ class FixedPointMultiply(UniquelyNamedReusable):
         s = Structure()
         a = s.add_port("a", Input[t])
         b = s.add_port("b", Input[t])
+        r = s.add_port("r", Output[t])
         
         if t.belong(UFixedPoint):
             bits_mul = s.add_substructure("bits_mul", BitsUnsignedMultiply(Bits[t.W], Bits[t.W]))
@@ -77,7 +60,6 @@ class FixedPointMultiply(UniquelyNamedReusable):
         s.connect(a, bits_mul.IO.a)
         s.connect(b, bits_mul.IO.b)
         
-        r = s.add_port("r", Output[t])
         tc = s.add_substructure("tc", CustomVHDLOperator(
             {"i": Bits[t.W + t.W]},
             {"o": t},

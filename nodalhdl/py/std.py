@@ -5,7 +5,6 @@ from nodalhdl.core.structure import *
 from nodalhdl.basic_arch.bits import *
 
 from nodalhdl.py.core import *
-from nodalhdl.py.core import _constant
 
 
 def _fixed(x: ComputeElement, target_t: SignalType) -> ComputeElement:
