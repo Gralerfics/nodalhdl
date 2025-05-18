@@ -57,6 +57,10 @@ def shader(iTime_us_u64: ComputeElement, fragCoord_u12: vec2) -> ComputeElement:
 
 ![pretty_hip_example_result](./doc/readme_assets/pretty_hip_example.gif)
 
+核心部分未进行流水化时的结构如下图所示：
+
+![ph_comb_elaborated_schematic](./doc/readme_assets/ph_comb_elaborated_schematic.jpg)
+
 ## 设计文档
 
 （TODO）关于项目结构设计的细节，例如抽象层次、对象引用关系的设计以及代码实现等。

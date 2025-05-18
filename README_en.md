@@ -63,6 +63,10 @@ After manually adding peripheral circuits such as SDRAM double buffering and HDM
 
 ![pretty_hip_example_result](./doc/readme_assets/pretty_hip_example.gif)
 
+The structure of the major part when it is not pipelined is shown in the following figure:
+
+![ph_comb_elaborated_schematic](./doc/readme_assets/ph_comb_elaborated_schematic.jpg)
+
 ## Documentation
 
 (TODO) Details about the structural design of the project, such as the abstraction hierarchy, the design of object relationships, and the coding matters.
