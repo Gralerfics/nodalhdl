@@ -1,3 +1,5 @@
+# This file is part of nodalhdl (https://github.com/Gralerfics/nodalhdl), distributed under the GPLv3. See LICENSE.
+
 from nodalhdl.core.signal import *
 from nodalhdl.core.structure import *
 from nodalhdl.basic.bits import *

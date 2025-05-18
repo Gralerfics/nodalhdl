@@ -1,3 +1,5 @@
+# This file is part of nodalhdl (https://github.com/Gralerfics/nodalhdl), distributed under the GPLv3. See LICENSE.
+
 """
     Notes:
         base 仅一个, 合并时为最下的、与二者都有从属关系的类型.

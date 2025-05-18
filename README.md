@@ -1,42 +1,133 @@
-# nodalhdl
+# NodalHDL
 
-## Introduction
+[中文](./README.md) | [English](./README_en.md)
 
-**(Ongoing)** Pipelined digital circuit design toolchain. Partially inspired by [PipelineC](https://github.com/JulianKemmerer/PipelineC).
+## NodalHDL 是什么？
 
-Provide block diagram level circuit abstraction data structures, check `test.py` for details, others under development.
+**（预期中这是）** 一套紧密嵌入 Python 工作流的领域专用架构（DSA）设计工具链，支持自动流水化、高层次综合等特性，并配有可视化编辑器、仿真调试工具、板级支持包等辅助工具。
 
-## TODO
+**（不过现在只是）** 一套紧密嵌入 Python 工作流的**流水线数字电路**设计工具链，支持**自动流水化**、**组合逻辑高层次综合**等特性，并配有可视化但暂不可编辑器等辅助工具。
 
-## Usage
+> 总的来说即使用 Python 代码描述行为，直接生成 HDL 代码。
 
-Dependencies please check `pyproject.toml`.
+NodalHDL 中提供一种数据结构用于描述电路结构，称为**结构描述**（Structure）。其形似电路框图，由**节点**（Node）、**线网**（Net）和子结构组合而成。**结构描述层**上承**行为描述层**（基于 Python 语法的高层次综合特性），下接**硬件描述语言模型层**，起到中间表示的作用。其包含一套类型系统，支持进行修改、自动类型推导、复用、持久化存取等操作，具有较强的可读性。
 
-## TODO List
+## 快速开始
 
-1. 定点数除法、CORDIC 等模块; 乘法的优化等.
-2. retiming 效率问题. e.g. 转换时忽略基本无延迟的节点等.
-3. [***] 参考 test_shader_pretty_hip 构建 HLS 层.
-4. operator 自带时钟延迟的问题 (retiming 可否解决), 解决则可引入 IP 核; 普通时序电路和流水线的区分.
-5. [*] 进一步重构 signal (IOWrapper 和 Bundle), 见文件中注释.
-6. [**] (整体 retiming 慢则拆分) 流水线拼接 (直接对接 / ready-valid); ready-valid 反压打断问题; 同功能的组合逻辑和状态机实现.
-7. 外设.
-8. pipelining 自动级数选取.
-9.  时序分析临时目录缓存 (Structure 同构判断).
-10. .arith 的传参方式问题; Add/Subtract U/SInt 不等宽情况 (围绕 BitsAdd 重新建立); 前者也就是运行时类型影响结构架构选取的功能 (应该可以套在外面实现, 例如类型推导先 custom_deduction 的模块跑 (基本算子以外的结构也加个类似 custom_deduction 的东西, 就是允许这种情况只跑推导不走内部), 跑完推完再填入合适的结构; 这种情况才会要求不能出现奇怪的冲突类型需要报错; 不实现该功能的时候冲突类型不用报出来, 因为不影响生成; 即 "指定" 而非 "允许" 的需求, 需要加到 signal 实现中).
-11. [*] CustomVHDLOperator 结构化端口.
-12. 关于 Bundle 拆分、聚合、连接的问题. 还有如 StructuralNodes 同时分别返回 in 和 out 端口的功能等; 还有 IOProxy 实现对应 StructuralNodes 的功能 (一一对应外有没有更好的方法).
-13. Verilog 完整支持.
-14. 仿真支持; 包括值对象的运算等.
-15. 选择性 expand (substructures_expandable_flags: Dict[str, bool]).
-16. STA 其他工具支持; Vivado 时序报告的解析功能完善.
-17. [**]STA 有关同算子处于不同连接关系下时序不同的问题（例如存在常数输入导致各关键路径可能降低）; 尽量不重复分析，不然太多了, 虽然好像也能接受.
-18. STA 中提取时序路径的双指针方法总感觉有隐患, 因为要求报告生成时严格按 TCL 中的添加顺序.
-19. nodalhdl-editor; 支持编辑器需要添加一系列操作, 例如框选一组结构拖出去的操作等需要相应的 API.
-20. 持久化读写后如何保障 unique_name 等池子的一致性.
-21. [*] 重构合理的异常处理体系.
-22. [***] is_reusable_operator 问题.
-23. 异步、访存、并行与仲裁.
-24. [***] extended 模型有问题, 似乎是否报错还和不同运行次数有关? 结果感觉也不太对.
-25. ...
+### 安装
+
+使用 `pip install` 安装即可。鉴于本项目仍在开发中，可考虑使用 `pip install -e . --config-settings editable_mode=compat` 以可编辑模式安装，或直接指定路径导入。
+
+### HDL 生成实例
+
+以一个简单例子说明该项目的用途，工程见 [hdmi_ddr3_fragment_shader_proj](https://github.com/Gralerfics/hdmi_ddr3_fragment_shader_proj)。以 Shadertoy 上的一个作品 [Pretty Hip](https://www.shadertoy.com/view/XsBfRW) 为例，参考其算法编写如下 Python 脚本：
+
+```python
+from nodalhdl.py.std import mux, sfixed, uint
+from nodalhdl.py.glsl import vec2, vec4, fract, ceil, min, clamp
+
+T = SFixedPoint[16, 12]
+
+def shader(iTime_us_u64: ComputeElement, fragCoord_u12: vec2) -> ComputeElement:
+    iTime_us = sfixed(iTime_us_u64, T.W_int + 20, T.W_frac)
+    iTime_s = sfixed(iTime_us >> 20, T.W_int, T.W_frac)
+    
+    fragCoord = vec2(sfixed(fragCoord_u12.x, T.W_int, T.W_frac), sfixed(fragCoord_u12.y, T.W_int, T.W_frac))
+    
+    a = vec2((fragCoord.x >> 9) + (fragCoord.x >> 7) - 5, (fragCoord.y >> 9) + (fragCoord.y >> 7) - 3.75)
+    u = vec2(a.x - a.y + 5, a.x + a.y + 5)
+    f = fract(u)
+    f = min(f, 1 - f)
+    v = ceil(u) - 5.5
+    
+    s = 1 + ((v.x * v.x + v.y * v.y) >> 3)
+    e = (fract((iTime_s - (s >> 1)) >> 2) << 1) - 1
+    t = fract(min(f.x, f.y) << 2)
+    
+    rampFactor = 0.95 * mux(e[e.type.W - 1], 1 - t, t) - e * e
+    mixFactor = clamp((rampFactor << 4) + (rampFactor << 2) + 1, 0, 0.9999) + s * 0.1
+    
+    fragColor = clamp(vec4(1 - (mixFactor >> 1), 1 - (mixFactor >> 2), 0.9999, 0.9999), 0, 0.9999)
+    return uint(fragColor.r << 8, 8) @ uint(fragColor.g << 8, 8) @ "11111111"
+```
+
+该函数描述了一个片段着色器的算法逻辑，输入屏幕像素坐标和时间戳，返回对应的颜色值，从而形成动画效果。创建端口，利用该函数可自动构建结构（Structure）对象，再通过调用一些常规流程（静态时序分析、自动流水化、HDL 生成并输出）得到 HDL 文件，详见 `./examples/test_py_shader_pretty_hip.py`。
+
+手动添加 SDRAM 双缓冲、HDMI 输出等外围电路后（后续期望可以对异步访存、仲裁、并行等结构的生成完成自动化，并添加对 HDMI 等外设的支持），部署到 FPGA 平台验证，效果如下图所示。
+
+![pretty_hip_example_result](./doc/readme_assets/pretty_hip_example.gif)
+
+## 设计文档
+
+（TODO）关于项目结构设计的细节，例如抽象层次、对象引用关系的设计以及代码实现等。
+
+目前只有一篇稀烂的本科毕业论文介绍了一下项目结构，内容还有些过期。尚未毕业，暂不上传，后续重新撰写。
+
+## 部分计划
+
+- [x] 结构描述层（Structural Description Layer）
+  - [x] 类型系统（Type System）
+    - [ ] 重构 IO 包装和信号束类型（Refactor IOWrapper and Bundle Type）
+    - [ ] 信号束的拆分和聚合操作（Bundle Type De/Composition）
+  - [x] 结构工作流（Structure Workflow）
+    - [x] 结构复制（Duplicate）
+    - [x] 多实例结构的剥离（Strip）
+    - [x] 结构单例化（Singletonize）
+    - [x] 内部结构展开（Substructure Expanding）
+      - [ ] 选择性展开（Selectively Expanding）
+    - [x] 运行时信息与自动类型推导（Type Inference）
+    - [x] HDL 生成（HDL Generation）
+    - [x] 持久化存储（Persistence）
+      - [ ] 类型池的一致性问题（Consistence Issues）
+    - [x] 静态时序分析（STA）
+      - [ ] 自动复用分析结果缓存（STA Results Buffering）
+      - [ ] 其他 STA 工具支持（Support for Other STA Tools）
+      - [ ] 相同结构输入不同时时序差异的问题，如常数输入（Timing Features Influenced by Different Inputs）
+    - [ ] 内部结构快速拆分（Fast Decomposition）
+    - [ ] 结构层仿真（Simulation）
+  - [x] 常用结构生成函数（Useful Structures Generators）
+    - [ ] 位运算器（Bitwise Operators）
+    - [x] 加 / 减法器等（Adder / Subtractor, etc.）
+    - [ ] 定点数除法器（FxP Division）
+    - [ ] CORDIC 模块（CORDIC Module）
+
+- [x] 硬件描述语言层（HDL Model Layer）
+  - [ ] Verilog 完整支持（Verilog Support）
+  - [ ] 生成文件夹结构（Folder Structure）
+
+- [x] 高层次综合特性（HLS Features）
+  - [x] 重定时 / 流水化（Retiming / Pipelining）
+    - [ ] 关键时序路径返回（Bottleneck Hinting）
+    - [ ] 自动流水线级数选取（Automatic Stages Picking）
+    - [ ] 提高效率（Accelerated Algorithms）
+    - [ ] 引入自带流水级数的基本算子（Support Internal Pipeline Stages）
+    - [ ] 修复扩展模型重定时的问题（Fix Extended Model）
+  - [x] 组合逻辑生成（Combinational Logic Generation）
+    - [x] 常用运算符重载，如加减乘、移位、切片等（Common Operations, e.g. +/-, Shifting, Slicing）
+    - [ ] 常用标准函数，如类型转换等（Standard Functions, e.g. Type Conversions）
+    - [x] 仿 GLSL 的向量操作及函数（GLSL-like Vector Behaviors）
+    - [ ] 添加中间层，如计算图，现在这个结构感觉不好扩展（Intermediate Layers, e.g. Computational Graph）
+  - [ ] 状态机 / 时序逻辑生成（FSM & Sequential Logic Generation）
+    - [ ] 浮点数运算单元（FPU）
+  - [ ] 模块拼接，关于Ready-valid 握手、反压、打断设计（Module Concatenation）
+  - [ ] 跨时钟域结构的生成，如FIFO、异步访存等（Clock Crossings）
+  - [ ] 并行化结构的生成，如仲裁模块等（Concurrent Structures）
+
+- [ ] 辅助工具链（Complementary Toolchain）
+  - [ ] [可视化编辑器](https://github.com/Gralerfics/nodalhdl_editor)（Visual Editor）
+  - [ ] 包含图像输出等功能的仿真器（Simulator）
+  - [ ] HDMI、UART 等常用外设驱动模块的生成（Peripherals Generation）
+  - [ ] Vivado 等工程文件生成（Project Generation）
+  - [ ] 添加对其他开源综合、布局布线工具链的支持（Support for Other Synthesis / P&R Toolchains）
+
+- [ ] 其他（Miscellaneous）
+  - [ ] 异常处理体系（Exception Handling）
+
+## 声明
+
+部分想法来源于 [PipelineC](https://github.com/JulianKemmerer/PipelineC)。
+
+依赖项请查看 `pyproject.toml`。
+
+以及我不是微电子专业，也不会查文献，现在我有点怀疑我这个项目存在的意义。
 
