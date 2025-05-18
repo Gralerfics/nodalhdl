@@ -647,6 +647,11 @@ if __name__ == "__main__": # test
     print(SS.uid)
     
     print(UInt64.belong(UFixedPoint[64, 0]))
+    
+    print(SFixedPoint[16, 12](0.999).to_bits_string())
+    print(SFixedPoint[16, 12](0.9999).to_bits_string())
+    print(SFixedPoint[16, 12](0.99999999999).to_bits_string())
+    print(SFixedPoint[16, 12](0.999999999999).to_bits_string())
 
     # Q = Bundle[{
     #     "a": UInt[4],

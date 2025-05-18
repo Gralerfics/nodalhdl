@@ -244,7 +244,7 @@ print(shader.runtime_info(rid))
 
 
 # STA
-sta = VivadoSTA(part_name = "xc7a200tfbg484-1", temporary_workspace_path = ".vivado_sta_shader", vivado_executable_path = "vivado.bat")
+sta = VivadoSTA(part_name = "xc7a200tfbg484-1", temporary_workspace_path = ".vivado_sta_shader_old", vivado_executable_path = "vivado.bat")
 sta.analyse(shader, rid, skip_emitting_and_script_running = True)
 
 
