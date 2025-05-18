@@ -111,6 +111,10 @@ class SignalType:
             return wrapped_type is not None and wrapped_type.is_determined
     
     @property
+    def is_fully_determined(self) -> bool:
+        return self.is_determined
+    
+    @property
     def is_io_perfect(self) -> bool:
         if self.base_belong(Bits):
             return False
@@ -290,6 +294,10 @@ class FixedPointType(BitsType):
     def __call__(self, *args, **kwds):
         raise SignalTypeInstantiationException(f"{self.base_name} cannot be instantiated")
     
+    @property
+    def is_fully_determined(self) -> bool:
+        return self.is_determined and self.info.get("width_integer", None) is not None and self.info.get("width_fraction", None)
+    
     def derive(self, width_integer: int, width_fraction: int) -> 'SignalType':
         assert isinstance(width_integer, int) and isinstance(width_fraction, int)
         return self.base({"width_integer": width_integer, "width_fraction": width_fraction})
@@ -325,6 +333,10 @@ class IntegerType(FixedPointType):
         super().__init__(info)
         info["width_fraction"] = 0
     
+    # @property
+    # def is_fully_determined(self) -> bool:
+    #     return self.is_determined
+    
     def __call__(self, *args, **kwds):
         raise SignalTypeInstantiationException(f"{self.base_name} cannot be instantiated")
     
@@ -357,6 +369,10 @@ class FloatingPointType(BitsType):
     def __call__(self, *args, **kwds):
         self._info_check("width_exponent", "width_mantissa")
         return FloatingPointValue(self, *args, **kwds)
+    
+    @property
+    def is_fully_determined(self) -> bool:
+        return self.is_determined and self.info.get("width_exponent", None) is not None and self.info.get("width_mantissa", None)
     
     def derive(self, width_exponent: int, width_mantissa: int) -> 'SignalType':
         assert isinstance(width_exponent, int) and isinstance(width_mantissa, int)
@@ -470,7 +486,6 @@ class SignalValueException(Exception): pass
 
 class SignalValue:
     def __init__(self, signal_type: SignalType, literal_value):
-        # assert signal_type.base_name == self.__class__.__name__[:-5] # TODO 本来是保证 xType 对应 xValue, 但目前 U/SInt 直接用了 U/SFixedPoint, 先注释吧
         self.type = signal_type
         self.set_internal(literal_value)
     

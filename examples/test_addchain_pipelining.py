@@ -2,8 +2,8 @@
 
 from nodalhdl.core.signal import *
 from nodalhdl.core.structure import *
-from nodalhdl.basic.arith import *
-from nodalhdl.basic.bits import *
+from nodalhdl.basic_arch.arith import *
+from nodalhdl.basic_arch.bits import *
 from nodalhdl.timing.sta import *
 from nodalhdl.timing.pipelining import *
 

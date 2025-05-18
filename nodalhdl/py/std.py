@@ -2,7 +2,7 @@
 
 from nodalhdl.core.signal import *
 from nodalhdl.core.structure import *
-from nodalhdl.basic.bits import *
+from nodalhdl.basic_arch.bits import *
 
 from nodalhdl.py.core import *
 from nodalhdl.py.core import _constant

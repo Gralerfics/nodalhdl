@@ -2,8 +2,8 @@
 
 from nodalhdl.core.signal import UInt, SInt, Bits, Bit, Float, Bundle, Input, Output, Auto, SignalType
 from nodalhdl.core.structure import Structure, RuntimeId, StructureProxy
-from nodalhdl.basic.bits import *
-from nodalhdl.basic.arith import *
+from nodalhdl.basic_arch.bits import *
+from nodalhdl.basic_arch.arith import *
 from nodalhdl.core.hdl import HDLFileModel
 from nodalhdl.timing.sta import VivadoSTA
 from nodalhdl.timing.pipelining import pipelining

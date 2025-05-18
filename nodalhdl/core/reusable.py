@@ -45,7 +45,7 @@ class OperatorSetupTemplates:
         return _setup
     
     @staticmethod
-    def input_type_args_1i1o(input_name: str = "a", output_name: str = "r", output_type: SignalType = Auto):
+    def input_type_args_1i1o(input_name: str, output_name: str, output_type: SignalType = Auto):
         def _setup(input_type: SignalType = Auto):
             s = Structure()
             
@@ -57,9 +57,9 @@ class OperatorSetupTemplates:
         return _setup
 
 
-class OperatorDeductionTemplates:
+class OperatorDeductionTemplates: # TODO 前两个太具体的要不要搬到 bits 里面去
     @staticmethod
-    def equal_bases_wider_output_2i1o(input_path_1: str, input_path_2: str, output_path: str):
+    def equi_bases_wider_output_2i1o(input_path_1: str, input_path_2: str, output_path: str):
         def _deduction(s: Structure, io: IOProxy):
             i1, i2, o = io.access(input_path_1), io.access(input_path_2), io.access(output_path)
             
@@ -77,7 +77,25 @@ class OperatorDeductionTemplates:
         return _deduction
     
     @staticmethod
-    def equal_types(*port_paths):
+    def equi_bases_add_width_output_2i1o(input_path_1: str, input_path_2: str, output_path: str):
+        def _deduction(s: Structure, io: IOProxy):
+            i1, i2, o = io.access(input_path_1), io.access(input_path_2), io.access(output_path)
+            
+            # base type
+            merged_base_type = i1.type.base_type.merge(i2.type.base_type).merge(o.type.base_type)
+            o.update(merged_base_type)
+            i1.update(merged_base_type)
+            i2.update(merged_base_type)
+            
+            # width
+            o.update(Bits[i1.type.W + i2.type.W] if i1.type.W is not None and i2.type.W is not None else merged_base_type)
+            i1.update(Bits[o.type.W - i2.type.W] if i2.type.W is not None and o.type.W is not None else merged_base_type)
+            i2.update(Bits[o.type.W - i1.type.W] if i1.type.W is not None and o.type.W is not None else merged_base_type)
+        
+        return _deduction
+    
+    @staticmethod
+    def equi_types(*port_paths):
         def _deduction(s: Structure, io: IOProxy):
             P = [io.access(path) for path in port_paths]
             
@@ -122,11 +140,19 @@ class UniquelyNamedReusableMeta(type):
         if s.custom_deduction is None and s.custom_generation is not None: # custom_deduction can be passed
             s.custom_deduction = lambda s, io: None
         if s.custom_generation is None and s.custom_deduction is not None: # custom_generation is necessary
-            raise Exception("generation method must be defined for an operator (only deduction method provided now)")
+            raise Exception("Method `generation` must be defined for an operator (only deduction method provided now)")
         
-        # deduction and apply
+        # deduction
         rid = RuntimeId.create()
         s.deduction(rid)
+        
+        # # check DIDO
+        # if getattr(cls, "determined_in_determined_out_required", False):
+        #     if all([p.is_determined(rid) for _, p in s.ports_inside_flipped.nodes(filter = "in", flipped = True)]): # in-determined
+        #         if not all([p.is_determined(rid) for _, p in s.ports_inside_flipped.nodes(filter = "in", flipped = True)]): # must be out-determined
+        #             raise Exception("DIDO not satisfied")
+        
+        # apply
         if s.is_runtime_applicable:
             s.apply_runtime(rid)
         
@@ -137,6 +163,8 @@ class UniquelyNamedReusableMeta(type):
 
 
 class UniquelyNamedReusable(metaclass = UniquelyNamedReusableMeta):
+    determined_in_determined_out_required = False
+    
     @staticmethod
     def setup(*args, **kwargs) -> Structure:
         return Structure()
@@ -149,6 +177,27 @@ class UniquelyNamedReusable(metaclass = UniquelyNamedReusableMeta):
             
             @staticmethod
             def generation(s: Structure, h: HDLFileModel, io: IOProxy): ...
+        
+        Notes:
+            1. There are two main ways to help identify the port types:
+                a. define origin_signal_type in setup();
+                b. define deduction to deduce the types, which will be applied in UniquelyNamedReusableMeta.__call__().
+            2. TODO 类型合法性的检查
+                对于 basic_arch，内部结构不会因运行时类型发生变化，但内部结构对允许的类型也有要求，不满足可能导致错误；
+                    故检查应该在任意时刻进行，或者说只要运行时类型更新，就应该问一下该结构，类型是否合法；
+                    那么这个过程应该可以嵌入 custom_deduction 中，而在 UniquelyNamedReusable 这里可以单独拉出一个 assertion 函数，和 deduction 一起放入 custom_deduction。
+                    而 setup 中的检查主要是限制用户调用的方式。
+                关于 DIDO：
+                    basic_arch 中应该都是满足 DIDO 性质的结构生成器，即可以有 Auto 或其他什么不定类型，但只要输入确定，输出也必须确定。
+                    既然允许不定类型等，那么 deduction 就基本都是要实现的了，否则除非输出类型在 setup 中就被确定，运行时中将无法应对；
+                    setup 中确定类型主要是配合首次 deduction 尽量使生成的模块直接可以 apply 变成 reusable 的。
+                放一些典型的例子作为参考：
+                    a. BitsUnsignedMultiply 的 setup 生成结构需要 W 属性（也即定态），并要求是 Bits，故严格来说 setup 中需要 assert 一下这点；
+                        其结构一旦生成必然确定，输出类型也在 setup 中直接算出，所以不用 deduction（给 Auto 的话就算不 assert 也会在 setup 中出错）。
+                    b. BitsAdd 只要求是 Bits，它直接实现 generation，所以不用一些属性，可以是 Auto 的，故 setup 结束后不一定类型确定；
+                        那么就需要 deduction（类似的说明见下 DIDO）。
+                    c. 类似 a. 中, BitsReductionOr 输出在 setup 中直接确定为 Bit，故不需要 deduction。
+                    d. FxPMultiply 中更是需要 fully determined.
     """
     
     """
@@ -163,6 +212,22 @@ class UniquelyNamedReusable(metaclass = UniquelyNamedReusableMeta):
         or the template below.
     """
     naming = UniqueNamingTemplates.args_kwargs_md5_16()
+
+
+# def DIDO(cls):
+#     """
+#         TODO TODO TODO TODO TODO
+#         该属性初衷是考虑 hls 层中根据输入必须推导出输出设计的。
+#         但解决不全面：
+#             EquiTypesAdd 这种外面套一层，是因为 BitsAdd 只管 Bits 类型, 其推导函数 input_type_args_2i1o 不处理 W_frac 等属性，
+#             导致得出类似 SFixedPoint{W: xxx} 但是没有 W_frac 和 W_int 的情况，导致信号类型没有完整传递下去。
+#             这无法由 DIDO 规范，因为只要有 W 了就是 determined 的。
+#                 如果不规范，就有点难根据报错找到问题的原因。
+#                 但这种情况也没法在类这边规范了，可能还是只能到 hls 层规范运算（例如规定只有相同类型可以运算 TODO 感觉这种毕竟合理，方式上比如可以加一个类型的 Node 连到 Port？）。
+#             亟待解决。
+#     """
+#     cls.determined_in_determined_out_required = True
+#     return cls
 
 
 import sys

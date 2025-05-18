@@ -2,8 +2,8 @@
 
 from ..core.signal import *
 from ..core.structure import *
-from nodalhdl.basic.bits import *
-from nodalhdl.basic.arith import *
+from nodalhdl.basic_arch.bits import *
+from nodalhdl.basic_arch.arith import *
 
 from typing import List
 
@@ -131,54 +131,69 @@ def _add_ce(x: 'ComputeElement', y: 'ComputeElement') -> 'ComputeElement':
     assert x.s == y.s and x.type.equal(y.type) # should be equivalent
     _s = x.s
 
-    u = _s.add_substructure(f"adder", Add(x.type, x.type))
-    _s.connect(x.node, u.IO.a)
-    _s.connect(y.node, u.IO.b)
-    return ComputeElement(_s, runtime_node = u.IO.r)
+    if x.type.belong(FixedPoint):
+        u = _s.add_substructure(f"adder", FixedPointAdd(x.type)) # TODO
+        _s.connect(x.node, u.IO.a)
+        _s.connect(y.node, u.IO.b)
+        return ComputeElement(_s, runtime_node = u.IO.r)
+    else:
+        raise NotImplementedError
 
 def _sub_ce(x: 'ComputeElement', y: 'ComputeElement') -> 'ComputeElement':
     assert x.s == y.s and x.type.equal(y.type) # should be equivalent
     _s = x.s
     
-    u = _s.add_substructure(f"subtractor", Subtract(x.type, x.type))
-    _s.connect(x.node, u.IO.a)
-    _s.connect(y.node, u.IO.b)
-    return ComputeElement(_s, runtime_node = u.IO.r)
+    if x.type.belong(FixedPoint):
+        u = _s.add_substructure(f"subtractor", FixedPointSubtract(x.type)) # TODO
+        _s.connect(x.node, u.IO.a)
+        _s.connect(y.node, u.IO.b)
+        return ComputeElement(_s, runtime_node = u.IO.r)
+    else:
+        raise NotImplementedError
 
 def _mul_ce(x: 'ComputeElement', y: 'ComputeElement') -> 'ComputeElement':
     assert x.s == y.s and x.type.equal(y.type) # should be equivalent TODO Bits?
     _s = x.s
     
-    u = _s.add_substructure(f"multiplier", Multiply(x.type, x.type))
-    _s.connect(x.node, u.IO.a)
-    _s.connect(y.node, u.IO.b)
-    return ComputeElement(_s, runtime_node = u.IO.r)
+    if x.type.belong(FixedPoint):
+        u = _s.add_substructure(f"multiplier", FixedPointMultiply(x.type)) # TODO
+        _s.connect(x.node, u.IO.a)
+        _s.connect(y.node, u.IO.b)
+        return ComputeElement(_s, runtime_node = u.IO.r)
+    else:
+        raise NotImplementedError
 
 def _concate_ce(x: 'ComputeElement', y: 'ComputeElement') -> 'ComputeElement':
     assert x.s == y.s
     _s = x.s
     
-    u = _s.add_substructure(f"concatenator", CustomVHDLOperator(
-        {"a": x.type, "b": y.type},
-        {"o": Bits[x.type.W + y.type.W]},
-        "o <= a & b;",
-        _unique_name = f"Concatenate_{x.type}_{y.type}"
-    ))
-    _s.connect(x.node, u.IO.a)
-    _s.connect(y.node, u.IO.b)
-    return ComputeElement(_s, runtime_node = u.IO.o)
+    if x.type.belong(Bits):
+        u = _s.add_substructure(f"concatenator", CustomVHDLOperator(
+            {"a": x.type, "b": y.type},
+            {"o": Bits[x.type.W + y.type.W]},
+            "o <= a & b;",
+            _unique_name = f"Concatenate_{x.type}_{y.type}"
+        ))
+        _s.connect(x.node, u.IO.a)
+        _s.connect(y.node, u.IO.b)
+        return ComputeElement(_s, runtime_node = u.IO.o)
+    else:
+        raise NotImplementedError
 
 def _slice_ce(x: 'ComputeElement', elements: List[int]):
     _s = x.s
     
-    u = _s.add_substructure(f"slicer", CustomVHDLOperator(
-        {"i": x.type},
-        {"o": Bits[len(elements)]},
-        f"o <= {" & ".join([f"i({idx})" for idx in elements])};" if len(elements) > 1 else f"o <= (0 => i({elements[0]}));",
-        _unique_name = f"Slice_{"_".join(map(str, elements))}"
-    ))
-    _s.connect(x.node, u.IO.i)
-    return ComputeElement(_s, runtime_node = u.IO.o)
+    if x.type.belong(Bits):
+        u = _s.add_substructure(f"slicer", CustomVHDLOperator(
+            {"i": x.type},
+            {"o": Bits[len(elements)]},
+            f"o <= {" & ".join([f"i({idx})" for idx in elements])};" if len(elements) > 1 else f"o <= (0 => i({elements[0]}));",
+            _unique_name = f"Slice_{"_".join(map(str, elements))}"
+        ))
+        _s.connect(x.node, u.IO.i)
+        return ComputeElement(_s, runtime_node = u.IO.o)
+    else:
+        raise NotImplementedError
 
 
 import sys

@@ -2,8 +2,8 @@
 
 from nodalhdl.core.signal import *
 from nodalhdl.core.structure import *
-from nodalhdl.basic.bits import *
-from nodalhdl.basic.arith import *
+from nodalhdl.basic_arch.bits import *
+from nodalhdl.basic_arch.arith import *
 
 from nodalhdl.core.hdl import *
 from nodalhdl.timing.sta import *
@@ -37,13 +37,13 @@ def Shader() -> Structure:
         return u.IO.o
 
     def TAddition(a: Node, b: Node):
-        u = s.add_substructure(f"addition", Add(T, T))
+        u = s.add_substructure(f"addition", FixedPointAdd(T))
         s.connect(a, u.IO.a)
         s.connect(b, u.IO.b)
         return u.IO.r
     
     def TSubtraction(a: Node, b: Node):
-        u = s.add_substructure(f"subtraction", Subtract(T, T))
+        u = s.add_substructure(f"subtraction", FixedPointSubtract(T))
         s.connect(a, u.IO.a)
         s.connect(b, u.IO.b)
         return u.IO.r

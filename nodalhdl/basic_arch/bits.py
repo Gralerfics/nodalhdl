@@ -18,7 +18,7 @@ class BitsAdd(UniquelyNamedReusable):
         Output(s): r (wider width)
     """
     setup = OperatorSetupTemplates.input_type_args_2i1o("a", "b", "r")
-    deduction = OperatorDeductionTemplates.equal_bases_wider_output_2i1o("a", "b", "r")
+    deduction = OperatorDeductionTemplates.equi_bases_wider_output_2i1o("a", "b", "r")
     
     @staticmethod
     def generation(s: Structure, h: HDLFileModel, io: IOProxy):
@@ -39,13 +39,128 @@ class BitsSubtract(UniquelyNamedReusable):
         Output(s): r (wider width)
     """
     setup = OperatorSetupTemplates.input_type_args_2i1o("a", "b", "r")
-    deduction = OperatorDeductionTemplates.equal_bases_wider_output_2i1o("a", "b", "r")
+    deduction = OperatorDeductionTemplates.equi_bases_wider_output_2i1o("a", "b", "r")
     
     @staticmethod
     def generation(s: Structure, h: HDLFileModel, io: IOProxy):
         h.add_arch_body("vhdl", textwrap.dedent(f"""\
             r <= std_logic_vector(unsigned(a) - unsigned(b));
         """))
+    
+    naming = UniqueNamingTemplates.args_kwargs_all_values()
+
+
+class BitsUnsignedMultiply(UniquelyNamedReusable):
+    @staticmethod
+    def setup(t1: SignalType, t2: SignalType):
+        assert t1.belong(Bits) and t2.belong(Bits) and t1.is_determined and t2.is_determined
+        
+        s = Structure()
+        a = s.add_port("a", Input[t1])
+        b = s.add_port("b", Input[t2])
+        r = s.add_port("r", Output[Bits[t1.W + t2.W]])
+        
+        lW, sW = max(t1.W, t2.W), min(t1.W, t2.W)
+        lP, sP = (a, b) if t1.W > t2.W else (b, a)
+        
+        gen = s.add_substructure("gen_addends", CustomVHDLOperator(
+            {"long": Bits[lW], "short": Bits[sW]},
+            {f"addend_{idx}": Bits[lW + idx + 1] for idx in range(sW)}, # plus 1 to avoid overflow
+            f"long_shifted <= '0' & long & (1 to {sW - 1} => '0');\n" +
+                "\n".join([f"addend_{idx} <= long_shifted({lW + sW - 1} downto {sW - idx - 1}) when short({idx}) = '1' else (others => '0');" for idx in range(sW)]),
+            f"signal long_shifted: std_logic_vector({lW + sW - 1} downto 0);",
+            _unique_name = BitsUnsignedMultiply.naming(t1, t2) + "_AddendsGenerator"
+        ))
+        s.connect(lP, gen.IO.long)
+        s.connect(sP, gen.IO.short)
+        
+        adder_idx = 0
+        last_P = []
+        P = [gen.IO.access(f"addend_{idx}") for idx in range(sW)]
+        while len(P) > 1:
+            last_P, P = P, []
+            
+            for i in range(1, len(last_P), 2): # add adjacent ports
+                new_adder = s.add_substructure(
+                    f"adder_{adder_idx}",
+                    BitsAdd(last_P[i - 1].origin_signal_type.T, last_P[i].origin_signal_type.T)
+                )
+                s.connect(last_P[i - 1], new_adder.IO.a)
+                s.connect(last_P[i], new_adder.IO.b)
+                P.append(new_adder.IO.r)
+                
+                adder_idx += 1
+            
+            if len(last_P) % 2 == 1: # fallout port
+                P.append(last_P[-1])
+        s.connect(P[0], r)
+        
+        return s
+    
+    naming = UniqueNamingTemplates.args_kwargs_all_values()
+
+
+class BitsSignedMultiply(UniquelyNamedReusable):
+    @staticmethod
+    def setup(t1: SignalType, t2: SignalType):
+        assert t1.belong(Bits) and t2.belong(Bits) and t1.is_determined and t2.is_determined
+        
+        s = Structure()
+        a = s.add_port("a", Input[t1])
+        b = s.add_port("b", Input[t2])
+        r = s.add_port("r", Output[Bits[t1.W + t2.W]])
+        
+        lW, sW = max(t1.W, t2.W), min(t1.W, t2.W)
+        lP, sP = (a, b) if t1.W > t2.W else (b, a)
+        
+        gen = s.add_substructure("gen_addends", CustomVHDLOperator(
+            {"long": Bits[lW], "short": Bits[sW]},
+            {
+                **{f"addend_{idx}": SInt[lW + sW] for idx in range(sW - 1)},
+                "subend": SInt[lW + sW]
+            },
+            f"long_shifted <= long & (1 to {sW - 1} => '0');\n" +
+                f"long_sign <= long(long'high);\n" +
+                "\n".join([
+                    (f"addend_{idx}" if idx < sW - 1 else "subend") + 
+                    f" <= (1 to {sW - idx} => long_sign) & long_shifted({lW + sW - 2} downto {sW - idx - 1}) when short({idx}) = '1' else (others => '0');"
+                for idx in range(sW)]),
+            f"signal long_shifted: std_logic_vector({lW + sW - 2} downto 0);\n" +
+                f"signal long_sign: std_logic;",
+            _unique_name = BitsUnsignedMultiply.naming(t1, t2) + "_AddendsGenerator"
+        ))
+        s.connect(lP, gen.IO.long)
+        s.connect(sP, gen.IO.short)
+        
+        adder_idx = 0
+        last_P = []
+        P = [gen.IO.access(f"addend_{idx}") for idx in range(sW - 1)]
+        while len(P) > 1:
+            last_P, P = P, []
+            
+            for i in range(1, len(last_P), 2): # add adjacent ports
+                new_adder = s.add_substructure(
+                    f"adder_{adder_idx}",
+                    BitsAdd(last_P[i - 1].origin_signal_type.T, last_P[i].origin_signal_type.T)
+                )
+                s.connect(last_P[i - 1], new_adder.IO.a)
+                s.connect(last_P[i], new_adder.IO.b)
+                P.append(new_adder.IO.r)
+                
+                adder_idx += 1
+            
+            if len(last_P) % 2 == 1: # fallout port
+                P.append(last_P[-1])
+        
+        subtractor = s.add_substructure(
+            f"subtractor",
+            BitsSubtract(last_P[i - 1].origin_signal_type.T, last_P[i].origin_signal_type.T)
+        )
+        s.connect(P[0], subtractor.IO.a)
+        s.connect(gen.IO.access("subend"), subtractor.IO.b)
+        s.connect(subtractor.IO.r, r)
+        
+        return s
     
     naming = UniqueNamingTemplates.args_kwargs_all_values()
 
@@ -60,7 +175,7 @@ class BitsInverse(UniquelyNamedReusable):
         Output(s): r (same type)
     """
     setup = OperatorSetupTemplates.input_type_args_1i1o("a", "r")
-    deduction = OperatorDeductionTemplates.equal_types("a", "r")
+    deduction = OperatorDeductionTemplates.equi_types("a", "r")
     
     @staticmethod
     def generation(s: Structure, h: HDLFileModel, io: IOProxy):
@@ -81,7 +196,7 @@ class BitsEqualTo(UniquelyNamedReusable):
         Output(s): r (Bit)
     """
     setup = OperatorSetupTemplates.input_type_args_2i1o("a", "b", "r", output_type = Bit)
-    deduction = OperatorDeductionTemplates.equal_types("a", "b")
+    deduction = OperatorDeductionTemplates.equi_types("a", "b")
     
     @staticmethod
     def generation(s: Structure, h: HDLFileModel, io: IOProxy):
@@ -102,7 +217,7 @@ class BitsLessThan(UniquelyNamedReusable):
         Output(s): r (Bit)
     """
     setup = OperatorSetupTemplates.input_type_args_2i1o("a", "b", "r", output_type = Bit)
-    deduction = OperatorDeductionTemplates.equal_types("a", "b")
+    deduction = OperatorDeductionTemplates.equi_types("a", "b")
     
     @staticmethod
     def generation(s: Structure, h: HDLFileModel, io: IOProxy):
@@ -123,7 +238,7 @@ class BitsNot(UniquelyNamedReusable):
         Output(s): r (same type)
     """
     setup = OperatorSetupTemplates.input_type_args_1i1o("a", "r")
-    deduction = OperatorDeductionTemplates.equal_types("a", "r")
+    deduction = OperatorDeductionTemplates.equi_types("a", "r")
     
     @staticmethod
     def generation(s: Structure, h: HDLFileModel, io: IOProxy):
@@ -144,7 +259,7 @@ class BitsAnd(UniquelyNamedReusable):
         Output(s): r (same type)
     """
     setup = OperatorSetupTemplates.input_type_args_2i1o("a", "b", "r")
-    deduction = OperatorDeductionTemplates.equal_types("a", "b", "r")
+    deduction = OperatorDeductionTemplates.equi_types("a", "b", "r")
     
     @staticmethod
     def generation(s: Structure, h: HDLFileModel, io: IOProxy):
@@ -185,7 +300,7 @@ class BitsOr(UniquelyNamedReusable):
         Output(s): r (same type)
     """
     setup = OperatorSetupTemplates.input_type_args_2i1o("a", "b", "r")
-    deduction = OperatorDeductionTemplates.equal_types("a", "b", "r")
+    deduction = OperatorDeductionTemplates.equi_types("a", "b", "r")
     
     @staticmethod
     def generation(s: Structure, h: HDLFileModel, io: IOProxy):
@@ -236,7 +351,7 @@ class BinaryMultiplexer(UniquelyNamedReusable):
         
         return s
     
-    deduction = OperatorDeductionTemplates.equal_types("i0", "i1", "o")
+    deduction = OperatorDeductionTemplates.equi_types("i0", "i1", "o")
     
     @staticmethod
     def generation(s: Structure, h: HDLFileModel, io: IOProxy):
