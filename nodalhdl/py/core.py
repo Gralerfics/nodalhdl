@@ -85,9 +85,14 @@ class ComputeElement:
         else:
             raise NotImplementedError
     
-    def __getitem__(self, item): # slicing
+    def __getitem__(self, item): # slicing, closed interval
         if isinstance(item, slice):
-            elements = list(range(*item.indices(self.W)))
+            high = item.start if item.start is not None else self.W - 1
+            low = item.stop if item.stop is not None else 0
+            if high >= low:
+                elements = list(range(high, low - 1, -1))
+            else:
+                elements = list(range(low, high + 1))
         elif isinstance(item, int):
             elements = [item]
         else:
@@ -133,7 +138,7 @@ def _sub_ce(x: 'ComputeElement', y: 'ComputeElement') -> 'ComputeElement':
     assert x.s == y.s and x.type.equal(y.type) # should be equivalent
     _s = x.s
     
-    u = _s.add_substructure(f"subtractor", Add(x.type, x.type))
+    u = _s.add_substructure(f"subtractor", Subtract(x.type, x.type))
     _s.connect(x.node, u.IO.a)
     _s.connect(y.node, u.IO.b)
     return ComputeElement(_s, runtime_node = u.IO.r)
