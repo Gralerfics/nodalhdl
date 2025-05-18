@@ -52,7 +52,7 @@ print(s.runtime_info(rid))
 
 # static timing analysis
 sta = VivadoSTA(part_name = "xc7a200tfbg484-1", temporary_workspace_path = ".vivado_sta_shader", vivado_executable_path = "vivado.bat")
-sta.analyse(s, rid, skip_emitting_and_script_running = True) # False
+sta.analyse(s, rid, skip_emitting_and_script_running = False) # False
 
 # pipelining
 levels, Phi_Gr = pipelining(s, rid, 26, model = "simple")

@@ -297,10 +297,10 @@ class FixedPointType(BitsType):
     @property
     def is_fully_determined(self) -> bool:
         return self.is_determined and self.info.get("width_integer", None) is not None and self.info.get("width_fraction", None)
-    
+
     def derive(self, width_integer: int, width_fraction: int) -> 'SignalType':
         assert isinstance(width_integer, int) and isinstance(width_fraction, int)
-        return self.base({"width_integer": width_integer, "width_fraction": width_fraction})
+        return self.base({"width_integer": width_integer, "width_fraction": width_fraction, "width": width_integer + width_fraction})
     
     def validal(self) -> str:
         width_integer = self.info.get("width_integer", None)
@@ -313,19 +313,11 @@ class UFixedPointType(FixedPointType):
         self._info_check("width_integer", "width_fraction")
         return UFixedPointValue(self, *args, **kwds)
 
-    def derive(self, width_integer: int, width_fraction: int) -> 'SignalType':
-        assert isinstance(width_integer, int) and isinstance(width_fraction, int)
-        return self.base({"width_integer": width_integer, "width_fraction": width_fraction, "width": width_integer + width_fraction})
-
 
 class SFixedPointType(FixedPointType):
     def __call__(self, *args, **kwds):
         self._info_check("width_integer", "width_fraction")
         return SFixedPointValue(self, *args, **kwds)
-
-    def derive(self, width_integer: int, width_fraction: int) -> 'SignalType':
-        assert isinstance(width_integer, int) and isinstance(width_fraction, int)
-        return self.base({"width_integer": width_integer, "width_fraction": width_fraction, "width": 1 + width_integer + width_fraction})
 
 
 class IntegerType(FixedPointType):
@@ -333,12 +325,12 @@ class IntegerType(FixedPointType):
         super().__init__(info)
         info["width_fraction"] = 0
     
-    # @property
-    # def is_fully_determined(self) -> bool:
-    #     return self.is_determined
-    
     def __call__(self, *args, **kwds):
         raise SignalTypeInstantiationException(f"{self.base_name} cannot be instantiated")
+    
+    def derive(self, width: int) -> 'SignalType':
+        assert isinstance(width, int)
+        return self.base({"width": width, "width_integer": width}) # , "width_fraction": 0})
     
     def validal(self):
         width = self.info.get("width", None)
@@ -346,20 +338,12 @@ class IntegerType(FixedPointType):
 
 
 class UIntType(IntegerType, UFixedPointType):
-    def derive(self, width: int) -> 'SignalType':
-        assert isinstance(width, int)
-        return self.base({"width": width, "width_integer": width}) # , "width_fraction": 0})
-    
     def __call__(self, *args, **kwds):
         self._info_check("width")
         return UFixedPointValue(self, *args, **kwds)
 
 
 class SIntType(IntegerType, SFixedPointType):
-    def derive(self, width: int) -> 'SignalType':
-        assert isinstance(width, int)
-        return self.base({"width": width, "width_integer": width - 1}) # , "width_fraction": 0})
-    
     def __call__(self, *args, **kwds):
         self._info_check("width")
         return SFixedPointValue(self, *args, **kwds)
@@ -650,9 +634,9 @@ if __name__ == "__main__": # test
     print(T.io_flip().exhibital())
     print(T.io_clear().exhibital())
     
-    print(UInt[8].merge(SFixedPoint[3, 4]).info)
+    print(UInt[8].merge(SFixedPoint[4, 4]).info)
     print(UInt[8].merge(SInt[8]).info)
-    print(SFixedPoint[3, 3].merge(UFixedPoint[3, 4]).info)
+    print(SFixedPoint[3, 4].merge(UFixedPoint[3, 4]).info)
     print(UFixedPoint[3, 4].merge(UInt).base_name)
     
     print(SFixedPoint[3, 3].W)
