@@ -12,16 +12,6 @@
         类型的基类型 (base) 指 SignalType 及其子类本身的引用
         但显示基类型的名字 (base_name) 时用类型基础名, 也就是基类型的名称去掉最后的 "Type"
         所以下面为了方便用而定义的一系列对象和衍生对象命名最好就是基类型的名称
-        
-        Auto 下 Bundle 代表所有结构化类型, Bits 代表所有单类型; Signal 下 IOWrapper 代表所有 IO 包装.
-        这三者应该完全覆盖除 Auto 和 Signal 之外所有类型的祖先.
-        Bundle 下继承的新类型必须以类似的 dict 作为 derive 的第一个参数并拥有 bundle_types (一系列递归遍历操作导致的要求);
-        IOWrapper 下继承的新类型类似, 必须拥有 wrapped_type 并且作为 derive 第一个参数.
-        
-        更激进一点则是将 Bundle 视为一系列 Bits 的拼接, 类似 C struct 中的 union, 将其归入 Bits 下,
-        则 Bits 就可以作为顶层类型, 且各类判断几乎全都不需要了.
-        缺点是实现起来有点问题; 或许, Bundle 的信息并不是 dict 这样 "Bits 怎么构成 Bundle", 而是 "Bits 怎么划分为子 Bits".
-        TODO 也可以考虑哈.
 """
 import hashlib
 
@@ -40,7 +30,7 @@ _info_abbreviation_mapping = {
     "W_mant": "width_mantissa",
     "BT": "bundle_types",
     "DIR": "direction"
-} # try not to use abbrs inside SignalType(s) TODO 用！方便改
+}
 
 class SignalType: # should not be modified, i.e. operations return new objects.
     W: int
@@ -231,7 +221,9 @@ class SignalType: # should not be modified, i.e. operations return new objects.
         if self.DIR is not None: # nested IO-wrapper is impossible
             return self.base({k: v for k, v in self.info.items() if k != "direction"})
         elif self.belong(Bundle) and self.BT is not None:
-            return self.base().derive({k: t.io_clear() for k, t in self.BT.items()})
+            return self.base({
+                "bundle_types": {k: t.io_clear() for k, t in self.BT.items()}
+            })
         else:
             return self
     
@@ -239,7 +231,9 @@ class SignalType: # should not be modified, i.e. operations return new objects.
         if self.DIR is not None: # nested IO-wrapper is impossible
             return self.base({k: (v.flip if k == "direction" else v) for k, v in self.info.items()})
         elif self.belong(Bundle) and self.BT is not None:
-            return self.base().derive({k: t.io_flip() for k, t in self.BT.items()})
+            return self.base({
+                "bundle_types": {k: t.io_flip() for k, t in self.BT.items()}
+            })
         else:
             return self
 
@@ -258,9 +252,13 @@ class BitsType(SignalType):
 class FixedPointType(BitsType):
     def __init__(self, info = {}):
         super().__init__(info)
-        if self.W is not None and self.W_int is not None and self.W_frac is not None and self.W != self.W_int + self.W_frac:
+        
+        if self.W is not None and self.W_int is not None and self.W_frac is not None and self.W != self.W_int + self.W_frac: # deprecate wrong info
             del self.info["width_integer"]
             del self.info["width_fraction"]
+        
+        if self.W is None and self.W_int is not None and self.W_frac is not None: # generate new info if possible
+            self.info["width"] = self.W_int + self.W_frac
     
     def __call__(self, *args, **kwds):
         raise SignalTypeInstantiationException(f"{self.base_name} cannot be instantiated")
@@ -289,23 +287,12 @@ class SFixedPointType(FixedPointType):
 class IntegerType(FixedPointType):
     def __init__(self, info = {}):
         super().__init__(info)
-        """
-            Important Notes:
-                1. 必要的话, 类型创建时必须检查内部属性是否冲突.
-                    e.g. 如果不进行处理, UFixedPoint[3, 4] 和 UInt 合并后会出现 W_int 为 3, W 为 7 的错误 UInt_7 类型.
-                2. 如果冲突, 以主属性 (例如 width) 为准进行修正 (或存在内在主次关系).
-                    * 若没有冲突, 需要具体情况具体分析. 本例中 即使无 W 也不应该通过 W_int 得到 W, 而应该直接丢弃.
-                        e.g. 上例中, 显然 W_int 是错误的, 因为 UFxP 和 UInt 中 W_int 的含义不同, 故应以 W 为主.
-                    * 而例如 Bundle, width 随全定态子类型而产生是绝对固定的性质, 则可以在 __init__ 中计算得到.
-                3. [!] 或者, Integer 不应该带有 W_frac = 0 信息? TODO
-            P.S.
-                1. 此处是创建阶段, 修改 info 不算破坏信号类型的不可变性, 但也不至于去定义 __setattr__, 因为除了这里, 修改都属于非法.
-                2. 注意在前调用 super().__init__(info), 方可在此基础上访问 self 和属性缩写.
-        """
-        if self.W is not None:
-            self.info["width_integer"] = self.W
-        elif self.W_int is not None:
+        
+        if self.W_int is not None: # deprecate old info
             del self.info["width_integer"]
+        
+        if self.W is not None: # generate new info if possible
+            self.info["width_integer"] = self.W
         self.info["width_fraction"] = 0
     
     def __call__(self, *args, **kwds):
@@ -331,9 +318,13 @@ class SIntType(IntegerType, SFixedPointType):
 class FloatingPointType(BitsType):
     def __init__(self, info = {}):
         super().__init__(info)
-        if self.W is not None and self.W_exp is not None and self.W_mant is not None and self.W != 1 + self.W_exp + self.W_mant:
+        
+        if self.W is not None and self.W_exp is not None and self.W_mant is not None and self.W != 1 + self.W_exp + self.W_mant: # deprecate wrong info
             del self.info["width_exponent"]
             del self.info["width_mantissa"]
+        
+        if self.W is None and self.W_exp is not None and self.W_mant is not None: # generate new info if possible
+            self.info["width"] = 1 + self.W_exp + self.W_mant
     
     def __call__(self, *args, **kwds):
         self._inst_info_check("width_exponent", "width_mantissa")
@@ -353,10 +344,12 @@ class FloatingPointType(BitsType):
 class BundleType(BitsType):
     def __init__(self, info = {}):
         super().__init__(info)
-        # TODO 若子类型和 width 不匹配则丢弃子类型
-        # if not self.is_determined and self.BT is not None:
-        #     print(self.exhibital_full())
-        #     raise Exception
+        
+        # deprecate wrong info TODO
+        
+        if self.BT is not None and all([t.is_determined for t in self.BT.values()]): # generate new info if possible
+            width = sum([t.W for t in self.BT.values()])
+            self.info["width"] = width
     
     def __call__(self, *args, **kwds):
         self._inst_info_check("bundle_types")
@@ -364,12 +357,7 @@ class BundleType(BitsType):
     
     def derive(self, bundle_types: Dict[str, SignalType]) -> 'SignalType':
         assert isinstance(bundle_types, dict)
-        
-        if all([t.is_determined for t in bundle_types.values()]):
-            width = sum([t.W for t in bundle_types.values()]) # this should not be in __init__, because __init__ only trust `width`
-            return self.base({"bundle_types": bundle_types, "width": width})
-        else:
-            return self.base({"bundle_types": bundle_types})
+        return self.base({"bundle_types": bundle_types})
     
     def validal(self) -> str:
         if self.BT is not None:
@@ -641,6 +629,8 @@ if __name__ == "__main__": # test
     print(" !== ")
     
     print(UFixedPoint[3, 4].merge(UInt))
+    print(UFixedPoint[3, 4].info)
+    print(UInt.info)
     print(UFixedPoint[3, 4].merge(UInt).info) # [NOTICE]
 
     print(" === ")
