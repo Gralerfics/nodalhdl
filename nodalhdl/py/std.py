@@ -48,7 +48,7 @@ def sint(x: ComputeElement, width: int) -> ComputeElement:
 
 def mux(cond, x: ComputeElement, y: ComputeElement):
     if isinstance(cond, ComputeElement):
-        assert x.s == y.s and x.type.equal(y.type) and cond.type.W == 1
+        assert x.s == y.s and x.type == y.type and cond.type.W == 1
         _s = x.s
         
         u = _s.add_substructure("mux", BinaryMultiplexer(x.type))

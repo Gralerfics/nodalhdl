@@ -137,6 +137,8 @@ class Net:
             """
                 Update runtime type by merging. (IO-ignored)
             """
+            # if self.signal_type
+            
             return self.set_type(self.signal_type.merge(signal_type))
         
         def reset_type(self) -> bool:
@@ -313,7 +315,7 @@ class Node:
     
     @property
     def is_driver(self):
-        return self.origin_signal_type.base_equal(Output)
+        return self.origin_signal_type.DIR == Output
     
     @property
     def full_name(self):
@@ -366,6 +368,9 @@ class Node:
         
         if not safe_modification: # safe_modification: this modification do not influence runtime info
             self._structural_modification() # structural modification
+    
+    def update_origin_type(self, signal_type: SignalType):
+        self.set_origin_type(self.origin_signal_type.apply(signal_type))
     
     def merge(self, other: 'Node'):
         if self.located_net is other.located_net: # same net, no change
@@ -493,7 +498,7 @@ class StructuralNodes(dict):
         res = []
         for k, v in self.items():
             if isinstance(v, Node):
-                if real_filter == "all" or (real_filter == "in" and v.origin_signal_type.base_equal(Input)) or (real_filter == "out" and v.origin_signal_type.base_equal(Output)):
+                if real_filter == "all" or (real_filter == "in" and v.origin_signal_type.DIR == Input) or (real_filter == "out" and v.origin_signal_type.DIR == Output):
                     res.append((prefix + v.name, v))
             elif isinstance(v, StructuralNodes):
                 res.extend(v.nodes(prefix + k + "_", filter, flipped))
@@ -656,10 +661,12 @@ class Structure:
         substructures_ports_outside_determined = all([p.is_determined(runtime_id) for sub_inst_name in self.substructures.keys() for _, p in self.get_subs_ports_outside(sub_inst_name).nodes()])
         return ports_inside_determined and substructures_determined and substructures_ports_outside_determined
     
-    def runtime_info(self, runtime_id: RuntimeId, indent: int = 0, fqn: str = "<root>"):
-        res = " " * indent + f"{fqn} ({self.id[:8]}, {self.instance_number} ref(s){", R" if self.is_reusable else ""}), IO: {self.ports_inside_flipped.runtime_info(runtime_id)}.\n"
+    def runtime_info(self, runtime_id: RuntimeId, indent: int = 0, fqn: str = "<root>", ports_outside_key: tuple = None, last_runtime_id: RuntimeId = None):
+        # [NOTICE] 1. 目前 IO 显示的是 ports_outside 的情况 (考虑例如 hls 中的直接修改, 故会有实例间显示 IO 不同的可能性), 除了最外层是显示 inside; 2. 重写下有点丑; 3. get_runtime 自动创建还是抛一个 warning 或者 info 之类吧.
+        ports_info = self.ports_inside_flipped.runtime_info(runtime_id) if ports_outside_key is None else self.ports_outside[ports_outside_key].runtime_info(last_runtime_id)
+        res = " " * indent + f"{fqn} ({self.id[:8]}, {self.instance_number} ref(s){", R" if self.is_reusable else ""}), IO: {ports_info}.\n"
         for sub_inst_name, subs in self.substructures.items():
-            res += subs.runtime_info(runtime_id.next(sub_inst_name), indent + 4, fqn + "." + sub_inst_name)
+            res += subs.runtime_info(runtime_id.next(sub_inst_name), indent + 4, fqn + "." + sub_inst_name, ports_outside_key = (self.id, sub_inst_name), last_runtime_id = runtime_id)
         return res
     
     def register_unique_name(self, unique_name: str):
@@ -984,7 +991,7 @@ class Structure:
         
         # add ports into model according to ports_inside_flipped
         for port_layered_name, port in self.ports_inside_flipped.nodes():
-            direction = "out" if port.origin_signal_type.base_equal(Input) else "in" # ports_inside_flipped is IO flipped
+            direction = "out" if port.origin_signal_type.DIR == Input else "in" # ports_inside_flipped is IO flipped
             model.add_port(f"{port_layered_name}", direction, port.get_type(runtime_id)) # use full name
             
             # fill net_wires
@@ -1063,9 +1070,9 @@ class Structure:
                 The names are the raw names, instead of the full names (with layer information).
                 StructuralNodes().nodes() will add the layer information to the returned full names.
             """
-            if t.base_equal(Input) or t.base_equal(Output):
+            if t.DIR == Input or t.DIR == Output:
                 return Node(key, t.io_flip(), is_port = True, located_structure = self, layered_name = prefix + key) # (1.) io is flipped in ports_inside_flipped, (2.) ports inside are connected with internal nodes/nets, so located_structure is set to self
-            elif t.base_equal(Bundle):
+            elif t.belong(Bundle):
                 return StructuralNodes({k: _extract(k, v, prefix = prefix + key + "_") for k, v in t.BT.items()})
 
         new_port = _extract(name, signal_type)
@@ -1139,8 +1146,8 @@ class NodeProxy:
     
     @property
     def dir(self):
-        is_in = self.proxy_node.origin_signal_type.base_equal(Input)
-        return Input if is_in ^ self.flipped else Output
+        ost_dir = self.proxy_node.origin_signal_type.DIR
+        return ost_dir.flip if self.flipped else ost_dir
     
     @property
     def origin_type(self):

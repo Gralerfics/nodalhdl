@@ -32,8 +32,7 @@ class ComputeElement:
     
     @property
     def type(self):
-        ori_type = self.node.origin_signal_type
-        return ori_type.T if ori_type.base_belong(IOWrapper) else ori_type
+        return self.node.origin_signal_type.io_clear()
     
     def output(self, output_port_name: str): # output port
         output_port = self.s.add_port(output_port_name, Output[Auto])
@@ -128,33 +127,33 @@ def _shift_int(x: 'ComputeElement', n: int) -> 'ComputeElement': # left: n > 0
     return ComputeElement(_s, runtime_node = u.IO.o)
 
 def _add_ce(x: 'ComputeElement', y: 'ComputeElement') -> 'ComputeElement':
-    assert x.s == y.s and x.type.equal(y.type) # should be equivalent
+    assert x.s == y.s and x.type == y.type # should be equivalent
     _s = x.s
 
     if x.type.belong(FixedPoint):
         u = _s.add_substructure(f"adder", BitsAdd(x.type))
         _s.connect(x.node, u.IO.a)
         _s.connect(y.node, u.IO.b)
-        u.IO.r.set_origin_type(u.IO.r.origin_signal_type.apply(x.type)) # TODO
+        u.IO.r.update_origin_type(x.type) # TODO determined-input-fully-determined-output 约束的要求来自 hls 层, 故在这里直接修改新子结构实例的外部端口实例类型
         return ComputeElement(_s, runtime_node = u.IO.r)
     else:
         raise NotImplementedError
 
 def _sub_ce(x: 'ComputeElement', y: 'ComputeElement') -> 'ComputeElement':
-    assert x.s == y.s and x.type.equal(y.type) # should be equivalent
+    assert x.s == y.s and x.type == y.type # should be equivalent
     _s = x.s
     
     if x.type.belong(FixedPoint):
         u = _s.add_substructure(f"subtractor", BitsSubtract(x.type))
         _s.connect(x.node, u.IO.a)
         _s.connect(y.node, u.IO.b)
-        u.IO.r.set_origin_type(u.IO.r.origin_signal_type.apply(x.type)) # TODO
+        u.IO.r.update_origin_type(x.type)
         return ComputeElement(_s, runtime_node = u.IO.r)
     else:
         raise NotImplementedError
 
 def _mul_ce(x: 'ComputeElement', y: 'ComputeElement') -> 'ComputeElement':
-    assert x.s == y.s and x.type.equal(y.type) # should be equivalent TODO Bits?
+    assert x.s == y.s and x.type == y.type # should be equivalent TODO Bits? 某些不用截断的需求
     _s = x.s
     
     if x.type.belong(FixedPoint):

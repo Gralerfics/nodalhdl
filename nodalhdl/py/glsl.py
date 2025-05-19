@@ -143,7 +143,7 @@ def fract(x):
     if isinstance(x, ComputeElement):
         _s = x.s
         
-        if x.type.base_belong(FixedPoint):
+        if x.type.belong(FixedPoint):
             u = _s.add_substructure(f"fract", CustomVHDLOperator(
                 {"i": x.type},
                 {"o": x.type},
@@ -166,7 +166,7 @@ def ceil(x): # TODO to be checked
     if isinstance(x, ComputeElement):
         _s = x.s
         
-        if x.type.base_belong(FixedPoint):
+        if x.type.belong(FixedPoint):
             if x.type.W_frac > 0:
                 u = _s.add_substructure(f"ceil", CustomVHDLOperator(
                     {"i": x.type},
@@ -193,13 +193,13 @@ def ceil(x): # TODO to be checked
 
 def _minmax(x, y, mode = "min"):
     if isinstance(x, ComputeElement) and isinstance(y, ComputeElement):
-        assert x.s == y.s and x.type.equal(y.type) # should be equivalent
+        assert x.s == y.s and x.type == y.type # should be equivalent
         _s = x.s
         target_t = x.type
         
-        if target_t.base_belong(SFixedPoint): # signed
+        if target_t.belong(SFixedPoint): # signed
             vhdl_type = "signed"
-        elif target_t.base_belong(Bits): # unsigned
+        elif target_t.belong(Bits): # unsigned
             vhdl_type = "unsigned"
         else:
             raise NotImplementedError

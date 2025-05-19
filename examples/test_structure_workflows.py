@@ -54,7 +54,7 @@ def M1() -> Structure:
     s.connect(c, y.IO.op3)
     s.connect(y.IO.res, x.IO.b)
     s.connect(x.IO.r, o)
-
+    
     return s
 
 m1 = M1()

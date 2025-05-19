@@ -83,7 +83,7 @@ class BitsUnsignedMultiply(UniquelyNamedReusable):
             for i in range(1, len(last_P), 2): # add adjacent ports
                 new_adder = s.add_substructure(
                     f"adder_{adder_idx}",
-                    BitsAdd(last_P[i - 1].origin_signal_type.T, last_P[i].origin_signal_type.T)
+                    BitsAdd(last_P[i - 1].origin_signal_type.io_clear(), last_P[i].origin_signal_type.io_clear())
                 )
                 s.connect(last_P[i - 1], new_adder.IO.a)
                 s.connect(last_P[i], new_adder.IO.b)
@@ -141,7 +141,7 @@ class BitsSignedMultiply(UniquelyNamedReusable):
             for i in range(1, len(last_P), 2): # add adjacent ports
                 new_adder = s.add_substructure(
                     f"adder_{adder_idx}",
-                    BitsAdd(last_P[i - 1].origin_signal_type.T, last_P[i].origin_signal_type.T)
+                    BitsAdd(last_P[i - 1].origin_signal_type.io_clear(), last_P[i].origin_signal_type.io_clear())
                 )
                 s.connect(last_P[i - 1], new_adder.IO.a)
                 s.connect(last_P[i], new_adder.IO.b)
@@ -154,7 +154,7 @@ class BitsSignedMultiply(UniquelyNamedReusable):
         
         subtractor = s.add_substructure(
             f"subtractor",
-            BitsSubtract(last_P[i - 1].origin_signal_type.T, last_P[i].origin_signal_type.T)
+            BitsSubtract(last_P[i - 1].origin_signal_type.io_clear(), last_P[i].origin_signal_type.io_clear())
         )
         s.connect(P[0], subtractor.IO.a)
         s.connect(gen.IO.access("subend"), subtractor.IO.b)
