@@ -49,13 +49,23 @@ def divide(dividend: str, divisor: str):
     
     # quotient convertion
     Q_res = flip(Q_res[0]) + Q_res[1:] + "1"
+        # 这里 flip(Q_res[0]) 应和 Q_res[1] 一致, 否则应该是 overflow 了. 可以用于判断 overflow.
     
     # remaineder correction
-    if E[0] != dividend[0] and "1" in E + A: # [!] 余数为 0 时没必要修正, 而补码没有 -0, 只判断符号位会出错
+    if E[0] != dividend[0] and ("1" in E + A) or (E + A == divisor_EA) or (E + A == divisor_EA_inv):
+        """
+            1. 余数和被除数符号不同时修正;
+            2. 即使符号不同, 余数为 0 时也不用修正 (没有 -0);
+            3. 符号相同但余数和除数的绝对值相同时也需要修正.
+            * 实质上后两点分别就是 0 <= r < |b| 的两个界.
+            * TODO 有没有更好的判断或者处理方式.
+        """
         if E[0] == divisor[0]:
+            print(f"-B\t{divisor_EA_inv[0]} {divisor_EA_inv[1:]}")
             EA_add = add(E + A, divisor_EA_inv, len(divisor_EA))
             Q_res = add(Q_res, "1", len(Q_res))
         else:
+            print(f"+B\t{divisor_EA[0]} {divisor_EA[1:]}")
             EA_add = add(E + A, divisor_EA, len(divisor_EA))
             Q_res = add(Q_res, "1" * len(Q_res), len(Q_res))
         E = EA_add[0]
@@ -66,11 +76,11 @@ def divide(dividend: str, divisor: str):
     return Q_res, A
 
 
-Wi = 8
-Wf = 30
+Wi = 3
+Wf = 3
 
-a = 1
-b = 3
+a = -1.25
+b = -2.5
 
 Q, R = divide(
     bin(int(a * 2 ** Wf) % 2 ** (Wi + Wf))[2:].zfill(Wi + Wf) + "0" * Wf,
@@ -83,5 +93,8 @@ r = ((int(R, base = 2) + 2 ** (Wi + Wf - 1)) % 2 ** (Wi + Wf) - 2 ** (Wi + Wf - 
 print(f"a = {a}, b = {b};\nq = {q}, r = {r};\na / b = {a / b};\nqb + r = {q * b + r}")
 
 
-# TODO -1.25 / +-2.5 时结果不正好为 +-0.5. 似乎这不属于错误? 小数位足够多时会逼近.
+# print(divide(
+#     "00100001",
+#     "1001"
+# ))
 
