@@ -254,5 +254,20 @@ def Test_BitsSignedDivide(s: Structure):
     s.connect(q, u.IO.q)
     s.connect(r, u.IO.r)
     
+    # return "emit"
+
+
+@here
+def Test_FixedPointDivide(s: Structure):
+    a = s.add_port("a", Input[Auto])
+    b = s.add_port("b", Input[Auto])
+    q = s.add_port("q", Output[Auto])
+
+    u = s.add_substructure("u", FixedPointDivide(SFixedPoint[8, 4]))
+
+    s.connect(a, u.IO.a)
+    s.connect(b, u.IO.b)
+    s.connect(q, u.IO.r)
+    
     return "emit"
 

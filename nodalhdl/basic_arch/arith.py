@@ -82,9 +82,28 @@ class FixedPointDivide(UniquelyNamedReusable):
         s = Structure()
         a = s.add_port("a", Input[t])
         b = s.add_port("b", Input[t])
-        r = s.add_port("r", Output[t])
+        r = s.add_port("r", Output[t]) # r(esult) not r(emainder)
         
-        # TODO BitsSignedDivide 计算 a + "0" * Wf 除以 b, 得到的商 q 取低 Wi + Wf 位
+        concat = s.add_substructure("concat", CustomVHDLOperator(
+            {"i": t},
+            {"o": Bits[t.W + t.W_frac]},
+            f"o <= i & (1 to {t.W_frac} => '0');",
+            _unique_name = FixedPointDivide.naming(t) + "_Concatenator"
+        ))
+        s.connect(a, concat.IO.i)
+        
+        div = s.add_substructure("bits_div", BitsSignedDivide(Bits[t.W + t.W_frac], Bits[t.W]))
+        s.connect(concat.IO.o, div.IO.a)
+        s.connect(b, div.IO.b)
+        
+        tc = s.add_substructure("tc", CustomVHDLOperator(
+            {"i": Bits[t.W + t.W_frac]},
+            {"o": t},
+            f"o <= i({t.W - 1} downto 0);",
+            _unique_name = FixedPointDivide.naming(t) + "_Truncator"
+        ))
+        s.connect(div.IO.q, tc.IO.i)
+        s.connect(tc.IO.o, r)
         
         return s
     
@@ -106,7 +125,7 @@ class FixedPointReminder(UniquelyNamedReusable):
         return s
     
     naming = UniqueNamingTemplates.args_kwargs_all_values()
-    
+
 # TODO Modulus 则与 b 同号, 或 mod(x, y) = x - y * floor (x / y) ? 或 rem 加一个除数?
 
 
