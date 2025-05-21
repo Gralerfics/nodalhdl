@@ -200,7 +200,7 @@ def Test_Multiply_Bits(s: Structure):
     b = s.add_port("b", Input[Auto])
     c = s.add_port("c", Output[Auto])
 
-    u = s.add_substructure("u", Multiply(Bits[5], Bits[7]))
+    u = s.add_substructure("u", BitsUnsignedMultiply(Bits[5], Bits[7]))
 
     s.connect(a, u.IO.a)
     s.connect(b, u.IO.b)
@@ -216,7 +216,7 @@ def Test_Multiply_SInt(s: Structure):
     b = s.add_port("b", Input[Auto])
     c = s.add_port("c", Output[Auto])
 
-    u = s.add_substructure("u", Multiply(SInt[3], SInt[5], int_truncate = False))
+    u = s.add_substructure("u", BitsSignedMultiply(SInt[3], SInt[5]))
 
     s.connect(a, u.IO.a)
     s.connect(b, u.IO.b)
@@ -231,11 +231,28 @@ def Test_Multiply_SFixedPoint(s: Structure):
     b = s.add_port("b", Input[Auto])
     c = s.add_port("c", Output[Auto])
 
-    u = s.add_substructure("u", Multiply(SFixedPoint[7, 4], SFixedPoint[7, 4]))
+    u = s.add_substructure("u", FixedPointMultiply(SFixedPoint[7, 4]))
 
     s.connect(a, u.IO.a)
     s.connect(b, u.IO.b)
     s.connect(c, u.IO.r)
+    
+    # return "emit"
+
+
+@here
+def Test_BitsSignedDivide(s: Structure):
+    a = s.add_port("a", Input[Auto])
+    b = s.add_port("b", Input[Auto])
+    q = s.add_port("q", Output[Auto])
+    r = s.add_port("r", Output[Auto])
+
+    u = s.add_substructure("u", BitsSignedDivide(Bits[8], Bits[4]))
+
+    s.connect(a, u.IO.a)
+    s.connect(b, u.IO.b)
+    s.connect(q, u.IO.q)
+    s.connect(r, u.IO.r)
     
     return "emit"
 

@@ -165,7 +165,127 @@ class BitsSignedMultiply(UniquelyNamedReusable):
     naming = UniqueNamingTemplates.args_kwargs_all_values()
 
 
-class BitsInverse(UniquelyNamedReusable):
+class BitsSignedDivide(UniquelyNamedReusable):
+    @staticmethod
+    def setup(t1: SignalType, t2: SignalType):
+        assert t1.belong(Bits) and t2.belong(Bits) and t1.is_determined and t2.is_determined
+        
+        s = Structure()
+        a = s.add_port("a", Input[t1])
+        b = s.add_port("b", Input[t2])
+        q = s.add_port("q", Output[t1])
+        r = s.add_port("r", Output[t2]) # sign(rem) = sign(a), 0 <= |rem| < |b|
+        
+        t_ea = Bits[t2.W + 1] # ea means E & A, storing the (partial) remainder
+        
+        gen = s.add_substructure("gen_wires", CustomVHDLOperator(
+            {"a": t1, "b": t2},
+            {
+                **{f"a_{idx}": Bit for idx in range(t1.W)},
+                "ea_init": t_ea,
+                "b_ext": t_ea
+                # "b_sign": Bit
+            },
+            "\n".join([f"a_{idx}(0) <= a({idx});" for idx in range(t1.W)]) + "\n" +
+                "ea_init <= (others => a(a'high));\n" +
+                "b_ext <= b(b'high) & b;\n",
+                # "b_sign <= b(b'high);",
+            _unique_name = BitsSignedDivide.naming(t1, t2) + "_WiresGenerator"
+        ))
+        
+        DivisionCell = CustomVHDLOperator(
+            {"ea": t_ea, "a_i": Bit, "b_ext": t_ea},
+            {"ea_new": t_ea, "q_i": Bit},
+            textwrap.dedent("""
+                ea_shift <= ea(ea'high - 1 downto 0) & a_i;
+                
+                process (ea_shift, b_ext)
+                begin
+                    if (ea_shift(ea_shift'high) xor b_ext(b_ext'high)) = '1' then
+                        q_i <= "0";
+                        ea_new <= std_logic_vector(signed(ea_shift) + signed(b_ext));
+                    else
+                        q_i <= "1";
+                        ea_new <= std_logic_vector(signed(ea_shift) - signed(b_ext));
+                    end if;
+                end process;
+            """),
+            f"signal ea_shift: std_logic_vector({t2.W} downto 0);",
+            _unique_name = BitsSignedDivide.naming(t1, t2) + "_DivisionCell"
+        )
+        cells: List[StructureProxy] = []
+        for idx in range(t1.W):
+            cells.append(s.add_substructure(f"div_cell_{idx}", DivisionCell))
+
+        corr = s.add_substructure("corrector", CustomVHDLOperator(
+            {
+                "ea": t_ea,
+                **{f"q_{idx}": Bit for idx in range(t1.W)},
+                "a_sign": Bit,
+                "b_ext": t_ea
+            },
+            {"q": t1, "r": t2},
+            textwrap.dedent(f"""
+                q_concat <= not {" & ".join([f"q_{idx}" for idx in range(t1.W - 1, -1, -1)])} & '1';
+                
+                process (ea, q_concat, a_sign, b_ext)
+                begin
+                    if ((ea(ea'high) xor a_sign(0)) = '1' and unsigned(ea) /= to_unsigned(0, {t_ea.W})) or (signed(ea) = signed(b_ext)) or (signed(ea) = -signed(b_ext)) then
+                        if ea(ea'high) = b_ext(b_ext'high) then
+                            q_corrected <= std_logic_vector(signed(q_concat) + to_signed(1, {t1.W + 1}));
+                            ea_corrected <= std_logic_vector(signed(ea) - signed(b_ext));
+                        else
+                            q_corrected <= std_logic_vector(signed(q_concat) - to_signed(1, {t1.W + 1}));
+                            ea_corrected <= std_logic_vector(signed(ea) + signed(b_ext));
+                        end if;
+                    else
+                        q_corrected <= q_concat;
+                        ea_corrected <= ea;
+                    end if;
+                end process;
+                
+                q <= q_corrected(q_corrected'high - 1 downto 0);
+                r <= ea_corrected(ea_corrected'high - 1 downto 0);
+            """),
+            f"signal q_concat, q_corrected: std_logic_vector({t1.W} downto 0);\n" +
+                f"signal ea_corrected: std_logic_vector({t2.W} downto 0);",
+            _unique_name = BitsSignedDivide.naming(t1, t2) + "_Corrector"
+        ))
+        
+        # a, b
+        s.connect(a, gen.IO.a)
+        s.connect(b, gen.IO.b)
+        
+        # a_i, a_sign
+        for idx in range(t1.W):
+            s.connect(gen.IO.access(f"a_{idx}"), cells[idx].IO.a_i)
+        s.connect(gen.IO.access(f"a_{t1.W - 1}"), corr.IO.a_sign)
+        
+        # ea
+        s.connect(gen.IO.ea_init, cells[t1.W - 1].IO.ea)
+        for idx in range(t1.W - 1):
+            s.connect(cells[idx + 1].IO.ea_new, cells[idx].IO.ea)
+        s.connect(cells[0].IO.ea_new, corr.IO.ea)
+        
+        # b_ext
+        for idx in range(t1.W):
+            s.connect(gen.IO.b_ext, cells[idx].IO.b_ext)
+        s.connect(gen.IO.b_ext, corr.IO.b_ext)
+        
+        # q_i
+        for idx in range(t1.W):
+            s.connect(cells[idx].IO.q_i, corr.IO.access(f"q_{idx}"))
+        
+        # q, r
+        s.connect(corr.IO.q, q)
+        s.connect(corr.IO.r, r)
+        
+        return s
+    
+    naming = UniqueNamingTemplates.args_kwargs_all_values()
+
+
+class BitsInverse(UniquelyNamedReusable): # TODO to be checked
     """
         2's complement inverse. (r = ~a + 1)
         

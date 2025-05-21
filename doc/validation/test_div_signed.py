@@ -51,7 +51,7 @@ def divide(dividend: str, divisor: str):
     Q_res = flip(Q_res[0]) + Q_res[1:] + "1"
         # 这里 flip(Q_res[0]) 应和 Q_res[1] 一致, 否则应该是 overflow 了. 可以用于判断 overflow.
     
-    # remaineder correction
+    # remainder correction
     if E[0] != dividend[0] and ("1" in E + A) or (E + A == divisor_EA) or (E + A == divisor_EA_inv):
         """
             1. 余数和被除数符号不同时修正;

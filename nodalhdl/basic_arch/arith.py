@@ -74,6 +74,42 @@ class FixedPointMultiply(UniquelyNamedReusable):
     naming = UniqueNamingTemplates.args_kwargs_all_values()
 
 
+class FixedPointDivide(UniquelyNamedReusable):
+    @staticmethod
+    def setup(t: FixedPointType):
+        assert t.belong(FixedPoint) and t.is_fully_determined
+        
+        s = Structure()
+        a = s.add_port("a", Input[t])
+        b = s.add_port("b", Input[t])
+        r = s.add_port("r", Output[t])
+        
+        # TODO BitsSignedDivide 计算 a + "0" * Wf 除以 b, 得到的商 q 取低 Wi + Wf 位
+        
+        return s
+    
+    naming = UniqueNamingTemplates.args_kwargs_all_values()
+
+
+class FixedPointReminder(UniquelyNamedReusable):
+    @staticmethod
+    def setup(t: FixedPointType):
+        assert t.belong(FixedPoint) and t.is_fully_determined
+        
+        s = Structure()
+        a = s.add_port("a", Input[t])
+        b = s.add_port("b", Input[t])
+        r = s.add_port("r", Output[t])
+        
+        # TODO BitsSignedDivide 计算 a 除以 b, 得到的余数 r (与 a 同号).
+        
+        return s
+    
+    naming = UniqueNamingTemplates.args_kwargs_all_values()
+    
+# TODO Modulus 则与 b 同号, 或 mod(x, y) = x - y * floor (x / y) ? 或 rem 加一个除数?
+
+
 import sys
 _current_module = sys.modules[__name__]
 __all__ = [name for name in dir() if not name.startswith('_') and getattr(getattr(_current_module, name, None), "__module__", None) == __name__]

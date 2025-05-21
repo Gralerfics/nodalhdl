@@ -1,18 +1,5 @@
 # This file is part of nodalhdl (https://github.com/Gralerfics/nodalhdl), distributed under the GPLv3. See LICENSE.
 
-"""
-    Notes:
-        类型 (type) 指 SignalType 及其子类的对象.
-        类型的基类型 (base) 指 SignalType 及其子类本身的引用.
-        但显示基类型的名字 (base_name) 时用类型基础名, 也就是基类型的名称去掉最后的 "Type".
-        所以下面为了方便用而定义的一系列对象和衍生对象命名最好就是基类型的名称.
-        
-        不同支类型都有的话说明就是强制转换, 取最近公共祖先; 同支的话往下走更具体
-        
-        子类型必须至少需要填入父类型的所有属性, 然后 belong 就可以判断这种关系.
-        
-        TODO 为了可读性（好像并不太可读）, 暂时不把 Bundle 转 record 改成全用 std_logic_vector 表示了 (要修改的话主要涉及 hdl 的 type_decl, 常数以及寄存器的初始化).
-"""
 import hashlib
 
 from typing import Dict, Union
@@ -82,7 +69,7 @@ class SignalType: # should not be modified, i.e. operations return new objects.
         raise SignalTypeException(f"{self.__name__} has no derived types")
     
     """ @override """
-    def validal(self) -> str: # valid string, 并且一般只包含当前 base 需要的信息, 且一般无 direction 信息
+    def validal(self) -> str: # valid string, and only includes the information that the base type needs, usually excludes the direction [NOTICE]
         return "Signal"
     
     """ @override """
@@ -684,3 +671,7 @@ if __name__ == "__main__": # test
     #     }
     # })
 
+
+"""
+    TODO 为了可读性（好像并不太可读）, 暂时不把 Bundle 转 record 改成全用 std_logic_vector 表示了 (要修改的话主要涉及 hdl 的 type_decl, 常数以及寄存器的初始化).
+"""

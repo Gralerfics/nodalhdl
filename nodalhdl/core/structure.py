@@ -137,8 +137,6 @@ class Net:
             """
                 Update runtime type by merging. (IO-ignored)
             """
-            # if self.signal_type
-            
             return self.set_type(self.signal_type.merge(signal_type))
         
         def reset_type(self) -> bool:
