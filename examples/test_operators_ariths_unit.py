@@ -49,7 +49,7 @@ def Test_BitsInverse(s: Structure):
     a = s.add_port("a", Input[Bits[6]])
     c = s.add_port("c", Output[Auto])
 
-    u = s.add_substructure("u", BitsInverse(Auto))
+    u = s.add_substructure("u", BitsSignedInverse(Auto))
 
     s.connect(a, u.IO.a)
     s.connect(u.IO.r, c)
@@ -69,12 +69,12 @@ def Test_BitsEqualTo(s: Structure):
 
 
 @here
-def Test_BitsLessThan(s: Structure):
+def Test_BitsUnsignedLessThan(s: Structure):
     a = s.add_port("a", Input[Bits[6]])
     b = s.add_port("b", Input[Auto])
     c = s.add_port("c", Output[Auto])
 
-    u = s.add_substructure("u", BitsLessThan(Auto))
+    u = s.add_substructure("u", BitsUnsignedLessThan(Auto))
 
     s.connect(a, u.IO.a)
     s.connect(b, u.IO.b)

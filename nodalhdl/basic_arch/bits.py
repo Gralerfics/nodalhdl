@@ -285,11 +285,11 @@ class BitsSignedDivide(UniquelyNamedReusable):
     naming = UniqueNamingTemplates.args_kwargs_all_values()
 
 
-class BitsInverse(UniquelyNamedReusable): # TODO to be checked
+class BitsSignedInverse(UniquelyNamedReusable):
     """
         2's complement inverse. (r = ~a + 1)
         
-        BitsInverse(<a_type (SignalType)>)
+        BitsSignedInverse(<a_type (SignalType)>)
         
         Input(s): a (a_type)
         Output(s): r (same type)
@@ -301,6 +301,19 @@ class BitsInverse(UniquelyNamedReusable): # TODO to be checked
     def generation(s: Structure, h: HDLFileModel, io: IOProxy):
         h.add_arch_body("vhdl", textwrap.dedent(f"""\
             r <= std_logic_vector(-signed(a));
+        """))
+    
+    naming = UniqueNamingTemplates.args_kwargs_all_values()
+
+
+class BitsSignedAbsolute(UniquelyNamedReusable):
+    setup = OperatorSetupTemplates.input_type_args_1i1o("a", "r")
+    deduction = OperatorDeductionTemplates.equi_types("a", "r")
+    
+    @staticmethod
+    def generation(s: Structure, h: HDLFileModel, io: IOProxy):
+        h.add_arch_body("vhdl", textwrap.dedent(f"""\
+            r <= std_logic_vector(abs(signed(a)));
         """))
     
     naming = UniqueNamingTemplates.args_kwargs_all_values()
@@ -327,11 +340,11 @@ class BitsEqualTo(UniquelyNamedReusable):
     naming = UniqueNamingTemplates.args_kwargs_all_values()
 
 
-class BitsLessThan(UniquelyNamedReusable):
+class BitsUnsignedLessThan(UniquelyNamedReusable):
     """
-        Same width LE. (P.S. unsigned)
+        Same width LE. (unsigned)
 
-        BitsLessThan(<a_type (SignalType)>, <b_type (SignalType)>)
+        BitsUnsignedLessThan(<a_type (SignalType)>, <b_type (SignalType)>)
         
         Input(s): a (a_type), b (b_type)
         Output(s): r (Bit)
@@ -343,6 +356,27 @@ class BitsLessThan(UniquelyNamedReusable):
     def generation(s: Structure, h: HDLFileModel, io: IOProxy):
         h.add_arch_body("vhdl", textwrap.dedent(f"""\
             r <= "1" when unsigned(a) < unsigned(b) else "0";
+        """))
+    
+    naming = UniqueNamingTemplates.args_kwargs_all_values()
+
+
+class BitsSignedLessThan(UniquelyNamedReusable):
+    """
+        Same width LE. (signed)
+
+        BitsSignedLessThan(<a_type (SignalType)>, <b_type (SignalType)>)
+        
+        Input(s): a (a_type), b (b_type)
+        Output(s): r (Bit)
+    """
+    setup = OperatorSetupTemplates.input_type_args_2i1o("a", "b", "r", output_type = Bit)
+    deduction = OperatorDeductionTemplates.equi_types("a", "b")
+    
+    @staticmethod
+    def generation(s: Structure, h: HDLFileModel, io: IOProxy):
+        h.add_arch_body("vhdl", textwrap.dedent(f"""\
+            r <= "1" when signed(a) < signed(b) else "0";
         """))
     
     naming = UniqueNamingTemplates.args_kwargs_all_values()

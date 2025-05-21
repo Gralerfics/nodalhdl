@@ -110,7 +110,7 @@ class FixedPointDivide(UniquelyNamedReusable):
     naming = UniqueNamingTemplates.args_kwargs_all_values()
 
 
-class FixedPointReminder(UniquelyNamedReusable):
+class FixedPointRemainder(UniquelyNamedReusable):
     @staticmethod
     def setup(t: FixedPointType):
         assert t.belong(FixedPoint) and t.is_fully_determined
@@ -120,7 +120,10 @@ class FixedPointReminder(UniquelyNamedReusable):
         b = s.add_port("b", Input[t])
         r = s.add_port("r", Output[t])
         
-        # TODO BitsSignedDivide 计算 a 除以 b, 得到的余数 r (与 a 同号).
+        div = s.add_substructure("bits_div", BitsSignedDivide(Bits[t.W], Bits[t.W]))
+        s.connect(a, div.IO.a)
+        s.connect(b, div.IO.b)
+        s.connect(div.IO.r, r)
         
         return s
     
