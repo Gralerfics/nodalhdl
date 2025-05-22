@@ -162,7 +162,7 @@ def fract(x):
         raise NotImplementedError
 
 
-def ceil(x): # TODO to be checked
+def ceil(x):
     if isinstance(x, ComputeElement):
         _s = x.s
         
@@ -204,7 +204,7 @@ def _minmax(x, y, mode = "min"):
         else:
             raise NotImplementedError
         
-        u = _s.add_substructure(f"{mode}", CustomVHDLOperator(
+        u = _s.add_substructure(f"{mode}_module", CustomVHDLOperator(
             {"a": target_t, "b": target_t},
             {"o": target_t},
             f"o <= a when {vhdl_type}(a) {"<" if mode == "min" else ">"} {vhdl_type}(b) else b;",
@@ -236,4 +236,33 @@ def max(x, y): return _minmax(x, y, mode = "max")
 
 def clamp(x, lower_bound: Union[float, int], upper_bound: Union[float, int]):
     return min(max(x, lower_bound), upper_bound)
+
+
+def smoothstep(t1, t2, x):
+    y = clamp((x - t1) / (t2 - t1), 0, 0.9999)
+    return y * y * (3 - 2 * y)
+
+
+def abs(x):
+    if isinstance(x, ComputeElement):
+        _s = x.s
+        
+        if x.type.belong(SFixedPoint):
+            u = _s.add_substructure("abs_module", BitsSignedAbsolute(x.type))
+            _s.connect(x.node, u.IO.a)
+            return ComputeElement(_s, runtime_node = u.IO.r)
+        elif x.type.belong(UFixedPoint):
+            return x
+        else:
+            raise NotImplementedError
+    elif isinstance(x, vec):
+        return type(x)(*(abs(a) for a in x))
+    elif isinstance(x, (float, int)):
+        return x if x >= 0 else -x
+    else:
+        raise NotImplementedError
+
+
+def sqrt(x, iter_num: int):
+    pass
 

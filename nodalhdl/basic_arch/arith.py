@@ -74,6 +74,33 @@ class FixedPointMultiply(UniquelyNamedReusable):
     naming = UniqueNamingTemplates.args_kwargs_all_values()
 
 
+class FixedPointMultiplyVHDL(UniquelyNamedReusable):
+    @staticmethod
+    def setup(t: FixedPointType):
+        assert t.belong(FixedPoint) and t.is_fully_determined
+        
+        s = Structure()
+        a = s.add_port("a", Input[t])
+        b = s.add_port("b", Input[t])
+        r = s.add_port("r", Output[t])
+        
+        mul = s.add_substructure("tc", CustomVHDLOperator(
+            {"a": t, "b": t},
+            {"r": t},
+            f"o <= std_logic_vector(signed(a) * signed(b));\n" +
+                f"r <= o({t.W_frac + t.W - 1} downto {t.W_frac});",
+            f"signal o: std_logic_vector({t.W + t.W - 1} downto 0);",
+            _unique_name = FixedPointMultiply.naming(t) + "_opt"
+        ))
+        s.connect(a, mul.IO.a)
+        s.connect(b, mul.IO.b)
+        s.connect(mul.IO.r, r)
+        
+        return s
+    
+    naming = UniqueNamingTemplates.args_kwargs_all_values()
+
+
 class FixedPointDivide(UniquelyNamedReusable):
     @staticmethod
     def setup(t: FixedPointType):
@@ -129,7 +156,24 @@ class FixedPointRemainder(UniquelyNamedReusable):
     
     naming = UniqueNamingTemplates.args_kwargs_all_values()
 
+
 # TODO Modulus 则与 b 同号, 或 mod(x, y) = x - y * floor (x / y) ? 或 rem 加一个除数?
+
+
+# class FixedPointCordicSqrt(UniquelyNamedReusable):
+#     @staticmethod
+#     def setup(t: FixedPointType, iter_num: int):
+#         assert t.belong(FixedPoint) and t.is_fully_determined
+        
+#         s = Structure()
+#         a = s.add_port("a", Input[t])
+#         r = s.add_port("r", Output[t])
+        
+        
+        
+#         return s
+    
+#     naming = UniqueNamingTemplates.args_kwargs_all_values()
 
 
 import sys

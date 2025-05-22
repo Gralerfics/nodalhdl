@@ -13,21 +13,10 @@ def shader(iTime_us_u64: ComputeElement, fragCoord_u12: vec2) -> ComputeElement:
     
     fragCoord = vec2(sfixed(fragCoord_u12.x, T.W_int, T.W_frac), sfixed(fragCoord_u12.y, T.W_int, T.W_frac))
     
-    a = vec2((fragCoord.x >> 9) + (fragCoord.x >> 7) - 5, (fragCoord.y >> 9) + (fragCoord.y >> 7) - 3.75)
-    u = vec2(a.x - a.y + 5, a.x + a.y + 5)
-    f = fract(u)
-    f = min(f, 1 - f)
-    v = ceil(u) - 5.5
     
-    s = 1 + ((v.x * v.x + v.y * v.y) >> 3)
-    e = (fract((iTime_s - (s >> 1)) >> 2) << 1) - 1
-    t = fract(min(f.x, f.y) << 2)
     
-    rampFactor = 0.95 * mux(e[e.type.W - 1], 1 - t, t) - e * e
-    mixFactor = clamp((rampFactor << 4) + (rampFactor << 2) + 1, 0, 0.9999) + s * 0.1
-    
-    fragColor = clamp(vec4(1 - (mixFactor >> 1), 1 - (mixFactor >> 2), 0.9999, 0.9999), 0, 0.9999)
-    return uint(fragColor.r << 8, 8) @ uint(fragColor.g << 8, 8) @ "11111111"
+    # fragColor = clamp(vec4(1 - (mixFactor >> 1), 1 - (mixFactor >> 2), 0.9999, 0.9999), 0, 0.9999)
+    # return uint(fragColor.r << 8, 8) @ uint(fragColor.g << 8, 8) @ "11111111"
 
 
 from nodalhdl.core.structure import *
@@ -51,8 +40,8 @@ s.deduction(rid)
 print(s.runtime_info(rid))
 
 # static timing analysis
-sta = VivadoSTA(part_name = "xc7a200tfbg484-1", temporary_workspace_path = ".vivado_sta_shader_hp", vivado_executable_path = "vivado.bat")
-sta.analyse(s, rid, skip_emitting_and_script_running = True) # False
+sta = VivadoSTA(part_name = "xc7a200tfbg484-1", temporary_workspace_path = ".vivado_sta_shader_", vivado_executable_path = "vivado.bat")
+sta.analyse(s, rid, skip_emitting_and_script_running = False) # False
 
 # pipelining
 levels, Phi_Gr = pipelining(s, rid, 26, model = "simple")

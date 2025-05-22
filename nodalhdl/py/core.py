@@ -6,17 +6,18 @@ from nodalhdl.basic_arch.bits import *
 from nodalhdl.basic_arch.arith import *
 
 from typing import List
+# import functools
 
 
+# @functools.total_ordering
 class ComputeElement:
     """
         TODO ComputeElement (CE).
         暂时先针对组合逻辑，直接在 CE 对象中存 Structure 的引用, 其运算返回的新 CE 对象中继续携带 Structure, 但已经添加了东西.
         
-        有一个问题就是这里所有的运算都要求输出类型是 determined 的, 否则就可能会连锁地出现问题;
+        有一个问题就是这里所有的运算都要求输出类型是 fully-determined 的, 否则就可能会连锁地出现问题;
         这也包括外面的一系列函数, 只要是对 CE 做操作的都需要. 这也是合理的, 因为 HLS 层本身就大量缺乏类型提示, 必须前向推导.
         反过来, 也可以说对于所有操作来说, 输入都一定是 determined 类型.
-        叫他 DIDO 吧 (Determined-In-Detemined-Out).
         
         TODO *1, +0, */2^n 都可以优化; 常数放进一个模块; ...
     """
@@ -60,15 +61,20 @@ class ComputeElement:
     def __add__(self, other): return self._arith_op(other, _add_ce)
     def __sub__(self, other): return self._arith_op(other, _sub_ce)
     def __mul__(self, other): return self._arith_op(other, _mul_ce)
+    def __truediv__(self, other): return self._arith_op(other, _div_ce)
+    def __mod__(self, other): return self._arith_op(other, _rem_ce) # TODO rem -> mod
     
     def __radd__(self, other): return self._arith_rop(other, _add_ce)
     def __rsub__(self, other): return self._arith_rop(other, _sub_ce)
     def __rmul__(self, other): return self._arith_rop(other, _mul_ce)
+    def __rtruediv__(self, other): return self._arith_rop(other, _div_ce)
+    def __rmod__(self, other): return self._arith_rop(other, _rem_ce) # TODO same as above
     
     def __lshift__(self, other): return _shift_int(self, other)
     def __rshift__(self, other): return _shift_int(self, -other)
     
     def __neg__(self): return 0 - self
+    def __pos__(self): return self
     
     def __matmul__(self, other): # concatenation
         if isinstance(other, ComputeElement):
@@ -157,7 +163,32 @@ def _mul_ce(x: 'ComputeElement', y: 'ComputeElement') -> 'ComputeElement':
     _s = x.s
     
     if x.type.belong(FixedPoint):
-        u = _s.add_substructure(f"multiplier", FixedPointMultiply(x.type))
+        # u = _s.add_substructure(f"multiplier", FixedPointMultiply(x.type))
+        u = _s.add_substructure(f"multiplier", FixedPointMultiplyVHDL(x.type)) # TODO 模块有点太多, 先用整个的试一下
+        _s.connect(x.node, u.IO.a)
+        _s.connect(y.node, u.IO.b)
+        return ComputeElement(_s, runtime_node = u.IO.r)
+    else:
+        raise NotImplementedError
+
+def _div_ce(x: 'ComputeElement', y: 'ComputeElement') -> 'ComputeElement':
+    assert x.s == y.s and x.type == y.type
+    _s = x.s
+    
+    if x.type.belong(FixedPoint):
+        u = _s.add_substructure(f"divider", FixedPointDivide(x.type))
+        _s.connect(x.node, u.IO.a)
+        _s.connect(y.node, u.IO.b)
+        return ComputeElement(_s, runtime_node = u.IO.r)
+    else:
+        raise NotImplementedError
+
+def _rem_ce(x: 'ComputeElement', y: 'ComputeElement') -> 'ComputeElement':
+    assert x.s == y.s and x.type == y.type
+    _s = x.s
+    
+    if x.type.belong(FixedPoint):
+        u = _s.add_substructure(f"divider", FixedPointRemainder(x.type))
         _s.connect(x.node, u.IO.a)
         _s.connect(y.node, u.IO.b)
         return ComputeElement(_s, runtime_node = u.IO.r)

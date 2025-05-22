@@ -253,11 +253,11 @@ class VivadoSTA(StaticTimingAnalyser):
         tcl += f"set paths {{}}\n"
         added_paths: List[Tuple] = [] # [(inst_name, pi_layered_name, po_layered_name, ), ]
         for subs_inst_name, subs in s.substructures.items():
+            # 分析过的结构不再分析 TODO [Important] 不同的输入可能导致相同模块时序不同, 例如常数输入和 NC 的情况. 这种情况下再跳过的话会导致以偏概全
+            if subs.get_runtime(root_runtime_id.next(subs_inst_name)).timing_info is not None:
+                continue
+            
             subs.get_runtime(root_runtime_id.next(subs_inst_name)).timing_info = {}
-            # if subs.timing_info is not None: # [NOTICE] 分析过的结构不用再分析 ?
-            #     # TODO [Important] 一个问题, 不同的输入可能导致相同模块时序不同, 例如常数输入和 NC 的情况. 这种情况下再跳过的话会导致以偏概全
-            #     continue
-            # subs.timing_info = {} # [NOTICE] 已经加入计划的结构不用重复分析
             
             subs_ports_outside = s.get_subs_ports_outside(subs_inst_name)
             in_ports = subs_ports_outside.nodes(filter = "in")

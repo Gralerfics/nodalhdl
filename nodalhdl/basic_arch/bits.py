@@ -485,6 +485,18 @@ class BitsReductionOr(UniquelyNamedReusable):
     naming = UniqueNamingTemplates.args_kwargs_all_values()
 
 
+class BitsLeadingOneDetect(UniquelyNamedReusable):
+    @staticmethod
+    def setup(layer_num: int):
+        s = Structure()
+        
+        # TODO
+        
+        return s
+    
+    naming = UniqueNamingTemplates.args_kwargs_all_values()
+
+
 class BinaryMultiplexer(UniquelyNamedReusable):
     """
         Two-way MUX.

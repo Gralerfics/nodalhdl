@@ -1,11 +1,26 @@
 # This file is part of nodalhdl (https://github.com/Gralerfics/nodalhdl), distributed under the GPLv3. See LICENSE.
 
+# TODO 有点问题, 中间黑了; 会是因为 % 吗?
+
 from nodalhdl.core.signal import *
 from nodalhdl.py.core import *
-from nodalhdl.py.std import mux, sfixed, uint
-from nodalhdl.py.glsl import vec2, vec4, fract, ceil, min, clamp
+from nodalhdl.py.std import sfixed, uint
+from nodalhdl.py.glsl import vec2, vec3, vec4, abs, smoothstep, clamp
 
-T = SFixedPoint[16, 12]
+import math
+
+T = SFixedPoint[12, 12]
+
+def my_sin(x):
+    x = (x + math.pi) % (2 * math.pi) - math.pi
+    x3 = x * x * x
+    x5 = x3 * x * x
+    return 0.987862 * x - 0.155271 * x3 + 0.00564312 * x5
+
+def line(uv: vec2, speed, height, col: vec3, iTime):
+    uv.y = uv.y + smoothstep(1, 0, abs(uv.x)) * my_sin(iTime * speed + uv.x * height) * 0.2
+    a = col * smoothstep(0.06 * smoothstep(0.2, 0.9, abs(uv.x)), 0, abs(uv.y) - 0.004) # * col # TODO
+    return vec4(a.x, a.y, a.z, 1) * smoothstep(1, 0.3, abs(uv.x))
 
 def shader(iTime_us_u64: ComputeElement, fragCoord_u12: vec2) -> ComputeElement:
     iTime_us = sfixed(iTime_us_u64, T.W_int + 20, T.W_frac)
@@ -13,21 +28,14 @@ def shader(iTime_us_u64: ComputeElement, fragCoord_u12: vec2) -> ComputeElement:
     
     fragCoord = vec2(sfixed(fragCoord_u12.x, T.W_int, T.W_frac), sfixed(fragCoord_u12.y, T.W_int, T.W_frac))
     
-    a = vec2((fragCoord.x >> 9) + (fragCoord.x >> 7) - 5, (fragCoord.y >> 9) + (fragCoord.y >> 7) - 3.75)
-    u = vec2(a.x - a.y + 5, a.x + a.y + 5)
-    f = fract(u)
-    f = min(f, 1 - f)
-    v = ceil(u) - 5.5
+    uv = (fragCoord - 0.5 * vec2(1024, 768)) / 768
+    o = vec4()
+    for i in range(2, 7, 2):
+        t = i / 5
+        o = o + line(uv, 1 + t, 4 + t, vec3(0.2 + t * 0.7, 0.2 + t * 0.4, 0.3), iTime_s)
     
-    s = 1 + ((v.x * v.x + v.y * v.y) >> 3)
-    e = (fract((iTime_s - (s >> 1)) >> 2) << 1) - 1
-    t = fract(min(f.x, f.y) << 2)
-    
-    rampFactor = 0.95 * mux(e[e.type.W - 1], 1 - t, t) - e * e
-    mixFactor = clamp((rampFactor << 4) + (rampFactor << 2) + 1, 0, 0.9999) + s * 0.1
-    
-    fragColor = clamp(vec4(1 - (mixFactor >> 1), 1 - (mixFactor >> 2), 0.9999, 0.9999), 0, 0.9999)
-    return uint(fragColor.r << 8, 8) @ uint(fragColor.g << 8, 8) @ "11111111"
+    fragColor = clamp(o, 0, 0.9999)
+    return uint(fragColor.r << 8, 8) @ uint(fragColor.g << 8, 8) @ uint(fragColor.b << 8, 8)
 
 
 from nodalhdl.core.structure import *
@@ -51,11 +59,11 @@ s.deduction(rid)
 print(s.runtime_info(rid))
 
 # static timing analysis
-sta = VivadoSTA(part_name = "xc7a200tfbg484-1", temporary_workspace_path = ".vivado_sta_shader_hp", vivado_executable_path = "vivado.bat")
+sta = VivadoSTA(part_name = "xc7a200tfbg484-1", temporary_workspace_path = ".vivado_sta_shader_dt", vivado_executable_path = "vivado.bat")
 sta.analyse(s, rid, skip_emitting_and_script_running = True) # False
 
 # pipelining
-levels, Phi_Gr = pipelining(s, rid, 26, model = "simple")
+levels, Phi_Gr = pipelining(s, rid, 60, model = "simple")
 print("Phi_Gr ~", Phi_Gr)
 
 # HDL generation
