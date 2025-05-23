@@ -157,7 +157,7 @@ def retiming(s: Structure, root_runtime_id: RuntimeId, period: Union[float, str]
     for net in s.get_nets():
         net.transform_to_best_distribution()
     
-    return Phi_Gr
+    return Phi_Gr if period == "min" else period
 
 
 def pipelining(s: Structure, root_runtime_id: RuntimeId, levels: int = None, period: float = None, model = "simple"):
@@ -167,10 +167,19 @@ def pipelining(s: Structure, root_runtime_id: RuntimeId, levels: int = None, per
     if s.is_sequential:
         raise PipeliningException("Only combinational structures can be pipelined")
     
-    if (levels is not None and period is not None) or (levels is None and period is None):
-        raise PipeliningException("One and only one of `levels` and `period` should be provided")
+    if levels is not None and period is not None:
+        # add registers on all the input ports
+        for _, pi in s.ports_inside_flipped.nodes(filter = "in", flipped = True):
+            pi.set_latency(levels)
+        
+        if retiming(s, root_runtime_id, period = period, model = model): # success
+            return levels, period
+        else: # failed
+            for _, pi in s.ports_inside_flipped.nodes(filter = "in", flipped = True):
+                pi.set_latency(0)
+            return False
     
-    if levels is not None:
+    elif levels is not None:
         # add registers on all the input ports
         for _, pi in s.ports_inside_flipped.nodes(filter = "in", flipped = True):
             pi.set_latency(levels)
@@ -178,7 +187,7 @@ def pipelining(s: Structure, root_runtime_id: RuntimeId, levels: int = None, per
         # retiming
         Phi_Gr = retiming(s, root_runtime_id, period = "min", model = model)
     
-    else: # period is not None
+    elif period is not None:
         # estimate? binary search?
         pass # TODO
         
@@ -187,7 +196,8 @@ def pipelining(s: Structure, root_runtime_id: RuntimeId, levels: int = None, per
         # retiming
         # Phi_Gr = retiming(s, root_runtime_id, period = TODO, model = model)
     
-    # ready_valid_chain:
+    else:
+        raise Exception("At least one of `levels` and `period` should be provided")
     
     return levels, Phi_Gr
 
