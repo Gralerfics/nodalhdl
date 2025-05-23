@@ -40,7 +40,7 @@ class Constants(UniquelyNamedReusable):
         
         return s
     
-    naming = UniqueNamingTemplates.args_kwargs_md5_16()
+    naming = UniqueNamingTemplates.args_kwargs_sha256_16()
 
 
 class FixedPointMultiply(UniquelyNamedReusable):

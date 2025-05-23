@@ -568,7 +568,7 @@ class CustomVHDLOperator(UniquelyNamedReusable):
         if arch_decl is not None:
             h.add_arch_declaration("vhdl", arch_decl)
     
-    naming = UniqueNamingTemplates.args_kwargs_md5_16()
+    naming = UniqueNamingTemplates.args_kwargs_sha256_16()
 
 
 import sys

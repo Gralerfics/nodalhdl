@@ -352,6 +352,7 @@ class ExtendedCircuit:
         while left < right:
             mid = (left + right) // 2
             c = Ds[mid]
+            print(f"[INFO] retiming, try c = {c}, {right - left} selection(s) left")
             
             solution = self.solve_retiming(c, external_port_vertices = external_port_vertices)
             if solution is not False:

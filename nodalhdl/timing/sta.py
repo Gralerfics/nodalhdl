@@ -1,14 +1,18 @@
 # This file is part of nodalhdl (https://github.com/Gralerfics/nodalhdl), distributed under the GPLv3. See LICENSE.
 
+import multiprocessing.pool
 from ..core.structure import *
 from ..core.hdl import *
 
+import multiprocessing
 import subprocess
 import os
 import shutil
 import re
+import hashlib
+import textwrap
 
-from typing import List, Dict, Tuple
+from typing import List, Dict
 
 
 class STAException(Exception): pass
@@ -93,6 +97,7 @@ class VivadoSTA(StaticTimingAnalyser):
                     rvs = re.split(r'\s{2,}', line.strip()) # raw_values
                     if len(rvs) == 4:
                         # e.g. "                         LUT4 (Prop_lut4_I0_O)        0.317     1.457 r  u1_z_add_123/res[3]_INST_0_i_1/O"
+                        #      "                         LUT4 (Prop_lut4_I0_O)        0.317     1.457 f  u1_z_add_123/res[3]_INST_0_i_1/O"
                         strange_tag = None
                         if not rvs[2][-1].isdigit():
                             strange_tag = rvs[2][-1]
@@ -103,14 +108,21 @@ class VivadoSTA(StaticTimingAnalyser):
                         line_entry["path_ns"] = float(rvs[2])
                         line_entry["netlist_resources"].append((strange_tag, rvs[3]))
                     elif len(rvs) == 3:
-                        # e.g. "                         FDCE                                         r  reg_0_d_u1_z_add_123_io_res_reg[3]/D"
-                        line_entry["delay_type"] = rvs[0]
-                        line_entry["netlist_resources"].append(("?", rvs[2])) # TODO ?
+                        # e.g. (1.) "                         FDCE                                         r  reg_0_d_u1_z_add_123_io_res_reg[3]/D"
+                        # e.g. (2.) "                                                      0.000     0.000 r  b[0] (IN)"
+                        if not rvs[0][0].isdigit(): # (1.)
+                            line_entry["delay_type"] = rvs[0]
+                            line_entry["netlist_resources"].append((rvs[1], rvs[2]))
+                        else: # (2.)
+                            line_entry["incr_ns"] = float(rvs[0])
+                            line_entry["path_ns"] = float(rvs[1][:-2])
+                            line_entry["netlist_resources"].append((rvs[1][-1], rvs[2]))
                     elif len(rvs) == 2:
                         # e.g. (1.) "                                                                      r  u1_z_add_123/res[3]_INST_0/I0"
+                        #           "                                                                      f  u1_z_add_123/res[3]_INST_0/I0"
                         # e.g. (2.) "                         FDCE                                            reg_0_d_u1_z_add_123_io_res_reg[3]/D"
-                        if rvs[0] == "r": # (1.)
-                            line_entry["netlist_resources"].append(("?", rvs[1])) # TODO ?
+                        if len(rvs[0]) == 1: # (1.)
+                            line_entry["netlist_resources"].append((rvs[0], rvs[1]))
                         else: # (2.)
                             line_entry["delay_type"] = rvs[0]
                             line_entry["netlist_resources"].append((None, rvs[1]))
@@ -118,12 +130,11 @@ class VivadoSTA(StaticTimingAnalyser):
                         # e.g. "                                                                         u1_z_add_123/res[3]_INST_0/I0"
                         line_entry["netlist_resources"].append((None, rvs[0]))
                     else:
-                        pass # ?
+                        raise NotImplementedError
                     
                     # row info
-                    if not line_entry["delay_type"]:
+                    if not line_entry["delay_type"] and len(res.details) > 0: # len(res.details) == 0 for (IN) row
                         # related to previous lines, extend previous row's information
-                        assert len(res.details) > 0
                         row = res.details[-1]
                         
                         # merge values
@@ -138,7 +149,7 @@ class VivadoSTA(StaticTimingAnalyser):
                     else:
                         # new independent row
                         res.details.append(line_entry)
-
+            
             return res
     
     class TimingReport:
@@ -174,168 +185,156 @@ class VivadoSTA(StaticTimingAnalyser):
             
             return res
     
-    def __init__(self, part_name: str = "xc7a200tfbg484-1", temporary_workspace_path: str = ".vivado_sta", vivado_executable_path: str = "vivado"):
+    def __init__(self, part_name: str = "xc7a200tfbg484-1", temporary_workspace_path: str = ".vivado_sta", vivado_executable_path: str = "vivado", pool_size = 12, syn_max_threads = 8):
         self.part_name = part_name
         self.temporary_workspace_path = os.path.abspath(temporary_workspace_path)
         self.vivado_executable_path = vivado_executable_path
+        self.pool_size = pool_size
+        self.syn_max_threads = syn_max_threads
         
-        self.TMP_TOP_MODULE_NAME = "sta_root"
-        self.TMP_PROJ_NAME = "vivado_sta_proj"
+        self.TMP_TOP_MODULE_NAME = "module"
         self.TMP_SRC_DIR = "src"
-        self.RUN_JOBS = 8
-        self.REPORT_FILENAME = "timing_report.txt"
         self.TCL_SCRIPT_NAME = "build_and_timing.tcl"
+        self.REPORT_FILENAME = "timing_report.txt"
+        self.SUMMARY_FILENAME = "timing_summary.txt"
     
     def _create_temporary_workspace(self):
         if os.path.exists(self.temporary_workspace_path):
-            shutil.rmtree(self.temporary_workspace_path)
+            return
+            # shutil.rmtree(self.temporary_workspace_path)
         os.makedirs(self.temporary_workspace_path, exist_ok = True)
     
-    def _write_tcl_script(self, tcl_script_str: str):
-        tcl_script_path = os.path.join(self.temporary_workspace_path, self.TCL_SCRIPT_NAME)
+    def _analyse_single(self, vhdl: dict, key: str):
+        # emitting files
+        emit_to_files(vhdl, os.path.join(self.temporary_workspace_path, key, self.TMP_SRC_DIR)) # TODO 重复的 types.vhd 等
+        
+        # write script
+        """
+            references:
+                https://docs.amd.com/r/en-US/ug835-vivado-tcl-commands/
+                https://github.com/JulianKemmerer/PipelineC/blob/master/src/VIVADO.py
+        """
+        tcl_script_str = textwrap.dedent(f"""\
+            ### auto generated by nodalhdl ###
+            
+            read_vhdl -library work {{ {" ".join([self.TMP_SRC_DIR + "/" + filename for filename in vhdl.keys()])} }}
+            
+            set_param general.maxThreads {self.syn_max_threads}
+            
+            synth_design \\
+                -part {self.part_name} \\
+                -mode out_of_context \\
+                -top {self.TMP_TOP_MODULE_NAME} \\
+                -flatten_hierarchy none
+            
+            report_timing \\
+                -setup \\
+                -no_header \\
+                -column_style variable_width \\
+                -file {self.REPORT_FILENAME}
+        """)
+        tcl_script_path = os.path.join(self.temporary_workspace_path, key, self.TCL_SCRIPT_NAME)
         with open(tcl_script_path, "w") as f:
             f.write(tcl_script_str)
-    
-    def _run_tcl_script(self):
-        feedback = subprocess.run(
-            [self.vivado_executable_path, "-mode", "batch", "-source", self.TCL_SCRIPT_NAME],
-            cwd = self.temporary_workspace_path,
-            # stdout = subprocess.PIPE,
-            # stderr = subprocess.PIPE,
-            text = True
-        )
-    
-    def analyse(self, s: Structure, root_runtime_id: RuntimeId, skip_emitting_and_script_running: bool = False): # skip_emitting_and_script_running only for debugging
-        if not skip_emitting_and_script_running:
-            self._create_temporary_workspace()
+        
+        # run script
+        if not os.path.exists(os.path.join(self.temporary_workspace_path, key, self.REPORT_FILENAME)):
+            process = subprocess.Popen(
+                [self.vivado_executable_path, "-mode", "batch", "-source", self.TCL_SCRIPT_NAME],
+                cwd = os.path.join(self.temporary_workspace_path, key),
+                stdout = subprocess.PIPE,
+                stderr = subprocess.PIPE,
+                text = True
+            )
+            # process.wait() # [NOTICE] 有点诡异, 用 .wait() 综合会到一半卡住; 用 .communicate() 也能等待到执行完
+            outs, errs = process.communicate()
             
-            # duplicate a temporary structure, set all latencies to 1, for generating
-            s_dup = s.duplicate()
-            for net in s_dup.get_nets():
-                if net.has_driver:
-                    net.driver().set_latency(1)
-            
-            # deduction and generation
-            s_dup_rid = RuntimeId.create()
-            s_dup.deduction(s_dup_rid)
-            s_dup_model = s_dup.generation(s_dup_rid, top_module_name = self.TMP_TOP_MODULE_NAME)
-            emit_to_files(s_dup_model.emit_vhdl(), os.path.join(self.temporary_workspace_path, self.TMP_SRC_DIR))
+            if process.returncode != 0:
+                print(f"[ERROR] failed in running the script")
+        else:
+            print(f"[INFO] module analysed, skipped (hash: {key})")
         
-        # create the script and record the paths ([NOTICE] report 中 path 信息应该是按 get_timing_paths 指令的顺序给出的)
-        #  - header
-        tcl = "### auto generated by nodalhdl ###\n"
+        # load and parse the report
+        with open(os.path.join(self.temporary_workspace_path, key, self.REPORT_FILENAME), "r") as f:
+            report_lines = f.readlines()
+        report = VivadoSTA.TimingReport.parse_lines(report_lines)
         
-        #  - create project
-        tcl += f"create_project {self.TMP_PROJ_NAME} ./{self.TMP_PROJ_NAME} -part {self.part_name} -force\n"
-        tcl += f"set_property top {self.TMP_TOP_MODULE_NAME} [current_fileset]\n"
-        tcl += "\n"
-        tcl += f"foreach file [glob -nocomplain ./{self.TMP_SRC_DIR}/*.vhd] {{\n"
-        tcl += "    add_files $file\n"
-        tcl += f"}}\n"
-        tcl += "update_compile_order -fileset sources_1\n"
-        tcl += "\n"
+        return report
+    
+    def analyse(self, s: Structure, root_runtime_id: RuntimeId):
+        """
+            refactorized with multiprocessing, inspired by PipelineC
+        """
+        assert s.is_flattened
         
-        #  - synthesis [NOTICE] add impl?
-        tcl += "reset_run synth_1\n"
-        tcl += f"set_property -name {{STEPS.SYNTH_DESIGN.ARGS.FLATTEN_HIERARCHY}} \\\n"
-        tcl += f"             -value {{none}} \\\n"
-        tcl += f"             -objects [get_runs synth_1]\n"
-        tcl += "\n"
-        tcl += f"launch_runs synth_1 -jobs {self.RUN_JOBS}\n"
-        tcl += "wait_on_run synth_1\n"
-        tcl += "\n"
+        # create workspace
+        self._create_temporary_workspace()
         
-        #  - open run
-        tcl += "open_run synth_1\n"
-        tcl += "\n"
-        
-        #  - add timing paths
-        tcl += f"set paths {{}}\n"
-        added_paths: List[Tuple] = [] # [(inst_name, pi_layered_name, po_layered_name, ), ]
-        for subs_inst_name, subs in s.substructures.items():
-            # 分析过的结构不再分析 TODO [Important] 不同的输入可能导致相同模块时序不同, 例如常数输入和 NC 的情况. 这种情况下再跳过的话会导致以偏概全
-            if subs.get_runtime(root_runtime_id.next(subs_inst_name)).timing_info is not None:
+        # collect and analyse reusable structures
+        structures_on_analysing: Dict[str, List[str]] = {} # {key: [subs_inst_name(s)]}
+            # TODO 这里存 subs_inst_name 是因为理论上同结构的不同实例因为所处连接关系的不同 (例如有常数输入), 时序信息也可能不同; 下面暂时没有考虑这一点, 但数据结构在此保留.
+        analyse_pool: multiprocessing.pool.ThreadPool = multiprocessing.pool.ThreadPool(self.pool_size)
+        results_on_analysing: Dict[str, multiprocessing.pool.AsyncResult] = {}
+        for idx, (subs_inst_name, subs) in enumerate(s.substructures.items()):
+            # filtering
+            if len(subs.ports_inside_flipped.nodes(filter = "in", flipped = True)) == 0: # no input
+                continue
+            if len(subs.ports_inside_flipped.nodes(filter = "out", flipped = True)) == 0: # no output
                 continue
             
-            subs.get_runtime(root_runtime_id.next(subs_inst_name)).timing_info = {}
+            # calculate hash
+            model = subs.generation(root_runtime_id.next(subs_inst_name), top_module_name = self.TMP_TOP_MODULE_NAME)
+            vhdl = model.emit_vhdl()
+            file_hash = hashlib.sha256(vhdl[f"hdl_{self.TMP_TOP_MODULE_NAME}.vhd"].encode('utf-8')).hexdigest()
             
-            subs_ports_outside = s.get_subs_ports_outside(subs_inst_name)
-            in_ports = subs_ports_outside.nodes(filter = "in")
-            out_ports = subs_ports_outside.nodes(filter = "out")
+            # collect unique structures and analyse
+            key = file_hash
+            if structures_on_analysing.get(key, None) is None: # first time
+                # save structure ref
+                structures_on_analysing[key] = []
+                
+                # async analysis
+                print(f"[INFO] analysing module {len(structures_on_analysing)} (hash: {key}, ref_inst_name: {subs_inst_name})")
+                results_on_analysing[key] = analyse_pool.apply_async(self._analyse_single, (vhdl, key))
             
-            for pi_layered_name, pi in in_ports:
-                if not pi.located_net.has_driver: # input port not connected (NC)
-                    continue
-                
-                from_po = pi.located_net.driver()
-                if from_po.of_structure_inst_name: # [NOTICE] Pylance bug? if use `from_po.(...) is not None`, the else-branch will take from_po as None
-                    desc_1 = f"{from_po.of_structure_inst_name}_io_{from_po.layered_name}"
-                else:
-                    desc_1 = from_po.layered_name
-                through_1 = f"reg*d*{desc_1}*/C"
-                
-                for po_layered_name, _ in out_ports:
-                    desc_2 = f"{subs_inst_name}_io_{po_layered_name}"
-                    through_2 = f"reg*d*{desc_2}*/D"
+            structures_on_analysing[key].append(subs_inst_name)
+        
+        # fetch the results
+        for idx, (key, subs_inst_names) in enumerate(structures_on_analysing.items()):
+            print(f"[INFO] waiting on analysis results for module {idx + 1} / {len(structures_on_analysing.items())} (hash: {key})")
+            report: VivadoSTA.TimingReport = results_on_analysing[key].get() # [NOTICE] add timeout and poll?
+            
+            # calculate delay(s) and assign timing_info(s) TODO 端口级完整延迟模型, 重构后这里暂只分析最大值
+            max_delay = 0.0
+            for path_report in report.paths:
+                """
+                    [NOTICE] e.g. (右侧的 "<-- x" 是 path_report.details 的索引)
                     
-                    tcl += f"catch {{ set paths [concat $paths [get_timing_paths -through [get_pins -hier {through_1}] -through [get_pins -hier {through_2}] -delay_type max -max_paths 1 -nworst 1 -unique_pins]] }}\n"
-
-                    # record keys for the instance, I-port and O-port for storing
-                    added_paths.append((subs_inst_name, pi_layered_name, po_layered_name, desc_1, desc_2)) # desc_x for checking if the timing path exists in the report, or it should be skipped
-        tcl += "\n"
-        
-        #  - report timing
-        if len(added_paths) == 0:
-            tcl += "# " # no paths need to analysis, comment the report_timing command
-        tcl += f"report_timing -file \"{self.REPORT_FILENAME}\" -of_objects $paths -no_header -column_style variable_width\n"
-        tcl += "\n"
-        
-        #  - close project
-        tcl += "close_project\n"
-        tcl += "exit\n"
-        
-        # write the script
-        self._write_tcl_script(tcl)
-        
-        if len(added_paths) > 0:
-            # run the script
-            if not skip_emitting_and_script_running:
-                self._run_tcl_script()
-
-            # load parse the results
-            with open(os.path.join(self.temporary_workspace_path, self.REPORT_FILENAME), "r") as f:
-                report_lines = f.readlines()
-            report = VivadoSTA.TimingReport.parse_lines(report_lines)
+                        Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+                    -------------------------------------------------------------------    -------------------
+                                                                        0.000     0.000 r  b[0] (IN)                <-- 0
+                                            net (fo=3, unset)            0.973     0.973    b[0]                    <-- 1
+                                            LUT4 (Prop_lut4_I3_O)        0.124     1.097 r  r[3]_INST_0_i_1/O       <-- 2
+                                            net (fo=1, unplaced)         1.111     2.208    r[3]_INST_0_i_1_n_0     <-- 3
+                                            LUT5 (Prop_lut5_I0_O)        0.124     2.332 r  r[3]_INST_0/O           <-- 4
+                                            net (fo=0)                   0.973     3.305    r[3]                    <-- 5
+                                                                                        r  r[3] (OUT)
+                    -------------------------------------------------------------------    -------------------
+                        这里如果是纯 net, 条目不会超过三条;
+                        如果有器件, 则有第一条 (IN), 第二条入口 net, 倒数第一条出口 net + (OUT).
+                            后者延迟取倒数第二条 (4, i.e. -2) 的 path_ns (2.332) 减去第二条 (1) 的 path_ns (0.973), 为 1.359.
+                    
+                    TODO PnR 以获得更准确的 net 延迟, 加的话除了这里, TimingPath 解析也要修改 (Location)
+                """
+                if len(path_report.details) > 3:
+                    delay = path_report.details[-2]["path_ns"] - path_report.details[1]["path_ns"]
+                    max_delay = max(delay, max_delay)
             
-            # process and store timing info (TODO 理论上没问题, 或者 added_paths 里面存为 Dict[(desc_1, desc_2): (inst_name, pi_layered_name, po_layered_name)]? 这样要求 desc_x 可以直接由 src/dest 还原.)
-            added_paths_ptr = 0
-            for idx, p in enumerate(report.paths):
-                while p.source.find(added_paths[added_paths_ptr][3]) < 0 or p.destination.find(added_paths[added_paths_ptr][4]) < 0: # skip this added path
-                    added_paths_ptr += 1
-                
-                # extract logic delays
-                """
-                    [NOTICE]
-                    在这里, 时序路径报告的表格, 第一条一定是 FDCE/C, 第二条一定是 FDCE/Q, 第三条一定是这个寄存器连到组合逻辑入口的 net, 最后一条一定是下一个 FDCE/D.
-                    舍去以上四条, 其余即所需要的延时.
-                    这里可以遍历其余条目, 累加 incr_ns, 便于避开可能的 None; 或若能保证倒数第二条 (应该是组合逻辑出口连到下一个 FDCE 的 net, incr_ns = 0.0) 的 path_ns 不为 None, 可直接用其减去第三条的 path_ns.
-                    这里暂采用后者.
-                """
-                if len(p.details) <= 4:
-                    delay = 0.0
-                else:
-                    delay = p.details[-2]["path_ns"] - p.details[2]["path_ns"]
-                
-                # store into structure
-                subs_inst_name, pi_layered_name, po_layered_name = added_paths[added_paths_ptr][0:3]
+            for subs_inst_name in subs_inst_names:
                 runtime = s.substructures[subs_inst_name].get_runtime(root_runtime_id.next(subs_inst_name))
-                if runtime.timing_info is None:
-                    runtime.timing_info = {}
-                runtime.timing_info[(pi_layered_name, po_layered_name)] = delay
-                runtime.timing_info[('_simple_in', '_simple_out')] = max(delay, runtime.timing_info.get(('_simple_in', '_simple_out'), 0))
-                
-                # next added path
-                added_paths_ptr += 1
+                runtime.timing_info[("_simple_in", "_simple_out")] = max_delay
+        
+        print(f"[INFO] static timing analysis finished")
 
 
 import sys

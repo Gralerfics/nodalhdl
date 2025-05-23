@@ -51,7 +51,7 @@ def to_extended_circuit(s: Structure, root_runtime_id: RuntimeId): # TODO 1. 有
         in_ports = subs_ports_outside.nodes(filter = "in")
         out_ports = subs_ports_outside.nodes(filter = "out")
         
-        timing_info = subs.get_runtime(root_runtime_id.next(subs_inst_name)).timing_info # [NOTICE] 会不会没有
+        timing_info = subs.get_runtime(root_runtime_id.next(subs_inst_name)).timing_info
         for pi_layered_name, pi in in_ports:
             for po_layered_name, po in out_ports:
                 delay = timing_info.get((pi_layered_name, po_layered_name), None)

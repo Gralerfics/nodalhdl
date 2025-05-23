@@ -255,9 +255,8 @@ emit_to_files(model.emit_vhdl(), "C:/Workspace/test_project/test_project.srcs/so
 print('m2.singletonize (sta) ==============================================================================================================')
 
 
-sta = VivadoSTA(part_name = "xc7a200tfbg484-1", vivado_executable_path = "vivado.bat")
-# sta.analyse(m2, rid_m2_exp)
-sta.analyse(m2, rid_m2_exp, skip_emitting_and_script_running = True)
+sta = VivadoSTA(part_name = "xc7a200tfbg484-1", temporary_workspace_path = ".vivado_sta_workflows_test", vivado_executable_path = "vivado.bat")
+sta.analyse(m2, rid_m2_exp)
 
 for subs_inst_name, subs in m2.substructures.items():
     print(f"{subs_inst_name}: {subs.get_runtime(rid_m2_exp.next(subs_inst_name)).timing_info}")
@@ -266,7 +265,7 @@ for subs_inst_name, subs in m2.substructures.items():
 print('m2.singletonize (pipelining) ==============================================================================================================')
 
 
-print("Phi_Gr", pipelining(m2, rid_m2_exp, 2, model = "simple")) # , model = "extended"))
+print("Phi_Gr", pipelining(m2, rid_m2_exp, 3, model = "simple")) # , model = "extended"))
 
 # for net in m2.get_nets():
 #     for load in net.get_loads():

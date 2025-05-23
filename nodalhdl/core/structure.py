@@ -529,7 +529,7 @@ class Structure:
             # properties
             self.id_weak: weakref.ReferenceType[RuntimeId] = weakref.ref(runtime_id)
             self.deduction_effective: bool = False
-            self.timing_info: Dict[Tuple[str, str], float] = None # timing info after STA, (I-port full name, O-port full name) -> delay; ('_simple_in', '_simple_out') -> the max delay among all internal paths
+            self.timing_info: Dict[Tuple[str, str], float] = {} # timing info after STA, (I-port full name, O-port full name) -> delay; ('_simple_in', '_simple_out') -> the max delay among all internal paths
             
             # references
             self.attach_structure: weakref.ReferenceType[Structure] = weakref.ref(attach_structure) # the structure this runtime is attached to
@@ -568,6 +568,7 @@ class Structure:
             [!] use register_unique_name to modify it.
         """
         self.unique_name: str = unique_name if unique_name is not None else f"Structure_{self.id[:8]}"
+        # TODO 结构 hash (便于判断同构 / 便于生成具有一致性的默认 unique_name)
         
         # properties (customized params, for all)
         self.custom_params = {}
@@ -968,13 +969,18 @@ class Structure:
         
         # naming
         if self.is_reusable and not is_top: # top module must use the given top_module_name
-            if self.reusable_hdl is not None:
-                return self.reusable_hdl
-            else:
-                top_module_name = self.unique_name
+            top_module_name = self.unique_name
+        entity_name = f"{top_module_name}"
+        file_name = f"hdl_{top_module_name}" # "hdl_" influences sta
         
-        # create file model and set entity name
-        model = HDLFileModel(entity_name = f"{top_module_name}", file_name = f"hdl_{top_module_name}")
+        # reusable hdl, the entity_name should be updated if reusable_hdl is from previous generation (e.g. in STA)
+        if self.is_reusable and self.reusable_hdl is not None:
+            self.reusable_hdl.entity_name = entity_name
+            self.reusable_hdl.file_name = file_name
+            return self.reusable_hdl
+        
+        # else, create new file model
+        model = HDLFileModel(entity_name = entity_name, file_name = file_name)
         
         net_wires: Dict[Net, List[List[str, int], List[List[str, int]]]] = {} # net -> [[driver_wire_name, latency], [[load_wire_name, latency], ...]]
         
@@ -1011,7 +1017,8 @@ class Structure:
                     # fill net_wires
                     fill_net_wires(port, wire_name = port_wire_name)
                 
-                model.inst_component(sub_inst_name, subs.generation(runtime_id.next(sub_inst_name), top_module_name + "_" + sub_inst_name, is_top = False), mapping)
+                comp = subs.generation(runtime_id.next(sub_inst_name), top_module_name + "_" + sub_inst_name, is_top = False)
+                model.inst_component(sub_inst_name, comp, mapping)
         
         # build nets according to net_wires
         for net, ((driver_wire_name, driver_latency), loads_info) in net_wires.items():

@@ -34,8 +34,8 @@ s.deduction(rid)
 print(s.runtime_info(rid))
 
 # static timing analysis
-sta = VivadoSTA(part_name = "xc7a200tfbg484-1", temporary_workspace_path = ".vivado_sta_test", vivado_executable_path = "vivado.bat")
-sta.analyse(s, rid, skip_emitting_and_script_running = False) # False
+sta = VivadoSTA(part_name = "xc7a200tfbg484-1", temporary_workspace_path = ".vivado_sta_shader_pattern", vivado_executable_path = "vivado.bat")
+sta.analyse(s, rid)
 
 # pipelining
 levels, Phi_Gr = pipelining(s, rid, 3, model = "simple")
@@ -45,5 +45,4 @@ print("Phi_Gr ~", Phi_Gr)
 model = s.generation(rid, top_module_name = "shader")
 insert_ready_valid_chain(model, levels)
 emit_to_files(model.emit_vhdl(), "C:/Workspace/hdmi_ddr3_fragment_shader_proj/hdmi_ddr3_fragment_shader_proj.srcs/sources_1/new/shader")
-# emit_to_files(model.emit_vhdl(), "C:/Workspace/test_project/test_project.srcs/sources_1/new")
 

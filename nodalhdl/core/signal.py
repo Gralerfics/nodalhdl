@@ -95,7 +95,7 @@ class SignalType: # should not be modified, i.e. operations return new objects.
     
     @property
     def uid(self) -> str:
-        return hashlib.md5(self.validal().encode('utf-8')).hexdigest() # see .validal()
+        return hashlib.sha256(self.validal().encode('utf-8')).hexdigest() # see .validal()
     
     @property
     def is_determined(self) -> bool: # width-determined or subtype determined
@@ -348,7 +348,7 @@ class BundleType(BitsType):
     
     def validal(self) -> str:
         if self.BT is not None:
-            return self.base_name + "_" + hashlib.md5(str(self.BT).encode('utf-8')).hexdigest() # used in core.hdl
+            return self.base_name + "_" + hashlib.sha256(str(self.BT).encode('utf-8')).hexdigest() # used in core.hdl
         else:
             return self.base_name
     

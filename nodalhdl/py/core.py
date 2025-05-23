@@ -163,8 +163,8 @@ def _mul_ce(x: 'ComputeElement', y: 'ComputeElement') -> 'ComputeElement':
     _s = x.s
     
     if x.type.belong(FixedPoint):
-        # u = _s.add_substructure(f"multiplier", FixedPointMultiply(x.type))
-        u = _s.add_substructure(f"multiplier", FixedPointMultiplyVHDL(x.type)) # TODO 模块有点太多, 先用整个的试一下
+        u = _s.add_substructure(f"multiplier", FixedPointMultiply(x.type))
+        # u = _s.add_substructure(f"multiplier", FixedPointMultiplyVHDL(x.type)) # TODO 模块有点太多, 用整个的试一下
         _s.connect(x.node, u.IO.a)
         _s.connect(y.node, u.IO.b)
         return ComputeElement(_s, runtime_node = u.IO.r)

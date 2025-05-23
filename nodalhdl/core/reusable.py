@@ -11,9 +11,9 @@ class UniqueNamingTemplates:
         should be @staticmethod factories, returning a callable(cls, *args, **kwargs) wrapped by classmethod().
     """
     @staticmethod
-    def args_kwargs_md5_16():
+    def args_kwargs_sha256_16():
         def _naming(cls, *args, **kwargs):
-            return f"{cls.__name__}_{hashlib.md5((str(args) + str(kwargs)).encode('utf-8')).hexdigest()[:16]}"
+            return f"{cls.__name__}_{hashlib.sha256((str(args) + str(kwargs)).encode('utf-8')).hexdigest()[:16]}"
         return classmethod(_naming)
     
     @staticmethod
@@ -203,7 +203,7 @@ class UniquelyNamedReusable(metaclass = UniquelyNamedReusableMeta):
                 return ...
         or the template below.
     """
-    naming = UniqueNamingTemplates.args_kwargs_md5_16()
+    naming = UniqueNamingTemplates.args_kwargs_sha256_16()
 
 
 import sys

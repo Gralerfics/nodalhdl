@@ -31,14 +31,11 @@ def AddChain(n: int, t: SignalType) -> Structure:
 
 
 ns = [10, 100, 200, 500, 1000]
-# skips = [False, False, False, False, False]
-skips = [True, True, True, True, True]
 level = 10
 op_type = UInt[4]
 
 ss: List[Structure] = []
 rids: List[RuntimeId] = []
-stas: List[VivadoSTA] = []
 
 for idx, n in enumerate(ns):
     t = time.time()
@@ -47,9 +44,9 @@ for idx, n in enumerate(ns):
     ss[idx].deduction(rids[idx])
     print(f"Build n = {n}: ", time.time() - t)
 
+sta = VivadoSTA(part_name = "xc7a200tfbg484-1", temporary_workspace_path = f".vivado_sta_addchains", vivado_executable_path = "vivado.bat")
 for idx, n in enumerate(ns):
-    stas.append(VivadoSTA(part_name = "xc7a200tfbg484-1", temporary_workspace_path = f".vivado_sta_s{n}", vivado_executable_path = "vivado.bat"))
-    stas[idx].analyse(ss[idx], rids[idx], skip_emitting_and_script_running = skips[idx])
+    sta.analyse(ss[idx], rids[idx])
 
 for idx, n in enumerate(ns):
     for _, pi in ss[idx].ports_inside_flipped.nodes(filter = "in", flipped = True):
@@ -59,7 +56,7 @@ for idx, n in enumerate(ns):
     print(f"Phi_Gr (s{n}, simple): ", retiming(ss[idx], rids[idx], period = "min", model = "simple"))
     print(f"Time (s{n}, simple): ", time.time() - t)
     
-    t = time.time()
-    print(f"Phi_Gr (s{n}, extended): ", retiming(ss[idx], rids[idx], period = "min", model = "extended"))
-    print(f"Time (s{n}, extended): ", time.time() - t)
+    # t = time.time()
+    # print(f"Phi_Gr (s{n}, extended): ", retiming(ss[idx], rids[idx], period = "min", model = "extended"))
+    # print(f"Time (s{n}, extended): ", time.time() - t)
 

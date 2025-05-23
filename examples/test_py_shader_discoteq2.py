@@ -43,6 +43,8 @@ from nodalhdl.core.hdl import *
 from nodalhdl.timing.sta import *
 from nodalhdl.timing.pipelining import *
 
+import time
+
 s = Structure()
 iTime_us = ComputeElement(s, "itime_us", UInt[64])
 fragCoord = vec2(
@@ -59,16 +61,18 @@ s.deduction(rid)
 print(s.runtime_info(rid))
 
 # static timing analysis
-sta = VivadoSTA(part_name = "xc7a200tfbg484-1", temporary_workspace_path = ".vivado_sta_shader_dt", vivado_executable_path = "vivado.bat")
-sta.analyse(s, rid, skip_emitting_and_script_running = True) # False
+sta = VivadoSTA(part_name = "xc7a200tfbg484-1", temporary_workspace_path = ".vivado_sta_shader_dt", vivado_executable_path = "vivado.bat", pool_size = 12, syn_max_threads = 8)
+sta.analyse(s, rid)
 
 # pipelining
+print(f"[INFO] start pipelining")
+t = time.time()
 levels, Phi_Gr = pipelining(s, rid, 60, model = "simple")
 print("Phi_Gr ~", Phi_Gr)
+print(f"[INFO] pipelining finished: {time.time() - t} s")
 
 # HDL generation
 model = s.generation(rid, top_module_name = "shader")
 insert_ready_valid_chain(model, levels)
 emit_to_files(model.emit_vhdl(), "C:/Workspace/hdmi_ddr3_fragment_shader_proj/hdmi_ddr3_fragment_shader_proj.srcs/sources_1/new/shader")
-# emit_to_files(model.emit_vhdl(), "C:/Workspace/test_project/test_project.srcs/sources_1/new")
 
