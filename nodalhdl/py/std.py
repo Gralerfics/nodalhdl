@@ -5,6 +5,7 @@ from nodalhdl.core.structure import *
 from nodalhdl.basic_arch.bits import *
 
 from nodalhdl.py.core import *
+from nodalhdl.py.core import _constant
 
 
 def _fixed(x: ComputeElement, target_t: SignalType) -> ComputeElement:
@@ -46,16 +47,23 @@ def sint(x: ComputeElement, width: int) -> ComputeElement:
     return sfixed(x, width - 1, 0)
 
 
-def mux(cond, x: ComputeElement, y: ComputeElement):
+def mux(cond, false_value: ComputeElement, true_value: ComputeElement):
     if isinstance(cond, ComputeElement):
-        assert x.s == y.s and x.type == y.type and cond.type.W == 1
-        _s = x.s
+        assert isinstance(false_value, ComputeElement) or isinstance(false_value, ComputeElement) # 都不是 CE 的话无法确定输出的位宽
+        _s = cond.s
         
-        u = _s.add_substructure("mux", BinaryMultiplexer(x.type))
+        if isinstance(false_value, (float, int)):
+            false_value = _constant(_s, true_value.type(false_value))
+        elif isinstance(true_value, (float, int)):
+            true_value = _constant(_s, false_value.type(true_value))
+        
+        assert false_value.s == true_value.s and false_value.type == true_value.type and cond.type.W == 1
+        
+        u = _s.add_substructure("mux", BinaryMultiplexer(false_value.type))
         _s.connect(cond.node, u.IO.sel)
-        _s.connect(x.node, u.IO.i0)
-        _s.connect(y.node, u.IO.i1)
+        _s.connect(false_value.node, u.IO.i0)
+        _s.connect(true_value.node, u.IO.i1)
         return ComputeElement(_s, runtime_node = u.IO.o)
     else:
-        return x if cond else y
+        return false_value if cond else true_value
 

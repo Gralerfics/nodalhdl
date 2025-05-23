@@ -165,7 +165,7 @@ class BitsSignedMultiply(UniquelyNamedReusable):
     naming = UniqueNamingTemplates.args_kwargs_all_values()
 
 
-class BitsSignedDivide(UniquelyNamedReusable):
+class BitsSignedDivide(UniquelyNamedReusable): # TODO div 0?
     @staticmethod
     def setup(t1: SignalType, t2: SignalType):
         assert t1.belong(Bits) and t2.belong(Bits) and t1.is_determined and t2.is_determined

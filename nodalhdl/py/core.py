@@ -63,6 +63,7 @@ class ComputeElement:
     def __mul__(self, other): return self._arith_op(other, _mul_ce)
     def __truediv__(self, other): return self._arith_op(other, _div_ce)
     def __mod__(self, other): return self._arith_op(other, _mod_ce)
+    def __eq__(self, other): return self._arith_op(other, _eq_ce) # __req__?
     
     def __radd__(self, other): return self._arith_rop(other, _add_ce)
     def __rsub__(self, other): return self._arith_rop(other, _sub_ce)
@@ -164,7 +165,7 @@ def _mul_ce(x: 'ComputeElement', y: 'ComputeElement') -> 'ComputeElement':
     
     if x.type.belong(FixedPoint):
         # u = _s.add_substructure(f"multiplier", FixedPointMultiply(x.type))
-        u = _s.add_substructure(f"multiplier", FixedPointMultiplyVHDL(x.type)) # TODO 模块有点太多, 用整个的试一下
+        u = _s.add_substructure(f"multiplier", FixedPointMultiplyVHDL(x.type)) # TODO 模块有点太多, 用整个的试一下; DSP 数量有限
         _s.connect(x.node, u.IO.a)
         _s.connect(y.node, u.IO.b)
         return ComputeElement(_s, runtime_node = u.IO.r)
@@ -189,6 +190,18 @@ def _mod_ce(x: 'ComputeElement', y: 'ComputeElement') -> 'ComputeElement':
     
     if x.type.belong(FixedPoint):
         u = _s.add_substructure(f"divider", FixedPointModulus(x.type))
+        _s.connect(x.node, u.IO.a)
+        _s.connect(y.node, u.IO.b)
+        return ComputeElement(_s, runtime_node = u.IO.r)
+    else:
+        raise NotImplementedError
+
+def _eq_ce(x: 'ComputeElement', y: 'ComputeElement') -> 'ComputeElement':
+    assert x.s == y.s and x.type == y.type
+    _s = x.s
+    
+    if x.type.belong(Bits):
+        u = _s.add_substructure(f"equal", BitsEqualTo(x.type))
         _s.connect(x.node, u.IO.a)
         _s.connect(y.node, u.IO.b)
         return ComputeElement(_s, runtime_node = u.IO.r)

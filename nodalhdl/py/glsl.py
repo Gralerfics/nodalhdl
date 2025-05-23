@@ -241,7 +241,7 @@ def clamp(x, lower_bound: Union[float, int], upper_bound: Union[float, int]):
     return min(max(x, lower_bound), upper_bound)
 
 
-def smoothstep(t1, t2, x):
+def smoothstep(t1, t2, x): # TODO when t2 - t1 = 0, y should be 1?
     y = clamp((x - t1) / (t2 - t1), 0, 0.9999)
     return y * y * (3 - 2 * y)
 

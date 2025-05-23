@@ -1,26 +1,37 @@
 # This file is part of nodalhdl (https://github.com/Gralerfics/nodalhdl), distributed under the GPLv3. See LICENSE.
 
-# TODO 有点问题, 中间黑了; 会是因为 % 吗?
+# TODO 有点问题
 
 from nodalhdl.core.signal import *
 from nodalhdl.py.core import *
-from nodalhdl.py.std import sfixed, uint
-from nodalhdl.py.glsl import vec2, vec3, vec4, abs, smoothstep, clamp
+from nodalhdl.py.std import sfixed, uint, mux
+from nodalhdl.py.glsl import vec2, vec3, vec4, abs, clamp
 
 import math
 
-T = SFixedPoint[12, 12]
+T = SFixedPoint[12, 24]
 
 def my_sin(x):
     x = (x + math.pi) % (2 * math.pi) - math.pi
-    x3 = x * x * x
-    x5 = x3 * x * x
-    return 0.987862 * x - 0.155271 * x3 + 0.00564312 * x5
+    x2 = x * x
+    x4 = x2 * x * x
+    return x * (0.987862 - 0.155271 * x2 + 0.00559312 * x4) # 0.00564312
 
 def line(uv: vec2, speed, height, col: vec3, iTime):
-    uv.y = uv.y + smoothstep(1, 0, abs(uv.x)) * my_sin(iTime * speed + uv.x * height) * 0.2
-    a = col * smoothstep(0.06 * smoothstep(0.2, 0.9, abs(uv.x)), 0, abs(uv.y) - 0.004) # * col # TODO
-    return vec4(a.x, a.y, a.z, 1) * smoothstep(1, 0.3, abs(uv.x))
+    aux = abs(uv.x)
+    nau = 1 - aux
+    
+    k0 = clamp(nau, 0, 1)
+    y = uv.y + (k0 * k0 * (3 - (k0 << 1)) * my_sin(iTime * speed + uv.x * height) >> 2) # uv.y 是引用
+    
+    k2 = clamp((aux << 1) - 0.6, 0, 1)
+    k3t1 = k2 * k2 * (0.1875 - (k2 >> 3))
+    k3t1 = mux(k3t1 == 0, k3t1, 0.001)
+    k3 = clamp((k3t1 + 0.004 - abs(y)) / k3t1, 0, 1)
+    a = col * k3 * k3 * (3 - (k3 << 1))
+    
+    k4 = clamp(nau + (nau >> 1), 0, 1)
+    return vec4(a.x, a.y, a.z, 1) * k4 * k4 * (3 - (k4 << 1))
 
 def shader(iTime_us_u64: ComputeElement, fragCoord_u12: vec2) -> ComputeElement:
     iTime_us = sfixed(iTime_us_u64, T.W_int + 20, T.W_frac)
@@ -30,7 +41,7 @@ def shader(iTime_us_u64: ComputeElement, fragCoord_u12: vec2) -> ComputeElement:
     
     uv = (fragCoord - 0.5 * vec2(1024, 768)) / 768
     o = vec4()
-    for i in range(2, 7, 2):
+    for i in range(1, 6, 1):
         t = i / 5
         o = o + line(uv, 1 + t, 4 + t, vec3(0.2 + t * 0.7, 0.2 + t * 0.4, 0.3), iTime_s)
     
@@ -67,9 +78,9 @@ sta.analyse(s, rid)
 # pipelining
 print(f"[INFO] start pipelining")
 t = time.time()
-levels, Phi_Gr = pipelining(s, rid, 60, model = "simple")
+levels, Phi_Gr = pipelining(s, rid, 80, model = "simple")
 print("Phi_Gr ~", Phi_Gr)
-print(f"[INFO] pipelining finished: {time.time() - t} s")
+print(f"[INFO] pipelining finished: {time.time() - t} (s)")
 
 # HDL generation
 model = s.generation(rid, top_module_name = "shader")

@@ -79,8 +79,8 @@ def divide(dividend: str, divisor: str):
 Wi = 8
 Wf = 0
 
-a = -9
-b = 4
+a = 9
+b = 0
 
 Q, R = divide(
     bin(int(a * 2 ** Wf) % 2 ** (Wi + Wf))[2:].zfill(Wi + Wf) + "0" * Wf,
@@ -90,7 +90,8 @@ Q, R = divide(
 q = ((int(Q, base = 2) + 2 ** (Wi + Wf - 1)) % 2 ** (Wi + Wf) - 2 ** (Wi + Wf - 1)) / 2 ** Wf
 r = ((int(R, base = 2) + 2 ** (Wi + Wf - 1)) % 2 ** (Wi + Wf) - 2 ** (Wi + Wf - 1)) / 2 ** (Wf + Wf)
 
-print(f"a = {a}, b = {b};\nq = {q}, r = {r};\na / b = {a / b};\nqb + r = {q * b + r}")
+print(f"a = {a}, b = {b};\nq = {q}, r = {r};")
+print(f"a / b = {a / b};\nqb + r = {q * b + r}")
 
 
 # print(divide(

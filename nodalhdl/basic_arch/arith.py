@@ -84,7 +84,7 @@ class FixedPointMultiplyVHDL(UniquelyNamedReusable):
         b = s.add_port("b", Input[t])
         r = s.add_port("r", Output[t])
         
-        mul = s.add_substructure("tc", CustomVHDLOperator(
+        mul = s.add_substructure("mul", CustomVHDLOperator(
             {"a": t, "b": t},
             {"r": t},
             f"o <= std_logic_vector(signed(a) * signed(b));\n" +
