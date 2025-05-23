@@ -62,13 +62,13 @@ class ComputeElement:
     def __sub__(self, other): return self._arith_op(other, _sub_ce)
     def __mul__(self, other): return self._arith_op(other, _mul_ce)
     def __truediv__(self, other): return self._arith_op(other, _div_ce)
-    def __mod__(self, other): return self._arith_op(other, _rem_ce) # TODO rem -> mod
+    def __mod__(self, other): return self._arith_op(other, _mod_ce)
     
     def __radd__(self, other): return self._arith_rop(other, _add_ce)
     def __rsub__(self, other): return self._arith_rop(other, _sub_ce)
     def __rmul__(self, other): return self._arith_rop(other, _mul_ce)
     def __rtruediv__(self, other): return self._arith_rop(other, _div_ce)
-    def __rmod__(self, other): return self._arith_rop(other, _rem_ce) # TODO same as above
+    def __rmod__(self, other): return self._arith_rop(other, _mod_ce)
     
     def __lshift__(self, other): return _shift_int(self, other)
     def __rshift__(self, other): return _shift_int(self, -other)
@@ -163,8 +163,8 @@ def _mul_ce(x: 'ComputeElement', y: 'ComputeElement') -> 'ComputeElement':
     _s = x.s
     
     if x.type.belong(FixedPoint):
-        u = _s.add_substructure(f"multiplier", FixedPointMultiply(x.type))
-        # u = _s.add_substructure(f"multiplier", FixedPointMultiplyVHDL(x.type)) # TODO 模块有点太多, 用整个的试一下
+        # u = _s.add_substructure(f"multiplier", FixedPointMultiply(x.type))
+        u = _s.add_substructure(f"multiplier", FixedPointMultiplyVHDL(x.type)) # TODO 模块有点太多, 用整个的试一下
         _s.connect(x.node, u.IO.a)
         _s.connect(y.node, u.IO.b)
         return ComputeElement(_s, runtime_node = u.IO.r)
@@ -183,12 +183,12 @@ def _div_ce(x: 'ComputeElement', y: 'ComputeElement') -> 'ComputeElement':
     else:
         raise NotImplementedError
 
-def _rem_ce(x: 'ComputeElement', y: 'ComputeElement') -> 'ComputeElement':
+def _mod_ce(x: 'ComputeElement', y: 'ComputeElement') -> 'ComputeElement':
     assert x.s == y.s and x.type == y.type
     _s = x.s
     
     if x.type.belong(FixedPoint):
-        u = _s.add_substructure(f"divider", FixedPointRemainder(x.type))
+        u = _s.add_substructure(f"divider", FixedPointModulus(x.type))
         _s.connect(x.node, u.IO.a)
         _s.connect(y.node, u.IO.b)
         return ComputeElement(_s, runtime_node = u.IO.r)

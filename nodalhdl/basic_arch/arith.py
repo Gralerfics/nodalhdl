@@ -157,7 +157,33 @@ class FixedPointRemainder(UniquelyNamedReusable):
     naming = UniqueNamingTemplates.args_kwargs_all_values()
 
 
-# TODO Modulus 则与 b 同号, 或 mod(x, y) = x - y * floor (x / y) ? 或 rem 加一个除数?
+class FixedPointModulus(UniquelyNamedReusable):
+    @staticmethod
+    def setup(t: FixedPointType):
+        assert t.belong(FixedPoint) and t.is_fully_determined
+        
+        s = Structure()
+        a = s.add_port("a", Input[t])
+        b = s.add_port("b", Input[t])
+        r = s.add_port("r", Output[t])
+        
+        div = s.add_substructure("bits_div", BitsSignedDivide(Bits[t.W], Bits[t.W]))
+        s.connect(a, div.IO.a)
+        s.connect(b, div.IO.b)
+        
+        corr = s.add_substructure("corrector", CustomVHDLOperator(
+            {"i": t, "a": t, "b": t},
+            {"o": t},
+            "o <= std_logic_vector(signed(i) + signed(b)) when (a(a'high) xor b(b'high)) = '1' else i;"
+        ))
+        s.connect(a, corr.IO.a)
+        s.connect(b, corr.IO.b)
+        s.connect(div.IO.r, corr.IO.i)
+        s.connect(corr.IO.o, r)
+        
+        return s
+    
+    naming = UniqueNamingTemplates.args_kwargs_all_values()
 
 
 # class FixedPointCordicSqrt(UniquelyNamedReusable):

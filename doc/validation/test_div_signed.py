@@ -76,11 +76,11 @@ def divide(dividend: str, divisor: str):
     return Q_res, A
 
 
-Wi = 4
+Wi = 8
 Wf = 0
 
-a = -8
-b = -1
+a = -9
+b = 4
 
 Q, R = divide(
     bin(int(a * 2 ** Wf) % 2 ** (Wi + Wf))[2:].zfill(Wi + Wf) + "0" * Wf,

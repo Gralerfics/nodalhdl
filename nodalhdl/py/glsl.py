@@ -3,6 +3,9 @@
 """
     glsl-like vec behavioral.
     assisted by ChatGPT.
+    
+    TODO constructors like vec4(vec3, float)
+    TODO constant * vec
 """
 class vec:
     _swizzle_map = {
