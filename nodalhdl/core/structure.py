@@ -423,6 +423,7 @@ class Node:
 
     """
         Latency setting will not change the structural information, but will influence reusable_hdl.
+        [NOTICE] 未进行 >= 0 断言, 即允许设置为负数; 只要等效于合法情况, 就可通过 transform_to_best_distribution 纠正. (但做不到相邻 net 之间的修正)
     """
     def set_latency(self, latency: int):
         if not self.is_port:

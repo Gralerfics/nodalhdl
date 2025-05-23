@@ -2,6 +2,7 @@
 
 import math
 import heapq
+import time
 
 from typing import List, Set, Tuple
 from dataclasses import dataclass, field
@@ -352,7 +353,6 @@ class ExtendedCircuit:
         while left < right:
             mid = (left + right) // 2
             c = Ds[mid]
-            print(f"[INFO] retiming, try c = {c}, {right - left} selection(s) left")
             
             solution = self.solve_retiming(c, external_port_vertices = external_port_vertices)
             if solution is not False:
@@ -536,6 +536,7 @@ class SimpleCircuit:
             Perform binary search on sorted Ds, check answer by solving retiming.
             Return Phi(G_r) and the retiming r.
         """
+        print(f"[INFO] running WD algorithm") # TODO
         Ds = self.compute_Ds() # (external_port_vertices = external_port_vertices)
         
         left, right = 0, len(Ds)
@@ -544,7 +545,11 @@ class SimpleCircuit:
             mid = (left + right) // 2
             c = Ds[mid]
             
+            print(f"[INFO] retiming, try c = {c}, {right - left} selection(s) left") # TODO
+            t = time.time()
             solution = self.solve_retiming(c) # , external_port_vertices = external_port_vertices)
+            print(f"[INFO] finished after {time.time() - t} (s)")
+            
             if solution is not False:
                 res = (c, solution)
                 right = mid

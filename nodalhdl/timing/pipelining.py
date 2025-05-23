@@ -12,9 +12,10 @@ class RetimingException(Exception): pass
 class PipeliningException(Exception): pass
 
 
-def to_extended_circuit(s: Structure, root_runtime_id: RuntimeId): # TODO 1. 有问题; 2. 简化节点
+def to_extended_circuit(s: Structure, root_runtime_id: RuntimeId):
     """
         The structure `s` should be flattened and timing-analysed.
+        TODO 1. 有问题 (to be repaired); 2. 简化节点
     """
     if not s.is_flattened:
         raise RetimingException("Only flattened and timing-analysed structures can be converted")
@@ -65,9 +66,10 @@ def to_extended_circuit(s: Structure, root_runtime_id: RuntimeId): # TODO 1. 有
     return G, vertices_map, external_edges_map
 
 
-def to_simple_circuit(s: Structure, root_runtime_id: RuntimeId): # TODO 简化节点
+def to_simple_circuit(s: Structure, root_runtime_id: RuntimeId, ignore_delay_lower_than: float = 1e-2):
     """
         The structure `s` should be flattened and timing-analysed.
+        TODO 简化节点, 忽略延迟小于 ignore_delay_lower_than 的节点 (除了 v0), 涉及到此处 (to_simple_circuit) 建图 G, retiming() 中 apply 等过程.
     """
     if not s.is_flattened:
         raise RetimingException("Only flattened can be converted")
@@ -82,13 +84,17 @@ def to_simple_circuit(s: Structure, root_runtime_id: RuntimeId): # TODO 简化�
         timing_info = subs.get_runtime(root_runtime_id.next(subs_inst_name)).timing_info
         delay = timing_info.get(('_simple_in', '_simple_out'), 0.0) if timing_info is not None else 0.0
         
+        # if delay > ignore_delay_lower_than:
         vertex_idx = idx + 1 # 1 ~ N
         vertices_map[subs_inst_name] = vertex_idx
         G.add_vertex(delay)
+        # else:
+        #     pass # TODO
     
     # edges
     edges_map: Dict[Node, int] = {}
     edge_idx = 0
+    edges_dict: Dict[Tuple[int, int], int] = {}
     edges_list: List[Tuple[int, int, int]] = []
     
     for net in s.get_nets():
@@ -102,10 +108,11 @@ def to_simple_circuit(s: Structure, root_runtime_id: RuntimeId): # TODO 简化�
             
             u = vertices_map[driver.of_structure_inst_name] if driver.of_structure_inst_name is not None else 0
             v = vertices_map[load.of_structure_inst_name] if load.of_structure_inst_name is not None else 0
-            edges_list.append((u, v, driver.latency + load.latency))
+            edges_dict[(u, v)] = driver.latency + load.latency # ignore repeated edge
             
             edge_idx += 1
     
+    edges_list = [(u, v, l) for (u, v), l in edges_dict.items()]
     G.add_edges(edges_list)
     
     return G, vertices_map, edges_map
@@ -128,6 +135,8 @@ def retiming(s: Structure, root_runtime_id: RuntimeId, period: Union[float, str]
                 return False
     elif model == "simple":
         G, V_map, E_map = to_simple_circuit(s, root_runtime_id)
+
+        print(f"[INFO] |V| = {len(G.V)}, |E| = {len(G.E)}") # TODO
 
         if period == "min":
             Phi_Gr, r = G.minimize_clock_period()
