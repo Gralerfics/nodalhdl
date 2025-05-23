@@ -83,11 +83,16 @@ class vec:
     def __sub__(self, other): return self._op(other, lambda a, b: a - b)
     def __mul__(self, other): return self._op(other, lambda a, b: a * b)
     def __truediv__(self, other): return self._op(other, lambda a, b: a / b)
+    def __lshift__(self, other): return self._op(other, lambda a, b: a << b)
+    def __rshift__(self, other): return self._op(other, lambda a, b: a >> b)
 
     def __radd__(self, other): return self._rop(other, lambda a, b: a + b)
     def __rsub__(self, other): return self._rop(other, lambda a, b: a - b)
     def __rmul__(self, other): return self._rop(other, lambda a, b: a * b)
     def __rtruediv__(self, other): return self._rop(other, lambda a, b: a / b)
+    
+    def __neg__(self): _vec_factory(*(-a for a in self))
+    def __pos__(self): return self
 
 def _vec_factory(*args):
     l = len(args)
@@ -226,9 +231,9 @@ def _minmax(x, y, mode = "min"):
             return type(x)(*(_minmax(a, b, mode) for a, b in zip(x, y)))
         else:
             raise Exception("vecs should have the same length")
-    elif isinstance(x, vec) and isinstance(y, (float, int)):
+    elif isinstance(x, vec) and isinstance(y, (float, int, ComputeElement)):
         return type(x)(*(_minmax(a, y, mode) for a in x))
-    elif isinstance(y, vec) and isinstance(x, (float, int)):
+    elif isinstance(y, vec) and isinstance(x, (float, int, ComputeElement)):
         return _minmax(y, x, mode)
     else:
         return (x if x < y else y) if mode == "min" else (x if x > y else y)
@@ -268,4 +273,12 @@ def abs(x):
 
 def sqrt(x, iter_num: int):
     pass
+
+
+def dot(x, y):
+    if isinstance(x, vec) and isinstance(y, vec):
+        assert len(x) == len(y)
+        return sum([a * b for a, b in zip(x, y)])
+    else:
+        return x * y
 
