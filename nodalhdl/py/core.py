@@ -49,14 +49,14 @@ class ComputeElement:
             other_ce: ComputeElement = _constant(self.s, self.type(other))
             return self._arith_op(other_ce, func)
         else:
-            raise NotImplementedError
+            return NotImplemented
     
     def _arith_rop(self, other, func):
         if isinstance(other, (float, int)):
             other_ce: ComputeElement = _constant(self.s, self.type(other))
             return other_ce._arith_op(self, func)
         else:
-            raise NotImplementedError
+            return NotImplemented
     
     def __add__(self, other): return self._arith_op(other, _add_ce)
     def __sub__(self, other): return self._arith_op(other, _sub_ce)
@@ -84,14 +84,14 @@ class ComputeElement:
             other_ce: ComputeElement = _constant(self.s, Bits[len(other)](other))
             return _concate_ce(self, other_ce)
         else:
-            raise NotImplementedError
+            return NotImplemented
     
     def __rmatmul__(self, other):
         if isinstance(other, str):
             other_ce: ComputeElement = _constant(self.s, Bits[len(other)](other))
             return _concate_ce(other_ce, self)
         else:
-            raise NotImplementedError
+            return NotImplemented
     
     def __getitem__(self, item): # slicing, closed interval
         if isinstance(item, slice):
