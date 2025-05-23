@@ -238,7 +238,8 @@ class VivadoSTA(StaticTimingAnalyser):
             f.write(tcl_script_str)
         
         # run script
-        if not os.path.exists(os.path.join(self.temporary_workspace_path, key, self.REPORT_FILENAME)):
+        report_path = os.path.join(self.temporary_workspace_path, key, self.REPORT_FILENAME)
+        if not os.path.exists(report_path):
             process = subprocess.Popen(
                 [self.vivado_executable_path, "-mode", "batch", "-source", self.TCL_SCRIPT_NAME],
                 cwd = os.path.join(self.temporary_workspace_path, key),
@@ -255,7 +256,10 @@ class VivadoSTA(StaticTimingAnalyser):
             print(f"[INFO] module analysed, skipped (hash: {key})")
         
         # load and parse the report
-        with open(os.path.join(self.temporary_workspace_path, key, self.REPORT_FILENAME), "r") as f:
+        if not os.path.exists(report_path):
+            print(f"[ERROR] timing report not generated, check \"{report_path}\"")
+            raise Exception("timing report not generated") # TODO
+        with open(report_path, "r") as f:
             report_lines = f.readlines()
         report = VivadoSTA.TimingReport.parse_lines(report_lines)
         
