@@ -1,7 +1,5 @@
 # This file is part of nodalhdl (https://github.com/Gralerfics/nodalhdl), distributed under the GPLv3. See LICENSE.
 
-# TODO 有点问题
-
 from nodalhdl.core.signal import *
 from nodalhdl.py.core import *
 from nodalhdl.py.std import sfixed, uint, mux
@@ -9,13 +7,13 @@ from nodalhdl.py.glsl import vec2, vec3, vec4, abs, clamp
 
 import math
 
-T = SFixedPoint[12, 24]
+T = SFixedPoint[20, 20]
 
 def my_sin(x):
-    x = (x + math.pi) % (2 * math.pi) - math.pi
-    x2 = x * x
-    x4 = x2 * x * x
-    return x * (0.987862 - 0.155271 * x2 + 0.00559312 * x4) # 0.00564312
+    y = (x + math.pi) % (2 * math.pi) - math.pi
+    y2 = y * y
+    y4 = y2 * y * y
+    return y * (0.987862 - 0.155271 * y2 + 0.00559087 * y4) # 0.00564312, 0.00559312
 
 def line(uv: vec2, speed, height, col: vec3, iTime):
     aux = abs(uv.x)
@@ -79,7 +77,7 @@ sta.analyse(s, rid)
 print(f"[INFO] start pipelining")
 t = time.time()
 levels, Phi_Gr = pipelining(s, rid, 80, model = "simple")
-print("Phi_Gr ~", Phi_Gr)
+print("[INFO] Phi_Gr ~", Phi_Gr)
 print(f"[INFO] pipelining finished: {time.time() - t} (s)")
 
 # HDL generation
