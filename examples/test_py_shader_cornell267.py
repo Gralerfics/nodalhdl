@@ -1,8 +1,12 @@
 # This file is part of nodalhdl (https://github.com/Gralerfics/nodalhdl), distributed under the GPLv3. See LICENSE.
 
+"""
+    TODO 顶部光源中间怎么空了
+"""
+
 from nodalhdl.core.signal import *
 from nodalhdl.py.core import *
-from nodalhdl.py.std import mux, sfixed, uint
+from nodalhdl.py.std import sfixed, uint
 from nodalhdl.py.glsl import vec2, vec3, vec4, clamp, dot, min, max, abs
 
 import math
