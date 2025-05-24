@@ -71,7 +71,7 @@ def shader(iTime_us_u64: ComputeElement, fragCoord_u12: vec2) -> ComputeElement:
 
 - [x] 结构描述层（Structural Description Layer）
   - [x] 类型系统（Type System）
-    - [ ] 重构 IO 包装和信号束类型（Refactor IOWrapper and Bundle Type）
+    - [x] 重构 IO 包装和信号束类型（Refactor IOWrapper and Bundle Type）
     - [ ] 信号束的拆分和聚合操作（Bundle Type De/Composition）
   - [x] 结构工作流（Structure Workflow）
     - [x] 结构复制（Duplicate）
@@ -84,15 +84,16 @@ def shader(iTime_us_u64: ComputeElement, fragCoord_u12: vec2) -> ComputeElement:
     - [x] 持久化存储（Persistence）
       - [ ] 类型池的一致性问题（Consistence Issues）
     - [x] 静态时序分析（STA）
-      - [ ] 自动复用分析结果缓存（STA Results Buffering）
+      - [x] 自动复用分析结果缓存（STA Results Buffering）
+      - [x] 多进程子模块综合与分析（Multiprocessing）
       - [ ] 其他 STA 工具支持（Support for Other STA Tools）
       - [ ] 相同结构输入不同时时序差异的问题，如常数输入（Timing Features Influenced by Different Inputs）
     - [ ] 内部结构快速拆分（Fast Decomposition）
     - [ ] 结构层仿真（Simulation）
   - [x] 常用结构生成函数（Useful Structures Generators）
-    - [ ] 位运算器（Bitwise Operators）
-    - [x] 加 / 减法器等（Adder / Subtractor, etc.）
-    - [ ] 定点数除法器（FxP Division）
+    - [x] 位运算器（Bitwise Operators）
+    - [x] 加 / 减 / 乘法器等（Adder / Subtractor / Multiplier, etc.）
+    - [x] 定点数除法器（FxP Division）
     - [ ] CORDIC 模块（CORDIC Module）
 
 - [x] 硬件描述语言层（HDL Model Layer）
@@ -108,7 +109,7 @@ def shader(iTime_us_u64: ComputeElement, fragCoord_u12: vec2) -> ComputeElement:
     - [ ] 修复扩展模型重定时的问题（Fix Extended Model）
   - [x] 组合逻辑生成（Combinational Logic Generation）
     - [x] 常用运算符重载，如加减乘、移位、切片等（Common Operations, e.g. +/-, Shifting, Slicing）
-    - [ ] 常用标准函数，如类型转换等（Standard Functions, e.g. Type Conversions）
+    - [x] 常用标准函数，如类型转换等（Standard Functions, e.g. Type Conversions）
     - [x] 仿 GLSL 的向量操作及函数（GLSL-like Vector Behaviors）
     - [ ] 添加中间层，如计算图，现在这个结构感觉不好扩展（Intermediate Layers, e.g. Computational Graph）
   - [ ] 状态机 / 时序逻辑生成（FSM & Sequential Logic Generation）
