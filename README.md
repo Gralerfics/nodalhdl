@@ -96,13 +96,17 @@ def shader(iTime_us_u64: ComputeElement, fragCoord_u12: vec2) -> ComputeElement:
       - [x] 多进程子模块综合与分析（Multiprocessing）
       - [ ] 其他 STA 工具支持（Support for Other STA Tools）
       - [ ] 相同结构输入不同时时序差异的问题，如常数输入（Timing Features Influenced by Different Inputs）
-    - [ ] 内部结构快速拆分（Fast Decomposition）
+    - [ ] 内部结构快速拆分与拼接（Fast De/Composition）
     - [ ] 结构层仿真（Simulation）
   - [x] 常用结构生成函数（Useful Structures Generators）
     - [x] 位运算器（Bitwise Operators）
-    - [x] 加 / 减 / 乘法器等（Adder / Subtractor / Multiplier, etc.）
-    - [x] 定点数除法器（FxP Division）
-    - [ ] CORDIC 模块（CORDIC Module）
+    - [x] 基本算术结构（Arithmetic）
+      - [x] 加 / 减 / 乘法器等（Adder / Subtractor / Multiplier, etc.）
+      - [x] 定点数除法器（FxP Division）
+      - [ ] CORDIC 模块（CORDIC Module）
+    - [ ] 控制结构（Controlling）
+      - [ ] 仲裁 / 调度器（Arbitrator / Scheduler）
+  - [ ] 可变结构框架，即可根据运行时类型自动选取架构（Runtime-variable Structures）
 
 - [x] 硬件描述语言层（HDL Model Layer）
   - [ ] Verilog 完整支持（Verilog Support）
@@ -121,10 +125,18 @@ def shader(iTime_us_u64: ComputeElement, fragCoord_u12: vec2) -> ComputeElement:
     - [x] 仿 GLSL 的向量操作及函数（GLSL-like Vector Behaviors）
     - [ ] 添加中间层，如计算图，现在这个结构感觉不好扩展（Intermediate Layers, e.g. Computational Graph）
   - [ ] 状态机 / 时序逻辑生成（FSM & Sequential Logic Generation）
-    - [ ] 浮点数运算单元（FPU）
-  - [ ] 模块拼接，关于Ready-valid 握手、反压、打断设计（Module Concatenation）
-  - [ ] 跨时钟域结构的生成，如FIFO、异步访存等（Clock Crossings）
-  - [ ] 并行化结构的生成，如仲裁模块等（Concurrent Structures）
+    - [ ] 有限状态机与数据通路建模（FSMD Modelling）
+      - [ ] 描述层设计与操作（Designing）
+      - [ ] HDL 层适配（HDL Generation）
+      - [ ] HLS 层自动状态机推导（HLS Derivation）
+    - [ ] 常用状态机生成函数（Useful FSMD Generators）
+      - [ ] 浮点数运算单元（FPU）
+  - [ ] 模块拼接（Module Assembling）
+    - [ ] Ready-valid 握手、反压、打断设计（Ready-valid）
+    - [ ] 仲裁（Arbitration）
+    - [ ] 应用（Application）
+      - [ ] 并行化结构生成（Concurrent Structures）
+      - [ ] 跨时钟域结构的生成，如 FIFO、异步访存等（Clock Crossings）
 
 - [ ] 辅助工具链（Complementary Toolchain）
   - [ ] [可视化编辑器](https://github.com/Gralerfics/nodalhdl_editor)（Visual Editor）
@@ -141,6 +153,4 @@ def shader(iTime_us_u64: ComputeElement, fragCoord_u12: vec2) -> ComputeElement:
 部分想法来源于 [PipelineC](https://github.com/JulianKemmerer/PipelineC)。
 
 依赖项请查看 `pyproject.toml`。
-
-以及我不是微电子专业，也不会查文献，现在我有点怀疑我这个项目存在的意义。
 

@@ -92,5 +92,3 @@ Partially inspired by [PipelineC](https://github.com/JulianKemmerer/PipelineC).
 
 Check `pyproject.toml` for dependencies.
 
-I'm not a microelectronics major and I am too lazy to check the literature. And now I am questioning whether my project is meaningless.
-
