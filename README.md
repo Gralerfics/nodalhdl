@@ -61,6 +61,14 @@ def shader(iTime_us_u64: ComputeElement, fragCoord_u12: vec2) -> ComputeElement:
 
 ![ph_comb_elaborated_schematic](./doc/readme_assets/ph_comb_elaborated_schematic.jpg)
 
+这里有几个类似的例子。修改自 [Cornell [267 chars]](https://www.shadertoy.com/view/ssKyzh)：
+
+![cornell267_example_result](./doc/readme_assets/cornell267_example.gif)
+
+修改自 [Discoteq 2](https://www.shadertoy.com/view/DtXfDr)：
+
+![discoteq2_example_result](./doc/readme_assets/discoteq2_example.gif)
+
 ## 设计文档
 
 （TODO）关于项目结构设计的细节，例如抽象层次、对象引用关系的设计以及代码实现等。

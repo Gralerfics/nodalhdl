@@ -67,6 +67,15 @@ The structure of the major part when it is not pipelined is shown in the followi
 
 ![ph_comb_elaborated_schematic](./doc/readme_assets/ph_comb_elaborated_schematic.jpg)
 
+Here are some similar examples. Modified from [Cornell [267 chars]](https://www.shadertoy.com/view/ssKyzh)：
+
+![cornell267_example_result](./doc/readme_assets/cornell267_example.gif)
+
+Modified from [Discoteq 2](https://www.shadertoy.com/view/DtXfDr)：
+
+![discoteq2_example_result](./doc/readme_assets/discoteq2_example.gif)
+
+
 ## Documentation
 
 (TODO) Details about the structural design of the project, such as the abstraction hierarchy, the design of object relationships, and the coding matters.
