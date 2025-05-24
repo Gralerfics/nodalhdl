@@ -1,11 +1,11 @@
 # This file is part of nodalhdl (https://github.com/Gralerfics/nodalhdl), distributed under the GPLv3. See LICENSE.
 
-from nodalhdl.core.signal import *
-from nodalhdl.core.structure import *
-from nodalhdl.basic_arch.bits import *
+from ..core.signal import *
+from ..core.structure import *
+from ..basic_arch.bits import *
 
-from nodalhdl.py.core import *
-from nodalhdl.py.core import _constant
+from .core import *
+from .core import _constant
 
 
 def _fixed(x: ComputeElement, target_t: SignalType) -> ComputeElement:

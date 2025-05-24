@@ -1,3 +1,5 @@
+# This file is part of nodalhdl (https://github.com/Gralerfics/nodalhdl), distributed under the GPLv3. See LICENSE.
+
 """
     TODO 组装层.
     Idea:
@@ -9,3 +11,7 @@
         2. 关于通用流水线模型, 如暂停、冲刷等操作的模式化.
         3. ...
 """
+
+
+
+

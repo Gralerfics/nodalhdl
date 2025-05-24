@@ -137,10 +137,10 @@ if __name__ == "__main__":
 """
     functions.
 """
-from nodalhdl.core.signal import *
-from nodalhdl.basic_arch.bits import *
-from nodalhdl.py.core import *
-from nodalhdl.py.core import _constant
+from ..core.signal import *
+from ..basic_arch.bits import *
+from .core import *
+from .core import _constant
 
 import math
 

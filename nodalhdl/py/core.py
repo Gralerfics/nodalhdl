@@ -2,8 +2,8 @@
 
 from ..core.signal import *
 from ..core.structure import *
-from nodalhdl.basic_arch.bits import *
-from nodalhdl.basic_arch.arith import *
+from ..basic_arch.bits import *
+from ..basic_arch.arith import *
 
 from typing import List
 # import functools
